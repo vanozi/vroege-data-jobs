@@ -1,136 +1,177 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "requests",
+#     "httpx",
 #     "python-dotenv"
 # ]
 # ///
 
-import os
-from pathlib import Path
-from typing import Any, Dict
-import requests
-from dotenv import load_dotenv
+from typing import Any, Optional
 
-# Load environment variables
-load_dotenv()
+import httpx
+
+from data_jobs.uniform_agri.config import UniformAgriConfig
+from data_jobs.uniform_agri import config as uniform_config
+from data_jobs.uniform_agri.exceptions import (
+    UniformAgriApiError,
+    UniformAgriAuthenticationError,
+)
+
+DEFAULT_RESPONSE_CONTEXT_LENGTH = 500
 
 
-def get_access_token() -> str:
-    """Get OAuth2 access token from Uniform API"""
-    username = os.getenv('UNIFORM_USERNAME')
-    password = os.getenv('UNIFORM_PASSWORD')
-    base_url = os.getenv('UNIFORM_BASE_URL')
-    auth_url = f"{base_url}/oauth2/token"
-
-    data = {
-        'grant_type': 'password',
-        'username': username,
-        'password': password,
-        'client_id': os.getenv('UNIFORM_CLIENT_ID')
+def build_token_payload(config: UniformAgriConfig) -> dict[str, str]:
+    """Build the OAuth2 password grant payload."""
+    return {
+        "grant_type": "password",
+        "username": config.username,
+        "password": config.password,
+        "client_id": config.client_id,
     }
-
-    response = requests.post(
-        auth_url,
-        json=data,
-        headers={
-            'accept': 'application/json'
-        }
-    )
-    response.raise_for_status()
-
-    return response.json()['access_token']
 
 
 class ApiClient:
     """Low-level API client for making HTTP requests with automatic token refresh"""
 
-    def __init__(self, token: str = None):
-        self.base_url = os.getenv('UNIFORM_BASE_URL')
+    def __init__(
+        self,
+        config: Optional[UniformAgriConfig] = None,
+        token: Optional[str] = None,
+        http_client: Optional[httpx.Client] = None,
+    ):
+        self.config = config or uniform_config.load_uniform_config()
+        self.base_url = self.config.base_url
+        self._owns_http_client = http_client is None
+        self.http_client = http_client or httpx.Client(
+            base_url=self.base_url,
+            timeout=self.config.request_timeout_seconds,
+        )
 
-        # Check if token exists in env, if not get and store it
         if token:
             self.token = token
         else:
-            self.token = os.getenv('UNIFORM_ACCESS_TOKEN')
+            self.token = self.config.access_token
             if not self.token:
-                self.token = self._get_and_store_token()
+                self.token = self.get_access_token()
 
-    def _get_and_store_token(self) -> str:
-        """Get new access token and store it in .env file"""
-        token = get_access_token()
-        self._update_env_file('UNIFORM_ACCESS_TOKEN', token)
-        return token
+    def close(self) -> None:
+        """Close the underlying HTTP client when this instance owns it."""
+        if self._owns_http_client:
+            self.http_client.close()
 
-    def _update_env_file(self, key: str, value: str) -> None:
-        """Update .env file with new key-value pair"""
-        env_path = Path('.env')
+    def __enter__(self) -> "ApiClient":
+        return self
 
-        if not env_path.exists():
-            env_path.write_text(f'{key}="{value}"\n')
-            os.environ[key] = value
-            return
+    def __exit__(self, *args: object) -> None:
+        self.close()
 
-        # Read existing .env file
-        lines = env_path.read_text().splitlines()
-        updated = False
-
-        # Update existing key or add new one
-        for i, line in enumerate(lines):
-            if line.startswith(f'{key}='):
-                lines[i] = f'{key}="{value}"'
-                updated = True
-                break
-
-        if not updated:
-            lines.append(f'{key}="{value}"')
-
-        # Write back to file
-        env_path.write_text('\n'.join(lines) + '\n')
-
-        # Update runtime environment
-        os.environ[key] = value
-
-    def _request_with_retry(self, method: str, endpoint: str, **kwargs: Any) -> Dict[str, Any]:
-        """Make HTTP request with automatic token refresh on 401"""
-        url = f"{self.base_url}{endpoint}"
-        headers = kwargs.pop('headers', {})
-        headers['Authorization'] = f"Bearer {self.token}"
+    def get_access_token(self) -> str:
+        """Get an OAuth2 access token from Uniform Agri."""
+        endpoint = "/oauth2/token"
+        response = self._send(
+            "POST",
+            endpoint,
+            headers={"accept": "application/json"},
+            json=build_token_payload(self.config),
+            authenticated=False,
+        )
 
         try:
-            response = requests.request(
+            token = response.json()["access_token"]
+        except (KeyError, ValueError, TypeError) as error:
+            raise UniformAgriAuthenticationError(
+                "Uniform Agri token response did not include an access token.",
+                endpoint=endpoint,
+                status_code=response.status_code,
+                response_text=response.text,
+            ) from error
+
+        return token
+
+    def _send(
+        self,
+        method: str,
+        endpoint: str,
+        authenticated: bool = True,
+        raise_for_status: bool = True,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Send a request and convert transport/API failures to project errors."""
+        headers = kwargs.pop("headers", {})
+        if authenticated:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        kwargs.setdefault("timeout", self.config.request_timeout_seconds)
+
+        try:
+            response = self.http_client.request(
                 method=method.upper(),
-                url=url,
+                url=endpoint,
                 headers=headers,
-                **kwargs
+                **kwargs,
             )
+        except httpx.HTTPError as error:
+            raise UniformAgriApiError(
+                f"Uniform Agri request failed for {endpoint}: {error}",
+                endpoint=endpoint,
+            ) from error
 
-            # If 401, refresh token and retry once
-            if response.status_code == 401:
-                self.token = self._get_and_store_token()
-                headers['Authorization'] = f"Bearer {self.token}"
+        if raise_for_status and response.is_error:
+            self._raise_response_error(endpoint, response)
 
-                response = requests.request(
-                    method=method.upper(),
-                    url=url,
-                    headers=headers,
-                    **kwargs
-                )
+        return response
 
-            response.raise_for_status()
+    def _raise_response_error(self, endpoint: str, response: httpx.Response) -> None:
+        """Raise a project-specific API error with short response context."""
+        error_type = (
+            UniformAgriAuthenticationError
+            if response.status_code in {401, 403}
+            else UniformAgriApiError
+        )
+        response_context = response.text[:DEFAULT_RESPONSE_CONTEXT_LENGTH]
+        raise error_type(
+            (
+                "Uniform Agri API returned "
+                f"HTTP {response.status_code} for {endpoint}: {response_context}"
+            ),
+            endpoint=endpoint,
+            status_code=response.status_code,
+            response_text=response_context,
+        )
+
+    def _request_with_retry(
+        self,
+        method: str,
+        endpoint: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Make an authenticated HTTP request with one token refresh on 401."""
+        response = self._send(method, endpoint, raise_for_status=False, **kwargs)
+
+        if response.status_code == 401:
+            self.token = self.get_access_token()
+            response = self._send(method, endpoint, **kwargs)
+        elif response.is_error:
+            self._raise_response_error(endpoint, response)
+
+        try:
             return response.json()
+        except ValueError as error:
+            raise UniformAgriApiError(
+                f"Uniform Agri response for {endpoint} was not valid JSON.",
+                endpoint=endpoint,
+                status_code=response.status_code,
+                response_text=response.text,
+            ) from error
 
-        except requests.exceptions.HTTPError as e:
-            raise
-
-    def request(self, method: str, endpoint: str, **kwargs: Any) -> Dict[str, Any]:
+    def request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """Make HTTP request and return JSON response"""
         return self._request_with_retry(method, endpoint, **kwargs)
 
-    def get(self, endpoint: str, **kwargs) -> Dict[str, Any]:
+    def get(self, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """GET request"""
-        return self.request('GET', endpoint, **kwargs)
+        return self.request("GET", endpoint, **kwargs)
 
-    def post(self, endpoint: str, **kwargs) -> Dict[str, Any]:
+    def post(self, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         """POST request"""
-        return self.request('POST', endpoint, **kwargs)
+        return self.request("POST", endpoint, **kwargs)
