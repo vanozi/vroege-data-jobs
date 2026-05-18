@@ -1,6 +1,6 @@
 from typing import Union
 from .base_repository import BaseRepository
-from models import KoeDetail
+from database.models import KoeDetail
 
 
 class KoeDetailRepository(BaseRepository[KoeDetail]):

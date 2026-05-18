@@ -11,7 +11,7 @@ Repository for Koe (Cow) model with specific operations using SQLModel.
 
 from typing import  Union
 from .base_repository import BaseRepository
-from models import Melking
+from database.models import Melking
 
 
 class MelkingenRepository(BaseRepository[Melking]):

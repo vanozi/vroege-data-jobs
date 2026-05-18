@@ -12,13 +12,14 @@ Centralized database configuration and session management.
 This module provides:
 - Single engine instance with proper configuration
 - Session factory for dependency injection
-- Database initialization and table creation
 - Environment-based configuration
+
+Schema changes are managed outside runtime via Alembic migrations.
 """
 
 import os
 from typing import Generator
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import create_engine, Session
 from contextlib import contextmanager
 from dotenv import load_dotenv
 
@@ -26,7 +27,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Get database URL from environment or use default
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/gebroeders-vroege")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg://postgres:postgres@localhost:5432/gebroeders-vroege",
+)
+
+# Normalize plain PostgreSQL URLs to the explicit psycopg driver.
+if DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 # Create engine with appropriate settings based on database type
 if DATABASE_URL.startswith("sqlite"):
@@ -56,16 +64,6 @@ else:
         max_overflow=10,
         pool_pre_ping=True,
     )
-
-
-def init_db() -> None:
-    """
-    Initialize database by creating all tables.
-
-    Call this once at application startup.
-    """
-    SQLModel.metadata.create_all(engine)
-
 
 def get_session() -> Session:
     """
@@ -130,7 +128,6 @@ def get_db() -> Generator[Session, None, None]:
 # Convenience exports for common use cases
 __all__ = [
     "engine",
-    "init_db",
     "get_session",
     "get_session_context",
     "get_db",

@@ -10,9 +10,10 @@ Repository for Koe (Cow) model with specific operations using SQLModel.
 """
 
 from typing import Optional, List, Union
-from sqlmodel import select
+from uuid import UUID
+from sqlmodel import select, update
 from .base_repository import BaseRepository
-from models import Koe
+from database.models import Koe
 
 
 class KoeRepository(BaseRepository[Koe]):
@@ -82,4 +83,26 @@ class KoeRepository(BaseRepository[Koe]):
         if isinstance(koe_data, Koe):
             koe_data = koe_data.model_dump()
 
+        # Ensure in_current_herd is set to True for animals in the API
+        koe_data['in_current_herd'] = True
+
         return self.upsert(koe_data, unique_fields=['animal_id'])
+
+    def mark_all_not_in_herd(self, animal_ids: List[UUID]) -> int:
+        """
+        Mark all koeien as not in current herd if their animal_id is not in the provided list.
+
+        Args:
+            animal_ids: List of animal IDs that ARE in the current herd
+
+        Returns:
+            Number of koeien marked as not in herd
+        """
+        with self.get_session() as session:
+            statement = (
+                update(Koe)
+                .where(Koe.animal_id.not_in(animal_ids))
+                .values(in_current_herd=False)
+            )
+            result = session.exec(statement)
+            return result.rowcount

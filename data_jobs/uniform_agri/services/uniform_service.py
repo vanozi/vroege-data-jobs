@@ -1,7 +1,7 @@
 
-from models.koe import Koe, KoeDetail
-from models.melking import Melking
-from api_client import ApiClient
+from database.models.koe import Koe, KoeDetail
+from database.models.melking import Melking
+from data_jobs.uniform_agri.api_client import ApiClient
 from typing import List
 from datetime import datetime as dt
 from uuid import UUID

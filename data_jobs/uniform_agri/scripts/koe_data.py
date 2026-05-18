@@ -14,12 +14,12 @@ Flow:
 """
 
 
-from repositories.melkingen_repository import MelkingenRepository
-from services.uniform_service import UniformService
-from database import init_db, get_session
+from database.repositories.melkingen_repository import MelkingenRepository
+from data_jobs.uniform_agri.services.uniform_service import UniformService
+from database.database import init_db, get_session
 from repositories import KoeRepository
-from repositories.koe_detail_repository import KoeDetailRepository
-from utils.logger import get_logger
+from database.repositories.koe_detail_repository import KoeDetailRepository
+from data_jobs.uniform_agri.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -31,19 +31,18 @@ def main():
     service = UniformService()
     koe_repo = KoeRepository(get_session)
     koe_detail_repo = KoeDetailRepository(get_session)
-    melkingen_repo = MelkingenRepository(get_session)
 
     # Configuration
     herd_id = "c670836f-7732-43a1-ac5a-70c4f63435f4"
 
-    print("Starting data collection from Uniform API...")
+    print("Start met data collectie.")
     print("=" * 60)
 
     # Step 1: Get all animals in the herd (starting point)
-    print("\nStep 1: Fetching herd registration (all animals)...")
+    print("\nStep 1: Stallijst ophalen ...")
     try:
         koeien = service.get_herd_registration(herd_id)
-        print(f"Found {len(koeien)} animals in the herd")
+        print(f"{len(koeien)} koeien op de stallijst")
 
     except Exception as e:
         print(f"Error fetching herd registration: {e}")
@@ -53,6 +52,9 @@ def main():
     print("\nStep 2: Inserting data into tables...")
     logger.info("Starting data insertion for %d animals", len(koeien))
 
+    # Track animal IDs that are in the current herd
+    current_herd_animal_ids = []
+
     for koe in koeien:
         if koe.name and koe.name.upper().startswith("VAARSKALF") or koe.name.upper().startswith("STIERKALF"):
             continue
@@ -61,6 +63,7 @@ def main():
         try:
             print(f"Inserting Koe: {koe.name} ({koe.eartag})")
             koe_repo.upsert_koe(koe)
+            current_herd_animal_ids.append(koe.animal_id)
             print(f"Inserted Koe: {koe.name} ({koe.eartag})")
             logger.info("Successfully inserted Koe: %s (%s)", koe.name, koe.eartag)
         except Exception as e:
@@ -78,21 +81,16 @@ def main():
             logger.error("Failed to insert details for: %s - Error: %s", koe.name, str(e), exc_info=True)
             # Continue to melkingen even if details fail
 
-        # Insert Melkingen
-        try:
-            koe_melkingen = service.get_milk_recordings(herd_id, koe.animal_id)
-            if koe_melkingen:
-                for melking in koe_melkingen:
-                    try:
-                        melkingen_repo.upsert_melking(melking)
-                    except Exception as e:
-                        logger.error("Failed to insert melking for: %s (date: %s) - Error: %s",
-                                   koe.name, getattr(melking, 'date', 'unknown'), str(e))
-                logger.info("Successfully inserted %d melkingen for: %s", len(koe_melkingen), koe.name)
-        except Exception as e:
-            logger.error("Failed to fetch/insert melkingen for: %s - Error: %s", koe.name, str(e), exc_info=True)
+    # Step 3: Mark animals not in current herd
+    print("\nStep 3: Marking animals not in current herd...")
+    try:
+        marked_count = koe_repo.mark_all_not_in_herd(current_herd_animal_ids)
+        print(f"Marked {marked_count} animals as not in current herd")
+        logger.info("Marked %d animals as not in current herd", marked_count)
+    except Exception as e:
+        logger.error("Failed to mark animals not in herd - Error: %s", str(e), exc_info=True)
 
-
+    print("\nData collection completed!")
 
 
 

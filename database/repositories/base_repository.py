@@ -12,7 +12,7 @@ Follows the Repository pattern with DRY principles.
 All model-specific repositories should inherit from this class.
 """
 
-from typing import Generic, TypeVar, Type, List, Optional, Dict, Any
+from typing import Generator, Generic, TypeVar, Type, List, Optional, Dict, Any
 from sqlmodel import Session, select
 from contextlib import contextmanager
 
@@ -39,9 +39,9 @@ class BaseRepository(Generic[ModelType]):
         self.session_factory = session_factory
 
     @contextmanager
-    def get_session(self) -> Session:
+    def get_session(self) -> Generator[Session, None, None]:
         """Context manager for database sessions with automatic commit/rollback"""
-        session = self.session_factory()
+        session = self.session_factory() if callable(self.session_factory) else self.session_factory
         try:
             yield session
             session.commit()
@@ -184,25 +184,64 @@ class BaseRepository(Generic[ModelType]):
             Created or updated model instance
         """
         with self.get_session() as session:
-            # Build filter for existing record
-            filters = {field: data.get(field) for field in unique_fields if data.get(field) is not None}
-
-            # Try to find existing record using select()
-            statement = select(self.model)
-            for field, value in filters.items():
-                statement = statement.where(getattr(self.model, field) == value)
-
-            instance = session.exec(statement).first()
+            normalized_data = self._normalize_model_data(data)
+            filters = self._build_unique_filters(normalized_data, unique_fields)
+            instance = self._find_by_filters(session, filters)
 
             if instance:
-                # Update existing
-                for key, value in data.items():
-                    setattr(instance, key, value)
+                self._update_instance(instance, normalized_data)
             else:
-                # Create new
-                instance = self.model(**data)
+                instance = self.model(**normalized_data)
                 session.add(instance)
 
             session.flush()
             session.refresh(instance)
             return instance
+
+    def _normalize_model_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate input data through the model and remove None values.
+
+        This gives callers consistent database-shaped values while avoiding
+        explicit NULLs for fields that should use database defaults.
+        """
+        return self.model.model_validate(data).model_dump(exclude_none=True)
+
+    def _build_unique_filters(
+        self,
+        data: Dict[str, Any],
+        unique_fields: List[str],
+    ) -> Dict[str, Any]:
+        """Return the unique lookup values required for an upsert."""
+        missing_fields = [
+            field
+            for field in unique_fields
+            if field not in data or data[field] is None
+        ]
+
+        if missing_fields:
+            missing = ", ".join(missing_fields)
+            raise ValueError(f"Missing unique field values for upsert: {missing}")
+
+        return {field: data[field] for field in unique_fields}
+
+    def _find_by_filters(
+        self,
+        session: Session,
+        filters: Dict[str, Any],
+    ) -> Optional[ModelType]:
+        """Find the first model instance matching all filters."""
+        statement = select(self.model)
+        for field, value in filters.items():
+            statement = statement.where(getattr(self.model, field) == value)
+
+        return session.exec(statement).first()
+
+    def _update_instance(
+        self,
+        instance: ModelType,
+        data: Dict[str, Any],
+    ) -> None:
+        """Copy normalized data onto an existing model instance."""
+        for key, value in data.items():
+            setattr(instance, key, value)
