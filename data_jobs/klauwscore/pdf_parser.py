@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 from pypdf import PdfReader
 
@@ -44,7 +44,7 @@ def parse_klauwscore_pdf_text(text: str) -> list[KlauwscorePdfRecord]:
 
     behandeldatum = datetime.strptime(date_match.group(1), "%d-%m-%Y").date()
     records: list[KlauwscorePdfRecord] = []
-    current_halsbandnummer: int | None = None
+    current_halsbandnummer: Optional[int] = None
     current_notities: list[str] = []
 
     for raw_line in text.splitlines():
