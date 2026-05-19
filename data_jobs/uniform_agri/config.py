@@ -5,6 +5,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+DEFAULT_HERD_ID = "c670836f-7732-43a1-ac5a-70c4f63435f4"
+
 
 class UniformAgriConfigError(RuntimeError):
     """Raised when required Uniform Agri configuration is missing or invalid."""
@@ -34,7 +36,7 @@ def load_uniform_config(env_path: Optional[Path] = None) -> UniformAgriConfig:
         "username": _get_required_env("UNIFORM_USERNAME"),
         "password": _get_required_env("UNIFORM_PASSWORD"),
         "client_id": _get_required_env("UNIFORM_CLIENT_ID"),
-        "herd_id": _get_required_env("UNIFORM_HERD_ID"),
+        "herd_id": os.getenv("UNIFORM_HERD_ID", DEFAULT_HERD_ID),
         "access_token": os.getenv("UNIFORM_ACCESS_TOKEN", ""),
         "request_timeout_seconds": _get_int_env("UNIFORM_REQUEST_TIMEOUT_SECONDS", 60),
         "max_retries": _get_int_env("UNIFORM_MAX_RETRIES", 1),

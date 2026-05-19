@@ -18,6 +18,7 @@ from data_jobs.uniform_agri.exceptions import (
 )
 
 DEFAULT_RESPONSE_CONTEXT_LENGTH = 500
+RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 
 
 def build_token_payload(config: UniformAgriConfig) -> dict[str, str]:
@@ -145,13 +146,22 @@ class ApiClient:
         endpoint: str,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Make an authenticated HTTP request with one token refresh on 401."""
+        """Make an authenticated HTTP request with token and transient retries."""
         response = self._send(method, endpoint, raise_for_status=False, **kwargs)
 
         if response.status_code == 401:
             self.token = self.get_access_token()
-            response = self._send(method, endpoint, **kwargs)
-        elif response.is_error:
+            response = self._send(method, endpoint, raise_for_status=False, **kwargs)
+
+        retry_count = 0
+        while (
+            response.status_code in RETRYABLE_STATUS_CODES
+            and retry_count < self.config.max_retries
+        ):
+            retry_count += 1
+            response = self._send(method, endpoint, raise_for_status=False, **kwargs)
+
+        if response.is_error:
             self._raise_response_error(endpoint, response)
 
         try:

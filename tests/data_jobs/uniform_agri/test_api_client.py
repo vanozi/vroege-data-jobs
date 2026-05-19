@@ -141,6 +141,30 @@ def test_api_error_includes_endpoint_status_and_short_response_context():
     assert len(error.value.response_text) == 500
 
 
+def test_request_retries_transient_server_error():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if len(calls) == 1:
+            return httpx.Response(502, text="temporary")
+
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+    http_client = httpx.Client(
+        base_url="https://uniform.example.test",
+        transport=transport,
+    )
+    client = api_client.ApiClient(
+        config=build_config(),
+        http_client=http_client,
+    )
+
+    assert client.get("/resource") == {"ok": True}
+    assert calls == ["/resource", "/resource"]
+
+
 def test_authentication_error_when_token_response_has_no_access_token():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"missing": "token"})
