@@ -77,6 +77,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      portal:
+        condition: service_healthy
     networks:
       - dashboards
 
@@ -173,6 +175,8 @@ services:
       - traefik.http.routers.marimo-klauwgezondheid.priority=100
       - traefik.http.routers.marimo-klauwgezondheid.service=marimo-klauwgezondheid
       - traefik.http.services.marimo-klauwgezondheid.loadbalancer.server.port=2718
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
       - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=Host(`${DASHBOARD_HOST}`) && Path(`/klauwgezondheid/manifest.json`)
       - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=websecure
       - traefik.http.routers.marimo-klauwgezondheid-manifest.tls.certresolver=letsencrypt
