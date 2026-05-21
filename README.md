@@ -140,16 +140,17 @@ dashboards with `PORTAL_DASHBOARDS_JSON`:
 PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en klauwgezondheid van de actieve koppel.","url":"/klauwgezondheid","status":"Productie"}]
 ```
 
-### Docker Compose dashboards
+### Docker Compose stack
 
 The repository includes a standalone [`docker-compose.yml`](docker-compose.yml)
-with its own Traefik proxy, Flask portal, and Marimo klauwgezondheid dashboard.
-It does not depend on another Compose project.
+with its own Traefik proxy, PostgreSQL database, Flask portal, Marimo
+klauwgezondheid dashboard, Alembic migration runner, and datajob containers. It
+does not depend on another Compose project.
 
-The portal and Marimo services use separate Dockerfiles and dependency files:
+The services use separate Dockerfiles and dependency files:
 
 - [`docker/portal/Dockerfile`](docker/portal/Dockerfile): Flask portal and
-  Gunicorn only.
+  Gunicorn.
 - [`docker/marimo/Dockerfile`](docker/marimo/Dockerfile): Marimo dashboard and
   dashboard data dependencies.
 - [`docker/database/Dockerfile`](docker/database/Dockerfile): Alembic migration
@@ -157,67 +158,7 @@ The portal and Marimo services use separate Dockerfiles and dependency files:
 - [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
   datajob runner for Klauwscore and Uniform Agri.
 
-Required deployment configuration:
-
-Copy `.env.example` to `.env` for Compose-level settings:
-
-```env
-DASHBOARD_HOST=dashboards.gebroedersvroege.nl
-TRAEFIK_ACME_EMAIL=admin@example.nl
-```
-
-Copy `deploy/dashboard.env.example` to `deploy/dashboard.env` for application
-settings:
-
-```env
-PORTAL_SECRET_KEY=...
-PORTAL_ADMIN_USERNAME=admin
-PORTAL_ADMIN_PASSWORD_HASH=...
-PORTAL_SESSION_HOURS=12
-PORTAL_COOKIE_SECURE=true
-DATABASE_URL=postgresql+psycopg://...
-```
-
-The Compose stack includes a PostgreSQL service named `postgres`. For services
-inside this Compose network, use:
-
-```env
-DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
-```
-
-For local Docker with PostgreSQL running outside Compose on the host machine,
-use `host.docker.internal` as database host in `DATABASE_URL`. Inside a
-container, `localhost` means the container itself, not your Windows host.
-
-Keep `PORTAL_ADMIN_PASSWORD_HASH` in `deploy/dashboard.env`, not in the Compose
-`.env` file. Werkzeug hashes can contain `$`, and Compose treats `$...` as
-variable interpolation in `.env`. The Compose services read
-`deploy/dashboard.env` with `env_file` format `raw` so password hashes are
-passed to the containers unchanged.
-
-Start the dashboard stack:
-
-```powershell
-docker compose up -d --build
-```
-
-Run database migrations against the Compose PostgreSQL service:
-
-```powershell
-docker compose --profile tools run --rm db-migrate
-```
-
-Run datajobs manually:
-
-```powershell
-docker compose --profile jobs run --rm datajob-uniform-agri
-docker compose --profile jobs run --rm datajob-klauwscore
-```
-
-The default Uniform Agri job collects cows, details, and milkings. The default
-Klauwscore job collects the stallijst and persists klauwbehandelingen.
-
-Routes:
+Production routes:
 
 - `https://dashboards.gebroedersvroege.nl/`: Flask portal.
 - `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
@@ -227,6 +168,189 @@ endpoint. Direct access to the Marimo route without a valid portal session
 returns unauthorized. The Marimo web app manifest at
 `/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
 may fetch manifests without session cookies; it does not expose dashboard data.
+
+### Linux server setup
+
+Clone the repository somewhere owned by the deploy user, for example:
+
+```bash
+cd /opt
+sudo git clone git@github.com:vanozi/vroege-data-jobs.git vroege-data-jobs
+sudo chown -R "$USER:$USER" /opt/vroege-data-jobs
+cd /opt/vroege-data-jobs
+```
+
+Create the Compose-level configuration:
+
+```bash
+cp .env.example .env
+```
+
+Set at least these values in `.env`:
+
+```env
+DASHBOARD_HOST=dashboards.gebroedersvroege.nl
+TRAEFIK_ACME_EMAIL=admin@example.nl
+POSTGRES_DB=gebroeders_vroege
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=change-me
+```
+
+Create the application configuration:
+
+```bash
+cp deploy/dashboard.env.example deploy/dashboard.env
+```
+
+Set at least these values in `deploy/dashboard.env`:
+
+```env
+PORTAL_SECRET_KEY=change-me
+PORTAL_ADMIN_USERNAME=admin
+PORTAL_ADMIN_PASSWORD_HASH=...
+PORTAL_SESSION_HOURS=12
+PORTAL_COOKIE_SECURE=true
+DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
+```
+
+Put Klauwscore and Uniform Agri credentials in `deploy/dashboard.env` as well.
+Keep `PORTAL_ADMIN_PASSWORD_HASH` in `deploy/dashboard.env`, not in the Compose
+`.env` file. Werkzeug hashes can contain `$`, and Compose treats `$...` as
+variable interpolation in `.env`. The Compose services read
+`deploy/dashboard.env` with `env_file` format `raw` so password hashes are
+passed to the containers unchanged.
+
+Create a portal password hash from a machine with Werkzeug installed:
+
+```bash
+python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
+```
+
+### Start the server stack
+
+Validate the Compose file:
+
+```bash
+docker compose config --quiet
+```
+
+Start PostgreSQL first:
+
+```bash
+docker compose up -d postgres
+```
+
+Run Alembic migrations:
+
+```bash
+docker compose --profile tools run --rm db-migrate
+```
+
+Build and start the full stack:
+
+```bash
+docker compose up -d --build
+```
+
+Useful status and log commands:
+
+```bash
+docker compose ps
+docker compose logs -f traefik portal marimo-klauwgezondheid
+docker compose logs -f postgres
+docker compose logs --tail=100 marimo-klauwgezondheid
+```
+
+### Run datajobs on the server
+
+Run both jobs manually:
+
+```bash
+docker compose --profile jobs run --rm datajob-uniform-agri
+docker compose --profile jobs run --rm datajob-klauwscore
+```
+
+The default Uniform Agri job collects cows, details, and milkings. The default
+Klauwscore job collects the stallijst and persists klauwbehandelingen.
+
+Run Klauwscore with an explicit command, for example for a dry run:
+
+```bash
+docker compose --profile jobs run --rm datajob-klauwscore python -m data_jobs.klauwscore.scripts.collect_klauwscore --summary --dry-run
+```
+
+Run Uniform Agri with an explicit command, for example limited and without
+database writes:
+
+```bash
+docker compose --profile jobs run --rm datajob-uniform-agri python -m data_jobs.uniform_agri.scripts.koe_data --dry-run --include-details --include-milkings --limit 10
+```
+
+### Nightly datajobs
+
+For nightly production runs, prefer a host-level scheduler over a cron process
+inside a container. The repository includes
+[`deploy/run-nightly-datajobs.sh`](deploy/run-nightly-datajobs.sh). It runs
+migrations first, then Uniform Agri, then Klauwscore.
+
+Make the script executable:
+
+```bash
+chmod +x deploy/run-nightly-datajobs.sh
+```
+
+Example cron entry:
+
+```cron
+30 2 * * * cd /opt/vroege-data-jobs && /bin/sh deploy/run-nightly-datajobs.sh >> /var/log/vroege-datajobs.log 2>&1
+```
+
+This keeps scheduling visible on the server, avoids long-running scheduler
+logic in the application containers, and makes retries/logging easier to manage
+with the host's normal tools.
+
+### Update the server stack
+
+Pull the newest code and rebuild changed services:
+
+```bash
+cd /opt/vroege-data-jobs
+git pull
+docker compose build
+docker compose --profile tools run --rm db-migrate
+docker compose up -d --force-recreate
+```
+
+For a dashboard-only dependency change, rebuilding only Marimo is usually
+enough:
+
+```bash
+docker compose build marimo-klauwgezondheid
+docker compose up -d --force-recreate marimo-klauwgezondheid
+```
+
+Restart Traefik after label or routing changes:
+
+```bash
+docker compose restart traefik
+```
+
+### PostgreSQL backup
+
+Create a compressed backup:
+
+```bash
+mkdir -p /opt/backups
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > /opt/backups/vroege-datajobs-$(date +%F).sql.gz
+```
+
+Restore only after checking the target database:
+
+```bash
+gunzip -c /opt/backups/vroege-datajobs-YYYY-MM-DD.sql.gz | docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
+```
+
+### Local Docker testing
 
 For local testing, use the HTTP-only override:
 
@@ -246,18 +370,6 @@ Run local datajobs manually:
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore
 ```
-
-For nightly production runs, prefer a host-level scheduler over a cron process
-inside a container. A host cron or systemd timer can run:
-
-```bash
-deploy/run-nightly-datajobs.sh
-```
-
-That script runs migrations first, then Uniform Agri, then Klauwscore. This
-keeps scheduling visible in the server, avoids long-running scheduler logic in
-the application containers, and makes retries/logging easier to manage with the
-host's normal tools.
 
 Local routes:
 
