@@ -1,0 +1,6 @@
+altair>=5.0.0
+connectorx>=0.4.4
+marimo==0.23.5
+polars>=1.36.0
+pyarrow>=22.0.0
+python-dotenv==1.2.1

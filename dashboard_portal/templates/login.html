@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Inloggen | Dashboards{% endblock %}
+
+{% block content %}
+<div class="columns is-centered">
+  <div class="column is-one-third">
+    <h1 class="title">Inloggen</h1>
+    <p class="subtitle">Log in om de dashboards te bekijken.</p>
+    {% if error %}
+    <div class="notification is-danger">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login">
+      <div class="field">
+        <label class="label" for="username">Gebruikersnaam</label>
+        <div class="control">
+          <input class="input" id="username" name="username" autocomplete="username">
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="password">Wachtwoord</label>
+        <div class="control">
+          <input
+            class="input"
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+          >
+        </div>
+      </div>
+      <button class="button is-link" type="submit">Inloggen</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

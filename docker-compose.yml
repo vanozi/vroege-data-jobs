@@ -1,0 +1,188 @@
+x-datajob-base: &datajob-base
+  build:
+    context: .
+    dockerfile: docker/datajobs/Dockerfile
+  profiles:
+    - jobs
+  env_file:
+    - path: ./deploy/dashboard.env
+      required: false
+      format: raw
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - dashboards
+
+services:
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - dashboards
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gebroeders_vroege}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "${POSTGRES_PUBLISHED_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dashboards
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: docker/database/Dockerfile
+    profiles:
+      - tools
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - alembic
+      - -c
+      - database/alembic.ini
+      - upgrade
+      - head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+
+  datajob-uniform-agri:
+    <<: *datajob-base
+    command:
+      - python
+      - -m
+      - data_jobs.uniform_agri.scripts.koe_data
+      - --include-details
+      - --include-milkings
+
+  datajob-klauwscore:
+    <<: *datajob-base
+    command:
+      - python
+      - -m
+      - data_jobs.klauwscore.scripts.collect_klauwscore
+      - --summary
+
+  portal:
+    build:
+      context: .
+      dockerfile: docker/portal/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - gunicorn
+      - "dashboard_portal.app:create_app()"
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "2"
+    expose:
+      - "8000"
+    networks:
+      - dashboards
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dashboard-portal.rule=Host(`${DASHBOARD_HOST}`)
+      - traefik.http.routers.dashboard-portal.entrypoints=websecure
+      - traefik.http.routers.dashboard-portal.tls.certresolver=letsencrypt
+      - traefik.http.routers.dashboard-portal.priority=1
+      - traefik.http.routers.dashboard-portal.service=dashboard-portal
+      - traefik.http.services.dashboard-portal.loadbalancer.server.port=8000
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  marimo-klauwgezondheid:
+    build:
+      context: .
+      dockerfile: docker/marimo/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/klauwbehandeling_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2718"
+      - --base-url
+      - /klauwgezondheid
+      - --proxy
+      - https://${DASHBOARD_HOST}
+      - --no-token
+    expose:
+      - "2718"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marimo-klauwgezondheid.rule=Host(`${DASHBOARD_HOST}`) && PathPrefix(`/klauwgezondheid`)
+      - traefik.http.routers.marimo-klauwgezondheid.entrypoints=websecure
+      - traefik.http.routers.marimo-klauwgezondheid.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-klauwgezondheid.middlewares=portal-auth
+      - traefik.http.routers.marimo-klauwgezondheid.priority=100
+      - traefik.http.routers.marimo-klauwgezondheid.service=marimo-klauwgezondheid
+      - traefik.http.services.marimo-klauwgezondheid.loadbalancer.server.port=2718
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=Host(`${DASHBOARD_HOST}`) && Path(`/klauwgezondheid/manifest.json`)
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=websecure
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid
+
+networks:
+  dashboards:
+    name: vroege_dashboards
+
+volumes:
+  traefik_letsencrypt:
+  postgres_data:

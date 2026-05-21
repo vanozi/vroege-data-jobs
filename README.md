@@ -80,6 +80,198 @@ Compatibility command:
 
 `data_jobs.klauwscore.main` is currently a wrapper around the new CLI entrypoint.
 
+## Dashboard portal
+
+The dashboard portal is a small Flask app in [`dashboard_portal/`](dashboard_portal/).
+It is intended as the authenticated homepage for Marimo dashboards. The root
+route `/` shows dashboard links after login; without a session it redirects to
+`/login`.
+
+Current portal routes:
+
+- `/`: dashboard overview, protected by session.
+- `/login`: login page.
+- `/logout`: logout endpoint.
+- `/auth/verify`: Traefik ForwardAuth endpoint.
+- `/healthz`: healthcheck.
+
+The first dashboard link is:
+
+```text
+/klauwgezondheid
+```
+
+That route is intended to be served by the Marimo klauwgezondheid dashboard
+behind Traefik.
+
+Create a password hash for `PORTAL_ADMIN_PASSWORD_HASH`:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
+```
+
+Run the Flask portal locally from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app dashboard_portal.app:create_app run --host 127.0.0.1 --port 10000
+```
+
+Useful checks:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app dashboard_portal.app:create_app routes
+```
+
+Optional local configuration:
+
+```env
+PORTAL_SECRET_KEY=change-me
+PORTAL_ADMIN_USERNAME=admin
+PORTAL_ADMIN_PASSWORD_HASH=...
+PORTAL_SESSION_HOURS=12
+PORTAL_COOKIE_SECURE=false
+```
+
+Dashboard links come from `dashboard_portal.registry`. By default the portal
+shows `Klauwgezondheid` at `/klauwgezondheid`. You can override the visible
+dashboards with `PORTAL_DASHBOARDS_JSON`:
+
+```env
+PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en klauwgezondheid van de actieve koppel.","url":"/klauwgezondheid","status":"Productie"}]
+```
+
+### Docker Compose dashboards
+
+The repository includes a standalone [`docker-compose.yml`](docker-compose.yml)
+with its own Traefik proxy, Flask portal, and Marimo klauwgezondheid dashboard.
+It does not depend on another Compose project.
+
+The portal and Marimo services use separate Dockerfiles and dependency files:
+
+- [`docker/portal/Dockerfile`](docker/portal/Dockerfile): Flask portal and
+  Gunicorn only.
+- [`docker/marimo/Dockerfile`](docker/marimo/Dockerfile): Marimo dashboard and
+  dashboard data dependencies.
+- [`docker/database/Dockerfile`](docker/database/Dockerfile): Alembic migration
+  runner for the `database/` package.
+- [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
+  datajob runner for Klauwscore and Uniform Agri.
+
+Required deployment configuration:
+
+Copy `.env.example` to `.env` for Compose-level settings:
+
+```env
+DASHBOARD_HOST=dashboards.gebroedersvroege.nl
+TRAEFIK_ACME_EMAIL=admin@example.nl
+```
+
+Copy `deploy/dashboard.env.example` to `deploy/dashboard.env` for application
+settings:
+
+```env
+PORTAL_SECRET_KEY=...
+PORTAL_ADMIN_USERNAME=admin
+PORTAL_ADMIN_PASSWORD_HASH=...
+PORTAL_SESSION_HOURS=12
+PORTAL_COOKIE_SECURE=true
+DATABASE_URL=postgresql+psycopg://...
+```
+
+The Compose stack includes a PostgreSQL service named `postgres`. For services
+inside this Compose network, use:
+
+```env
+DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
+```
+
+For local Docker with PostgreSQL running outside Compose on the host machine,
+use `host.docker.internal` as database host in `DATABASE_URL`. Inside a
+container, `localhost` means the container itself, not your Windows host.
+
+Keep `PORTAL_ADMIN_PASSWORD_HASH` in `deploy/dashboard.env`, not in the Compose
+`.env` file. Werkzeug hashes can contain `$`, and Compose treats `$...` as
+variable interpolation in `.env`. The Compose services read
+`deploy/dashboard.env` with `env_file` format `raw` so password hashes are
+passed to the containers unchanged.
+
+Start the dashboard stack:
+
+```powershell
+docker compose up -d --build
+```
+
+Run database migrations against the Compose PostgreSQL service:
+
+```powershell
+docker compose --profile tools run --rm db-migrate
+```
+
+Run datajobs manually:
+
+```powershell
+docker compose --profile jobs run --rm datajob-uniform-agri
+docker compose --profile jobs run --rm datajob-klauwscore
+```
+
+The default Uniform Agri job collects cows, details, and milkings. The default
+Klauwscore job collects the stallijst and persists klauwbehandelingen.
+
+Routes:
+
+- `https://dashboards.gebroedersvroege.nl/`: Flask portal.
+- `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
+
+Traefik protects `/klauwgezondheid` with the portal `/auth/verify` ForwardAuth
+endpoint. Direct access to the Marimo route without a valid portal session
+returns unauthorized. The Marimo web app manifest at
+`/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
+may fetch manifests without session cookies; it does not expose dashboard data.
+
+For local testing, use the HTTP-only override:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml up -d --build
+```
+
+Run local database migrations:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
+```
+
+Run local datajobs manually:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore
+```
+
+For nightly production runs, prefer a host-level scheduler over a cron process
+inside a container. A host cron or systemd timer can run:
+
+```bash
+deploy/run-nightly-datajobs.sh
+```
+
+That script runs migrations first, then Uniform Agri, then Klauwscore. This
+keeps scheduling visible in the server, avoids long-running scheduler logic in
+the application containers, and makes retries/logging easier to manage with the
+host's normal tools.
+
+Local routes:
+
+- `http://dashboards.localhost/`: Flask portal.
+- `http://dashboards.localhost/klauwgezondheid`: Marimo dashboard.
+- `http://localhost/`: fallback Flask portal route.
+- `http://localhost/klauwgezondheid`: fallback Marimo dashboard route.
+
+The local override disables TLS and Let's Encrypt, uses port `80`, and sets
+`PORTAL_COOKIE_SECURE=false`. If another local service already uses port `80`,
+stop it first or change the local override port mapping. If
+`dashboards.localhost` does not resolve on your machine, use `localhost` or add
+`127.0.0.1 dashboards.localhost` to your hosts file.
+
 ### Uniform Agri
 
 The Uniform Agri job authenticates with Uniform Agri, collects herd
@@ -141,7 +333,7 @@ Install dependencies first, then run migrations from the repository root.
 Recommended PostgreSQL connection format:
 
 ```env
-DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/gebroeders-vroege
+DATABASE_URL=postgresql+psycopg://postgres:change-me@localhost:5432/gebroeders-vroege
 ```
 
 Create a new revision:

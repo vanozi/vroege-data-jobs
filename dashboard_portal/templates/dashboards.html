@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboards{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Dashboards</h1>
+      <p class="subtitle">Overzicht van beschikbare bedrijfsdashboards.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <form method="post" action="/logout">
+      <button class="button is-light" type="submit">Uitloggen</button>
+    </form>
+  </div>
+</div>
+
+<div class="columns is-multiline">
+  {% for dashboard in dashboards %}
+  <div class="column is-one-third">
+    <article class="box">
+      <div class="level is-mobile">
+        <div class="level-left">
+          <h2 class="title is-4">{{ dashboard.name }}</h2>
+        </div>
+        <div class="level-right">
+          <span class="tag is-info">{{ dashboard.status }}</span>
+        </div>
+      </div>
+      <p>{{ dashboard.description }}</p>
+      <div class="mt-4">
+        <a class="button is-link" href="{{ dashboard.url }}">Open dashboard</a>
+      </div>
+    </article>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

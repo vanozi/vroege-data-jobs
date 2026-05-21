@@ -7,8 +7,6 @@ Create Date: 2026-05-10 00:00:00
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from alembic import op
 import sqlalchemy as sa
 
@@ -21,14 +19,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "klauw_behandelingen",
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-    )
-    op.add_column(
-        "klauw_behandelingen",
-        sa.Column("updated_at", sa.DateTime(), nullable=True),
-    )
+    existing_columns = _get_column_names("klauw_behandelingen")
+    if "created_at" not in existing_columns:
+        op.add_column(
+            "klauw_behandelingen",
+            sa.Column("created_at", sa.DateTime(), nullable=True),
+        )
+    if "updated_at" not in existing_columns:
+        op.add_column(
+            "klauw_behandelingen",
+            sa.Column("updated_at", sa.DateTime(), nullable=True),
+        )
 
     op.execute(
         sa.text(
@@ -45,5 +46,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("klauw_behandelingen", "updated_at")
-    op.drop_column("klauw_behandelingen", "created_at")
+    existing_columns = _get_column_names("klauw_behandelingen")
+    if "updated_at" in existing_columns:
+        op.drop_column("klauw_behandelingen", "updated_at")
+    if "created_at" in existing_columns:
+        op.drop_column("klauw_behandelingen", "created_at")
+
+
+def _get_column_names(table_name: str) -> set[str]:
+    inspector = sa.inspect(op.get_bind())
+    return {column["name"] for column in inspector.get_columns(table_name)}

@@ -47,7 +47,14 @@ def _(os):
             "DATABASE_URL niet gevonden in .env bestand. "
             "Zorg ervoor dat .env bestaat in de repository root."
         )
-    return (database_url,)
+
+    connectorx_database_url = (
+        database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+        .replace("postgresql+psycopg2://", "postgresql://", 1)
+        .replace("postgres+psycopg://", "postgres://", 1)
+        .replace("postgres+psycopg2://", "postgres://", 1)
+    )
+    return (connectorx_database_url,)
 
 
 @app.cell
@@ -64,7 +71,7 @@ def _(mo):
 
 
 @app.cell
-def _(database_url, pl):
+def _(connectorx_database_url, pl):
     """Data laden: actieve koeien met behandelingen."""
     behandelingen_query = """
     SELECT
@@ -91,7 +98,10 @@ def _(database_url, pl):
     ORDER BY kb.behandeldatum DESC NULLS last
     """
 
-    df_raw = pl.read_database_uri(query=behandelingen_query, uri=database_url)
+    df_raw = pl.read_database_uri(
+        query=behandelingen_query,
+        uri=connectorx_database_url,
+    )
     return (df_raw,)
 
 

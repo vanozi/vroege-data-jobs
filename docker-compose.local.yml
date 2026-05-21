@@ -1,0 +1,53 @@
+services:
+  traefik:
+    command: !override
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports: !override
+      - "80:80"
+
+  portal:
+    environment:
+      PORTAL_COOKIE_SECURE: "false"
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.dashboard-portal.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/`)
+      - traefik.http.routers.dashboard-portal.entrypoints=web
+      - traefik.http.routers.dashboard-portal.priority=1
+      - traefik.http.routers.dashboard-portal.service=dashboard-portal
+      - traefik.http.services.dashboard-portal.loadbalancer.server.port=8000
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+
+  marimo-klauwgezondheid:
+    command: !override
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/klauwbehandeling_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2718"
+      - --base-url
+      - /klauwgezondheid
+      - --proxy
+      - http://dashboards.localhost
+      - --no-token
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.marimo-klauwgezondheid.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/klauwgezondheid`)
+      - traefik.http.routers.marimo-klauwgezondheid.entrypoints=web
+      - traefik.http.routers.marimo-klauwgezondheid.middlewares=portal-auth
+      - traefik.http.routers.marimo-klauwgezondheid.priority=100
+      - traefik.http.routers.marimo-klauwgezondheid.service=marimo-klauwgezondheid
+      - traefik.http.services.marimo-klauwgezondheid.loadbalancer.server.port=2718
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && Path(`/klauwgezondheid/manifest.json`)
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=web
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid

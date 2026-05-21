@@ -150,6 +150,8 @@ activemq-data/
 # Environments
 .env
 .envrc
+deploy/*.env
+!deploy/*.env.example
 .venv
 env/
 venv/
@@ -203,6 +205,9 @@ cython_debug/
 
 # Ruff stuff:
 .ruff_cache/
+
+# Browser/test automation artifacts
+.playwright-mcp/
 
 # PyPI configuration file
 .pypirc
