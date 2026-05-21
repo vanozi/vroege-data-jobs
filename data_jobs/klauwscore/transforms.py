@@ -43,7 +43,7 @@ def klauw_behandeling_from_row(row: dict[str, object]) -> KlauwBehandeling:
     """Convert one flattened row into a KlauwBehandeling model."""
     return KlauwBehandeling(
         behandeldatum=_require_date(row, "behandeldatum"),
-        halsbandnummer=_require_int(row, "halsbandnummer"),
+        eartag_short=_require_str(row, "eartag_short"),
         notatie=_optional_str(row.get("notatie")),
     )
 
@@ -76,7 +76,7 @@ def dedupe_klauwbehandeling_rows(
     for row in rows:
         key = (
             row["behandeldatum"],
-            row["halsbandnummer"],
+            row["eartag_short"],
             row["notatie"],
         )
 

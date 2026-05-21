@@ -15,7 +15,7 @@ def serialize_documents(result: KlauwscoreCollectionResult) -> str:
                 "records": [
                     {
                         "behandeldatum": record.behandeldatum.isoformat(),
-                        "halsbandnummer": record.halsbandnummer,
+                        "eartag_short": record.eartag_short,
                         "notities": record.notities,
                     }
                     for record in document.records
@@ -47,17 +47,30 @@ def summary_lines(
 ) -> list[str]:
     """Build intentional CLI summary output lines."""
     counts = result.summary_counts()
-    lines = [
-        f"documents={counts['documents']}",
-        f"cow_records={counts['cow_records']}",
-        f"notitie_rows={counts['notitie_rows']}",
-        f"deduped_notitie_rows={counts['deduped_notitie_rows']}",
-        f"duplicate_rows={counts['duplicate_rows']}",
-        f"count_mismatches={counts['count_mismatches']}",
-        f"failures={counts['failures']}",
-        f"saved_klauw_behandelingen={saved_klauw_behandelingen}",
-        f"dry_run={dry_run}",
-    ]
+    if counts["documents"] == 0:
+        lines = [
+            "source=stallijst",
+            f"stallijst_cows={counts['stallijst_cows']}",
+            f"flat_notitie_rows={counts['notitie_rows']}",
+            f"deduped_notitie_rows={counts['deduped_notitie_rows']}",
+            f"duplicate_notitie_rows={counts['duplicate_rows']}",
+            f"failures={counts['failures']}",
+            f"saved_klauw_behandelingen={saved_klauw_behandelingen}",
+            f"dry_run={dry_run}",
+        ]
+    else:
+        lines = [
+            "source=alle_notaties_pdf",
+            f"documents={counts['documents']}",
+            f"cow_records={counts['cow_records']}",
+            f"flat_notitie_rows={counts['notitie_rows']}",
+            f"deduped_notitie_rows={counts['deduped_notitie_rows']}",
+            f"duplicate_notitie_rows={counts['duplicate_rows']}",
+            f"count_mismatches={counts['count_mismatches']}",
+            f"failures={counts['failures']}",
+            f"saved_klauw_behandelingen={saved_klauw_behandelingen}",
+            f"dry_run={dry_run}",
+        ]
 
     for mismatch in result.count_mismatches[:10]:
         lines.append(

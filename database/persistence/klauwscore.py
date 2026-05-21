@@ -28,7 +28,7 @@ def save_klauw_behandelingen(
     for row in rows:
         repository.upsert_klauw_behandeling(
             {
-                "halsbandnummer": row["halsbandnummer"],
+                "eartag_short": row["eartag_short"],
                 "behandeldatum": row["behandeldatum"],
                 "notatie": row["notatie"],
             }

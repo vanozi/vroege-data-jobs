@@ -20,7 +20,7 @@ FOOTER_PATTERN = re.compile(r"^[^\s@]+@rundveepedicure\.nl\s*:.*\|\s*\d+\s*/\s*\
 @dataclass(frozen=True)
 class KlauwscorePdfRecord:
     behandeldatum: date
-    halsbandnummer: int
+    eartag_short: str
     notities: list[str]
 
 
@@ -44,7 +44,7 @@ def parse_klauwscore_pdf_text(text: str) -> list[KlauwscorePdfRecord]:
 
     behandeldatum = datetime.strptime(date_match.group(1), "%d-%m-%Y").date()
     records: list[KlauwscorePdfRecord] = []
-    current_halsbandnummer: Optional[int] = None
+    current_eartag_short: Optional[str] = None
     current_notities: list[str] = []
 
     for raw_line in text.splitlines():
@@ -53,26 +53,26 @@ def parse_klauwscore_pdf_text(text: str) -> list[KlauwscorePdfRecord]:
             continue
 
         if COW_NUMBER_PATTERN.fullmatch(line):
-            if current_halsbandnummer is not None:
+            if current_eartag_short is not None:
                 records.append(
                     KlauwscorePdfRecord(
                         behandeldatum=behandeldatum,
-                        halsbandnummer=current_halsbandnummer,
+                        eartag_short=current_eartag_short,
                         notities=current_notities,
                     )
                 )
-            current_halsbandnummer = int(line)
+            current_eartag_short = line
             current_notities = []
             continue
 
-        if current_halsbandnummer is not None:
+        if current_eartag_short is not None:
             current_notities.append(line)
 
-    if current_halsbandnummer is not None:
+    if current_eartag_short is not None:
         records.append(
             KlauwscorePdfRecord(
                 behandeldatum=behandeldatum,
-                halsbandnummer=current_halsbandnummer,
+                eartag_short=current_eartag_short,
                 notities=current_notities,
             )
         )
@@ -98,7 +98,7 @@ def flatten_records(records: Iterable[KlauwscorePdfRecord]) -> list[dict[str, ob
             rows.append(
                 {
                     "behandeldatum": record.behandeldatum,
-                    "halsbandnummer": record.halsbandnummer,
+                    "eartag_short": record.eartag_short,
                     "notatie": notatie,
                 }
             )

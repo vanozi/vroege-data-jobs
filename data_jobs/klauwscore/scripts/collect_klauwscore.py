@@ -50,13 +50,13 @@ def main() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Collect Klauwscore Alle notaties PDFs and persist treatments."
+        description="Collect Klauwscore stallijst notities and persist treatments."
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Only collect the first N Alle notaties PDFs.",
+        help="Only collect the first N stallijst cows.",
     )
     parser.add_argument(
         "--flat",
@@ -76,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--continue-on-document-error",
         action="store_true",
-        help="Continue collection when one PDF download or parse fails.",
+        help="Compatibility option for the old PDF collector; ignored for stallijst.",
     )
     parser.add_argument(
         "--headless",
@@ -148,15 +148,13 @@ def _log_collection_summary(
 ) -> None:
     counts = result.summary_counts()
     logger.info(
-        "Klauwscore summary: documents=%s cow_records=%s notitie_rows=%s "
-        "deduped_notitie_rows=%s duplicate_rows=%s count_mismatches=%s "
-        "failures=%s saved_klauw_behandelingen=%s dry_run=%s",
-        counts["documents"],
-        counts["cow_records"],
+        "Klauwscore stallijst summary: stallijst_cows=%s flat_notitie_rows=%s "
+        "deduped_notitie_rows=%s duplicate_notitie_rows=%s failures=%s "
+        "saved_klauw_behandelingen=%s dry_run=%s",
+        counts["stallijst_cows"],
         counts["notitie_rows"],
         counts["deduped_notitie_rows"],
         counts["duplicate_rows"],
-        counts["count_mismatches"],
         counts["failures"],
         saved_count,
         dry_run,

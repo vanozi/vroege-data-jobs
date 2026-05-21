@@ -40,10 +40,10 @@ class KlauwBehandeling(CreatedTimestampMixin, TimestampMixin, SQLModel, table=Tr
     )
 
     # Koppeling naar koe
-    halsbandnummer: int = Field(
-        description="Halsbandnummer van de koe die behandeld is - koppeling naar de koe",
+    eartag_short: str = Field(
+        description="Kort oormerknummer van de koe die behandeld is - koppeling naar koeien.eartag_short",
         sa_column_kwargs={
-            "comment": "Halsbandnummer van de koe die behandeld is - koppeling naar de koe"
+            "comment": "Kort oormerknummer van de koe die behandeld is - koppeling naar koeien.eartag_short"
         },
     )
 

@@ -35,6 +35,17 @@ def test_load_agenda_html_loads_configured_agenda_url():
     assert agenda_html == page.agenda_html
 
 
+def test_load_stallijst_html_loads_configured_stallijst_url():
+    page = FakePage()
+    config = build_config()
+
+    stallijst_html = scraper.load_stallijst_html(page, config)
+
+    assert page.visited_urls == ["http://klauwscore.nl/veepedicure/stallijst"]
+    assert page.waited_states == ["networkidle"]
+    assert stallijst_html == page.stallijst_html
+
+
 def test_download_pdf_retries_failed_responses_and_returns_body(monkeypatch):
     config = build_config(download_attempts=3)
     page = FakePage(
@@ -136,6 +147,27 @@ def test_scrape_alle_notaties_pdfs_downloads_limited_documents(monkeypatch):
     )
 
 
+def test_scrape_stallijst_rows_uses_browser_lifecycle(monkeypatch):
+    playwright = FakePlaywright()
+    monkeypatch.setattr(scraper, "sync_playwright", lambda: playwright)
+
+    rows = scraper.scrape_stallijst_rows(build_config(), limit=1)
+
+    assert playwright.chromium.browser.closed is True
+    assert rows == [
+        {
+            "eartag_short": "8186",
+            "behandeldatum": date(2026, 5, 12),
+            "notatie": "Rechtsachter Tyloom",
+        },
+        {
+            "eartag_short": "8186",
+            "behandeldatum": date(2026, 5, 12),
+            "notatie": "Vierkant",
+        },
+    ]
+
+
 def build_config(download_attempts: int = 3) -> KlauwscoreConfig:
     return KlauwscoreConfig(
         username="user",
@@ -216,6 +248,25 @@ class FakePage:
           </tr>
         </table>
         """
+        self.stallijst_html = """
+        <table>
+          <tr>
+            <th>Koenummer</th>
+            <th>Laatste behandeldatum</th>
+            <th>Laatste notaties</th>
+          </tr>
+          <tr>
+            <td>8186</td>
+            <td>2026-05-12</td>
+            <td>- Rechtsachter Tyloom<br>- Vierkant</td>
+          </tr>
+          <tr>
+            <td>8011</td>
+            <td>2026-05-12</td>
+            <td>- Vierkant</td>
+          </tr>
+        </table>
+        """
 
     def goto(self, url):
         self.visited_urls.append(url)
@@ -229,6 +280,9 @@ class FakePage:
     def inner_html(self, selector):
         assert selector == "//div[@class='account-wrapper']"
         return self.agenda_html
+
+    def content(self):
+        return self.stallijst_html
 
 
 class FakeBrowser:

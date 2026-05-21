@@ -31,13 +31,8 @@ def test_collect_klauwscore_documents_parses_pdf_documents(monkeypatch):
 def test_collect_klauwscore_rows_flattens_dedupes_and_summarizes(monkeypatch):
     monkeypatch.setattr(
         collectors.scraper,
-        "scrape_alle_notaties_pdfs",
-        fake_scrape_pdfs,
-    )
-    monkeypatch.setattr(
-        collectors.pdf_parser,
-        "parse_klauwscore_pdf_bytes",
-        fake_parse_pdf_bytes,
+        "scrape_stallijst_rows",
+        fake_scrape_stallijst_rows,
     )
 
     result = collectors.collect_klauwscore_rows(build_config())
@@ -46,8 +41,9 @@ def test_collect_klauwscore_rows_flattens_dedupes_and_summarizes(monkeypatch):
     assert result.deduped_notitie_row_count == 2
     assert result.duplicate_row_count == 1
     assert result.summary_counts() == {
-        "documents": 1,
-        "cow_records": 2,
+        "documents": 0,
+        "cow_records": 0,
+        "stallijst_cows": 2,
         "notitie_rows": 3,
         "deduped_notitie_rows": 2,
         "duplicate_rows": 1,
@@ -192,16 +188,40 @@ def fake_scrape_pdfs_with_mismatch(
     return [document]
 
 
+def fake_scrape_stallijst_rows(
+    config,
+    limit=None,
+    progress_callback=None,
+):
+    return [
+        {
+            "behandeldatum": date(2026, 5, 19),
+            "eartag_short": "101",
+            "notatie": "Bekapt",
+        },
+        {
+            "behandeldatum": date(2026, 5, 19),
+            "eartag_short": "101",
+            "notatie": "Bekapt",
+        },
+        {
+            "behandeldatum": date(2026, 5, 19),
+            "eartag_short": "102",
+            "notatie": "Blokje geplaatst",
+        },
+    ]
+
+
 def fake_parse_pdf_bytes(pdf_bytes):
     return [
         pdf_parser.KlauwscorePdfRecord(
             behandeldatum=date(2026, 5, 19),
-            halsbandnummer=101,
+            eartag_short="101",
             notities=["Bekapt", "Bekapt"],
         ),
         pdf_parser.KlauwscorePdfRecord(
             behandeldatum=date(2026, 5, 19),
-            halsbandnummer=102,
+            eartag_short="102",
             notities=["Blokje geplaatst"],
         ),
     ]

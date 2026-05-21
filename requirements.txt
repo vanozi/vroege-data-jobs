@@ -14,3 +14,4 @@ sqlmodel>=0.0.34
 # marimo
 altair>=5.0.0
 marimo==0.23.5
+polars>=1.36.0

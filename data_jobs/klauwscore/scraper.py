@@ -4,6 +4,7 @@ from playwright.sync_api import sync_playwright
 
 from data_jobs import logger as job_logger
 from data_jobs.klauwscore import agenda_parser
+from data_jobs.klauwscore import stallijst_parser
 from data_jobs.klauwscore.agenda_parser import AgendaPdfLink
 from data_jobs.klauwscore.config import KlauwscoreConfig
 
@@ -45,6 +46,13 @@ def load_agenda_html(page, config: KlauwscoreConfig) -> str:
     """Load the Klauwscore agenda and return the account-wrapper HTML."""
     page.goto(config.agenda_url)
     return page.inner_html("//div[@class='account-wrapper']")
+
+
+def load_stallijst_html(page, config: KlauwscoreConfig) -> str:
+    """Load the Klauwscore stallijst and return the full page HTML."""
+    page.goto(config.stallijst_url)
+    page.wait_for_load_state("networkidle")
+    return page.content()
 
 
 def download_pdf(page, href: str, config: KlauwscoreConfig) -> bytes:
@@ -178,6 +186,29 @@ def scrape_alle_notaties_pdfs(
             )
 
     return pdf_documents
+
+
+def scrape_stallijst_rows(
+    config: KlauwscoreConfig,
+    limit: Optional[int] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> list[dict[str, object]]:
+    """Scrape Klauwscore stallijst rows from the authenticated table page."""
+    with sync_playwright() as playwright:
+        _report(progress_callback, "Starting browser and logging in to Klauwscore...")
+        browser = playwright.chromium.launch(headless=config.headless)
+        try:
+            page = browser.new_page()
+            login(page, config)
+
+            _report(progress_callback, "Loading Klauwscore stallijst...")
+            stallijst_html = load_stallijst_html(page, config)
+        finally:
+            browser.close()
+
+    rows = stallijst_parser.parse_stallijst_rows(stallijst_html, limit=limit)
+    _report(progress_callback, f"Parsed {len(rows)} notitie rows from stallijst.")
+    return rows
 
 
 def _report(

@@ -29,7 +29,7 @@ def test_parse_klauwscore_pdf_text_uses_numeric_lines_as_cow_boundaries():
         """
     )
 
-    assert [record.halsbandnummer for record in records] == [101, 102]
+    assert [record.eartag_short for record in records] == ["101", "102"]
     assert records[0].notities == ["Mortellaro linksvoor"]
     assert records[1].notities == ["Wittelijndefect rechtsachter"]
 
@@ -67,7 +67,7 @@ def test_parse_klauwscore_pdf_text_skips_header_footer_and_blank_lines():
         """
     )
 
-    assert [record.halsbandnummer for record in records] == [101, 102]
+    assert [record.eartag_short for record in records] == ["101", "102"]
     assert records[0].notities == ["Bekapt"]
     assert records[1].notities == ["Geen bijzonderheden"]
 
@@ -86,12 +86,12 @@ def test_flatten_records_returns_one_row_per_notitie():
     records = [
         pdf_parser.KlauwscorePdfRecord(
             behandeldatum=date(2026, 5, 19),
-            halsbandnummer=101,
+            eartag_short="101",
             notities=["Bekapt", "Blokje geplaatst"],
         ),
         pdf_parser.KlauwscorePdfRecord(
             behandeldatum=date(2026, 5, 19),
-            halsbandnummer=102,
+            eartag_short="102",
             notities=[],
         ),
     ]
@@ -101,12 +101,12 @@ def test_flatten_records_returns_one_row_per_notitie():
     assert rows == [
         {
             "behandeldatum": date(2026, 5, 19),
-            "halsbandnummer": 101,
+            "eartag_short": "101",
             "notatie": "Bekapt",
         },
         {
             "behandeldatum": date(2026, 5, 19),
-            "halsbandnummer": 101,
+            "eartag_short": "101",
             "notatie": "Blokje geplaatst",
         },
     ]
@@ -116,7 +116,7 @@ def test_records_to_json_serializes_dates():
     records = [
         pdf_parser.KlauwscorePdfRecord(
             behandeldatum=date(2026, 5, 19),
-            halsbandnummer=101,
+            eartag_short="101",
             notities=["Bekapt"],
         )
     ]
@@ -124,4 +124,4 @@ def test_records_to_json_serializes_dates():
     json_text = pdf_parser.records_to_json(records)
 
     assert '"behandeldatum": "2026-05-19"' in json_text
-    assert '"halsbandnummer": 101' in json_text
+    assert '"eartag_short": "101"' in json_text

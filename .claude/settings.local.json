@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest tests/dashboard/test_transforms.py --collect-only -v)",
+      "Bash(/bin/ls -la c:Userswoutereposvroege-data-jobsdashboard)",
+      "Bash(dir dashboard)",
+      "Bash(uv run python -m pytest tests/dashboard/test_transforms.py::TestParseNotatie::test_parse_mortellaro_linksachter -v)",
+      "Bash(uv run python tests/dashboard/test_transforms.py)",
+      "Bash(uv run python -c \"import sys; sys.path.insert(0, ''.''); from dashboard.transforms import parse_notatie, get_probleem_categorie; r = parse_notatie(''Linksachter Mortellaro''); assert r.positie_code == ''LA''; assert r.probleem == ''Mortellaro''; print(''Parser werkt!''); assert get_probleem_categorie(''Mortellaro'') == ''Infecties''; print(''Categorie functie werkt!'')\")",
+      "Bash(uv run ruff format dashboard/transforms.py tests/dashboard/test_transforms.py)",
+      "Bash(uv run ruff check --fix dashboard/transforms.py tests/dashboard/test_transforms.py)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

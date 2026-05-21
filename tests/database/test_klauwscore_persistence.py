@@ -30,12 +30,12 @@ def test_save_klauw_behandelingen_returns_saved_count_and_logs(caplog):
     assert saved_count == 2
     assert repository.saved_items == [
         {
-            "halsbandnummer": 101,
+            "eartag_short": "101",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Bekapt",
         },
         {
-            "halsbandnummer": 102,
+            "eartag_short": "102",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Blokje geplaatst",
         },
@@ -106,18 +106,18 @@ def test_save_klauw_behandeling_models_requires_repository_when_not_dry_run():
         klauwscore.save_klauw_behandeling_models([build_model(101, "Bekapt")], None)
 
 
-def build_row(halsbandnummer: int, notatie: str) -> dict[str, object]:
+def build_row(eartag_short: int, notatie: str) -> dict[str, object]:
     return {
-        "halsbandnummer": halsbandnummer,
+        "eartag_short": str(eartag_short),
         "behandeldatum": date(2026, 5, 19),
         "notatie": notatie,
         "pdf_href": "http://klauwscore.nl/export.pdf",
     }
 
 
-def build_model(halsbandnummer: int, notatie: str) -> KlauwBehandeling:
+def build_model(eartag_short: int, notatie: str) -> KlauwBehandeling:
     return KlauwBehandeling(
-        halsbandnummer=halsbandnummer,
+        eartag_short=str(eartag_short),
         behandeldatum=date(2026, 5, 19),
         notatie=notatie,
     )

@@ -1,3 +1,5 @@
+from typing import Union
+
 from database.models.behandeling import KlauwBehandeling
 from database.repositories.base_repository import BaseRepository
 
@@ -10,7 +12,7 @@ class KlauwBehandelingenRepository(BaseRepository[KlauwBehandeling]):
 
     def upsert_klauw_behandeling(
         self,
-        klauw_behandeling_data: dict[str, object] | KlauwBehandeling,
+        klauw_behandeling_data: Union[dict[str, object], KlauwBehandeling],
     ) -> KlauwBehandeling:
         """
         Insert or update klauw behandeling.
@@ -26,5 +28,5 @@ class KlauwBehandelingenRepository(BaseRepository[KlauwBehandeling]):
 
         return self.upsert(
             klauw_behandeling_data,
-            unique_fields=["halsbandnummer", "behandeldatum", "notatie"],
+            unique_fields=["eartag_short", "behandeldatum", "notatie"],
         )

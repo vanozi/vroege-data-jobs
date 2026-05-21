@@ -16,7 +16,7 @@ def test_upsert_klauw_behandeling_preserves_unique_fields_for_dict():
 
     result = repository.upsert_klauw_behandeling(
         {
-            "halsbandnummer": 101,
+            "eartag_short": "101",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Bekapt",
         }
@@ -26,11 +26,11 @@ def test_upsert_klauw_behandeling_preserves_unique_fields_for_dict():
     assert calls == [
         (
             {
-                "halsbandnummer": 101,
+                "eartag_short": "101",
                 "behandeldatum": date(2026, 5, 19),
                 "notatie": "Bekapt",
             },
-            ["halsbandnummer", "behandeldatum", "notatie"],
+            ["eartag_short", "behandeldatum", "notatie"],
         )
     ]
 
@@ -47,14 +47,14 @@ def test_upsert_klauw_behandeling_accepts_model_at_repository_boundary():
 
     result = repository.upsert_klauw_behandeling(
         KlauwBehandeling(
-            halsbandnummer=101,
+            eartag_short="101",
             behandeldatum=date(2026, 5, 19),
             notatie="Bekapt",
         )
     )
 
     assert result == "saved"
-    assert calls[0][0]["halsbandnummer"] == 101
+    assert calls[0][0]["eartag_short"] == "101"
     assert calls[0][0]["behandeldatum"] == date(2026, 5, 19)
     assert calls[0][0]["notatie"] == "Bekapt"
-    assert calls[0][1] == ["halsbandnummer", "behandeldatum", "notatie"]
+    assert calls[0][1] == ["eartag_short", "behandeldatum", "notatie"]

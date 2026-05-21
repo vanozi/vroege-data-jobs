@@ -10,7 +10,7 @@ from data_jobs.klauwscore import transforms
 def test_klauw_behandeling_from_row_builds_model_without_mutating_row():
     row = {
         "behandeldatum": date(2026, 5, 19),
-        "halsbandnummer": 101,
+        "eartag_short": "101",
         "notatie": "Bekapt",
         "pdf_href": "http://klauwscore.nl/export.pdf",
     }
@@ -20,7 +20,7 @@ def test_klauw_behandeling_from_row_builds_model_without_mutating_row():
 
     assert row == original
     assert behandeling.behandeldatum == date(2026, 5, 19)
-    assert behandeling.halsbandnummer == 101
+    assert behandeling.eartag_short == "101"
     assert behandeling.notatie == "Bekapt"
 
 
@@ -42,14 +42,14 @@ def test_flatten_documents_adds_document_metadata_without_mutating_documents():
     assert rows == [
         {
             "behandeldatum": date(2026, 5, 19),
-            "halsbandnummer": 101,
+            "eartag_short": "101",
             "notatie": "Bekapt",
             "pdf_href": "http://klauwscore.nl/export.pdf",
             "aantal_koeien_document": 2,
         },
         {
             "behandeldatum": date(2026, 5, 19),
-            "halsbandnummer": 101,
+            "eartag_short": "101",
             "notatie": "Blokje geplaatst",
             "pdf_href": "http://klauwscore.nl/export.pdf",
             "aantal_koeien_document": 2,
@@ -143,7 +143,7 @@ def test_klauw_behandeling_from_row_rejects_invalid_notatie_type():
         transforms.klauw_behandeling_from_row(
             {
                 "behandeldatum": date(2026, 5, 19),
-                "halsbandnummer": 101,
+                "eartag_short": "101",
                 "notatie": 123,
             }
         )
@@ -163,19 +163,19 @@ def build_document(
 
 
 def build_record(
-    halsbandnummer: int,
+    eartag_short: int,
     notities: list[str],
 ) -> pdf_parser.KlauwscorePdfRecord:
     return pdf_parser.KlauwscorePdfRecord(
         behandeldatum=date(2026, 5, 19),
-        halsbandnummer=halsbandnummer,
+        eartag_short=str(eartag_short),
         notities=notities,
     )
 
 
-def build_row(halsbandnummer: int, notatie: str) -> dict[str, object]:
+def build_row(eartag_short: int, notatie: str) -> dict[str, object]:
     return {
         "behandeldatum": date(2026, 5, 19),
-        "halsbandnummer": halsbandnummer,
+        "eartag_short": str(eartag_short),
         "notatie": notatie,
     }

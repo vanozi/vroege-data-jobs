@@ -75,7 +75,8 @@ def test_cli_summary_dry_run_collects_and_does_not_create_repository(
     collect_klauwscore.main()
 
     output = capsys.readouterr().out
-    assert "documents=1" in output
+    assert "source=alle_notaties_pdf" in output
+    assert "flat_notitie_rows=2" in output
     assert "deduped_notitie_rows=1" in output
     assert "saved_klauw_behandelingen=1" in output
     assert "dry_run=True" in output
@@ -192,7 +193,7 @@ def fake_collect_rows(config, **kwargs):
 def build_result() -> collectors.KlauwscoreCollectionResult:
     record = pdf_parser.KlauwscorePdfRecord(
         behandeldatum=date(2026, 5, 19),
-        halsbandnummer=101,
+        eartag_short="101",
         notities=["Bekapt", "Dubbel"],
     )
     document = ParsedKlauwscoreDocument(
@@ -220,7 +221,7 @@ def build_result() -> collectors.KlauwscoreCollectionResult:
 def build_row(notatie: str) -> dict[str, object]:
     return {
         "behandeldatum": date(2026, 5, 19),
-        "halsbandnummer": 101,
+        "eartag_short": "101",
         "notatie": notatie,
         "pdf_href": "http://klauwscore.nl/export.pdf",
         "aantal_koeien_document": 2,
