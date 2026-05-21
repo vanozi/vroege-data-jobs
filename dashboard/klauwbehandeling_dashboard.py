@@ -92,6 +92,7 @@ def _(connectorx_database_url, pl):
     FROM koeien k
     LEFT JOIN klauw_behandelingen kb
         ON k.eartag_short = kb.eartag_short
+        AND kb.behandeldatum > k.birth_date
     LEFT JOIN koe_details kd
         ON k.animal_id = kd.animal_id
     WHERE k.in_current_herd = true
