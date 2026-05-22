@@ -1,0 +1,4 @@
+pytest-playwright
+lxml
+python-dotenv
+pandas
