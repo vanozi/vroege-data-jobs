@@ -148,8 +148,9 @@ def _(df_raw, pl, transforms):
 @app.cell
 def _(df_behandelingen_parsed, pl, transforms):
     """Bereken Mortellaro-cases over de volledige actieve-koppel-historie."""
+    source_schema = dict(df_behandelingen_parsed.schema)
     mortellaro_case_schema = {
-        **dict(df_behandelingen_parsed.schema),
+        **source_schema,
         "positie_sort_key": pl.Int64,
         "mortellaro_case_key": pl.Object,
         "nieuwe_case": pl.Boolean,
@@ -162,9 +163,9 @@ def _(df_behandelingen_parsed, pl, transforms):
     }
     mortellaro_followup_schema = {
         "mortellaro_case_key": pl.Object,
-        "animal_id": pl.Int64,
-        "eartag_short": pl.String,
-        "name": pl.String,
+        "animal_id": source_schema.get("animal_id", pl.String),
+        "eartag_short": source_schema.get("eartag_short", pl.String),
+        "name": source_schema.get("name", pl.String),
         "positie_code": pl.String,
         "positie": pl.String,
         "eerste_datum": pl.Date,
