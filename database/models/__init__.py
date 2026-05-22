@@ -8,10 +8,12 @@ SQLModel metadata from a single module import.
 from .behandeling import KlauwBehandeling
 from .koe import Koe, KoeDetail
 from .melking import Melking
+from .tank_transaction import TankTransaction
 
 __all__ = [
     "KlauwBehandeling",
     "Koe",
     "KoeDetail",
     "Melking",
+    "TankTransaction",
 ]

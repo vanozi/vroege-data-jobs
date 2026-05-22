@@ -80,6 +80,34 @@ Compatibility command:
 
 `data_jobs.klauwscore.main` is currently a wrapper around the new CLI entrypoint.
 
+### Tank Terminal
+
+The Tank Terminal job logs in to the diesel tank terminal, reads the
+transactions table, normalizes fill-up rows, deduplicates them by transaction
+number, and persists them to `tank_transactions`.
+
+Required configuration:
+
+```env
+TANK_TERMINAL_BASE_URL=http://82.197.193.195:8080
+TANK_TERMINAL_USERNAME=...
+TANK_TERMINAL_PASSWORD=...
+```
+
+Optional configuration:
+
+```env
+TANK_TERMINAL_HEADLESS=true
+TANK_TERMINAL_DEFAULT_LIMIT=
+```
+
+Recommended commands:
+
+```powershell
+.\.venv\Scripts\python.exe -m data_jobs.tank_terminal.scripts.collect_tank_terminal --summary --dry-run
+.\.venv\Scripts\python.exe -m data_jobs.tank_terminal.scripts.collect_tank_terminal --summary
+```
+
 ## Dashboard portal
 
 The dashboard portal is a small Flask app in [`dashboard_portal/`](dashboard_portal/).
@@ -189,6 +217,9 @@ UNIFORM_BASE_URL=https://eu.myherdmanagement.com/restapi
 UNIFORM_USERNAME=...
 UNIFORM_PASSWORD=...
 UNIFORM_CLIENT_ID=...
+TANK_TERMINAL_BASE_URL=http://82.197.193.195:8080
+TANK_TERMINAL_USERNAME=...
+TANK_TERMINAL_PASSWORD=...
 ```
 
 Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
@@ -218,14 +249,17 @@ Run dry runs before writing data:
 ```powershell
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri python -m data_jobs.uniform_agri.scripts.koe_data --dry-run --include-details --include-milkings --limit 10
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore python -m data_jobs.klauwscore.scripts.collect_klauwscore --summary --dry-run
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-tank-terminal python -m data_jobs.tank_terminal.scripts.collect_tank_terminal --summary --dry-run
 ```
 
 Fill the local database. Run Uniform Agri first, then Klauwscore, because the
-dashboard joins klauwbehandelingen to the active cow data:
+dashboard joins klauwbehandelingen to the active cow data. Tank Terminal is
+independent and can run after those jobs:
 
 ```powershell
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-tank-terminal
 ```
 
 Local routes:
@@ -302,6 +336,9 @@ UNIFORM_BASE_URL=https://eu.myherdmanagement.com/restapi
 UNIFORM_USERNAME=...
 UNIFORM_PASSWORD=...
 UNIFORM_CLIENT_ID=...
+TANK_TERMINAL_BASE_URL=http://82.197.193.195:8080
+TANK_TERMINAL_USERNAME=...
+TANK_TERMINAL_PASSWORD=...
 ```
 
 Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
@@ -334,6 +371,7 @@ Run production datajobs manually:
 ```bash
 docker compose --profile jobs run --rm datajob-uniform-agri
 docker compose --profile jobs run --rm datajob-klauwscore
+docker compose --profile jobs run --rm datajob-tank-terminal
 ```
 
 Useful production checks:
@@ -350,7 +388,7 @@ docker compose logs --tail=100 marimo-klauwgezondheid
 For nightly production runs, prefer a host-level scheduler over a cron process
 inside a container. The repository includes
 [`deploy/run-nightly-datajobs.sh`](deploy/run-nightly-datajobs.sh). It runs
-migrations first, then Uniform Agri, then Klauwscore.
+migrations first, then Uniform Agri, Klauwscore, and Tank Terminal.
 
 Make the script executable:
 

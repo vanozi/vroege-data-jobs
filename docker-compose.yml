@@ -99,6 +99,14 @@ services:
       - data_jobs.klauwscore.scripts.collect_klauwscore
       - --summary
 
+  datajob-tank-terminal:
+    <<: *datajob-base
+    command:
+      - python
+      - -m
+      - data_jobs.tank_terminal.scripts.collect_tank_terminal
+      - --summary
+
   portal:
     build:
       context: .
