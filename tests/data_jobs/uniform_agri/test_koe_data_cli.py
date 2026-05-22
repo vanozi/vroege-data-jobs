@@ -5,6 +5,8 @@ from uuid import UUID
 import logging
 import shutil
 
+import pytest
+
 from data_jobs.uniform_agri import config as uniform_config
 from data_jobs.uniform_agri.config import UniformAgriConfig
 from data_jobs.uniform_agri.scripts import koe_data
@@ -89,6 +91,33 @@ def test_load_uniform_config_uses_default_herd_id_when_env_is_missing(monkeypatc
         assert config.herd_id == uniform_config.DEFAULT_HERD_ID
     finally:
         shutil.rmtree(env_dir)
+
+
+def test_load_uniform_config_strips_raw_env_quotes(monkeypatch):
+    monkeypatch.setenv("UNIFORM_BASE_URL", '"https://uniform.example.test"')
+    monkeypatch.setenv("UNIFORM_USERNAME", '"user"')
+    monkeypatch.setenv("UNIFORM_PASSWORD", '"password"')
+    monkeypatch.setenv("UNIFORM_CLIENT_ID", '"client-id"')
+    monkeypatch.delenv("UNIFORM_HERD_ID", raising=False)
+
+    config = uniform_config.load_uniform_config()
+
+    assert config.base_url == "https://uniform.example.test"
+    assert config.username == "user"
+    assert config.password == "password"
+    assert config.client_id == "client-id"
+
+
+def test_load_uniform_config_rejects_base_url_without_protocol(monkeypatch):
+    monkeypatch.setenv("UNIFORM_BASE_URL", "uniform.example.test")
+    monkeypatch.setenv("UNIFORM_USERNAME", "user")
+    monkeypatch.setenv("UNIFORM_PASSWORD", "password")
+    monkeypatch.setenv("UNIFORM_CLIENT_ID", "client-id")
+
+    with pytest.raises(uniform_config.UniformAgriConfigError) as error:
+        uniform_config.load_uniform_config()
+
+    assert "UNIFORM_BASE_URL must start with http:// or https://" in str(error.value)
 
 
 def test_run_dry_run_uses_collectors_and_persistence(monkeypatch, capsys):

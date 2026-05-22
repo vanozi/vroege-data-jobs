@@ -32,12 +32,12 @@ def load_uniform_config(env_path: Optional[Path] = None) -> UniformAgriConfig:
     load_dotenv(dotenv_path=env_path)
 
     values = {
-        "base_url": _get_required_env("UNIFORM_BASE_URL"),
+        "base_url": _get_required_url_env("UNIFORM_BASE_URL"),
         "username": _get_required_env("UNIFORM_USERNAME"),
         "password": _get_required_env("UNIFORM_PASSWORD"),
         "client_id": _get_required_env("UNIFORM_CLIENT_ID"),
-        "herd_id": os.getenv("UNIFORM_HERD_ID", DEFAULT_HERD_ID),
-        "access_token": os.getenv("UNIFORM_ACCESS_TOKEN", ""),
+        "herd_id": _clean_env_value(os.getenv("UNIFORM_HERD_ID", DEFAULT_HERD_ID)),
+        "access_token": _clean_env_value(os.getenv("UNIFORM_ACCESS_TOKEN", "")),
         "request_timeout_seconds": _get_int_env("UNIFORM_REQUEST_TIMEOUT_SECONDS", 60),
         "max_retries": _get_int_env("UNIFORM_MAX_RETRIES", 1),
     }
@@ -48,9 +48,19 @@ def load_uniform_config(env_path: Optional[Path] = None) -> UniformAgriConfig:
 def _get_required_env(name: str) -> str:
     value = os.getenv(name)
     if value:
-        return value
+        return _clean_env_value(value)
 
     raise UniformAgriConfigError(f"Missing required environment variable: {name}")
+
+
+def _get_required_url_env(name: str) -> str:
+    value = _get_required_env(name)
+    if value.startswith(("http://", "https://")):
+        return value
+
+    raise UniformAgriConfigError(
+        f"Environment variable {name} must start with http:// or https://."
+    )
 
 
 def _get_int_env(name: str, default: int) -> int:
@@ -59,8 +69,17 @@ def _get_int_env(name: str, default: int) -> int:
         return default
 
     try:
-        return int(raw_value)
+        return int(_clean_env_value(raw_value))
     except ValueError as error:
         raise UniformAgriConfigError(
             f"Environment variable {name} must be an integer."
         ) from error
+
+
+def _clean_env_value(value: str) -> str:
+    cleaned_value = value.strip()
+    if len(cleaned_value) >= 2 and cleaned_value[0] == cleaned_value[-1]:
+        if cleaned_value[0] in {"'", '"'}:
+            return cleaned_value[1:-1]
+
+    return cleaned_value

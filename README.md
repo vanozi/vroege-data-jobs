@@ -158,18 +158,103 @@ The services use separate Dockerfiles and dependency files:
 - [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
   datajob runner for Klauwscore and Uniform Agri.
 
-Production routes:
-
-- `https://dashboards.gebroedersvroege.nl/`: Flask portal.
-- `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
-
 Traefik protects `/klauwgezondheid` with the portal `/auth/verify` ForwardAuth
 endpoint. Direct access to the Marimo route without a valid portal session
 returns unauthorized. The Marimo web app manifest at
 `/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
 may fetch manifests without session cookies; it does not expose dashboard data.
 
-### Linux server setup
+### Local quickstart
+
+Local Docker uses [`docker-compose.local.yml`](docker-compose.local.yml) as an
+HTTP-only override. It disables TLS and Let's Encrypt, binds Traefik to port
+`80`, and sets `PORTAL_COOKIE_SECURE=false`.
+
+Create local application configuration:
+
+```powershell
+Copy-Item deploy\dashboard.env.example deploy\dashboard.env
+```
+
+Set at least these values in `deploy/dashboard.env`:
+
+```env
+PORTAL_SECRET_KEY=change-me
+PORTAL_ADMIN_USERNAME=admin
+PORTAL_ADMIN_PASSWORD_HASH=...
+DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/gebroeders_vroege
+KLAUWSCORE_USERNAME=...
+KLAUWSCORE_PASSWORD=...
+UNIFORM_BASE_URL=https://eu.myherdmanagement.com/restapi
+UNIFORM_USERNAME=...
+UNIFORM_PASSWORD=...
+UNIFORM_CLIENT_ID=...
+```
+
+Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
+with `format: raw`, so quotes would be passed into the containers as literal
+characters.
+
+Create a portal password hash:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
+```
+
+Start the local stack:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml up -d --build
+```
+
+Run database migrations:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
+```
+
+Run dry runs before writing data:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri python -m data_jobs.uniform_agri.scripts.koe_data --dry-run --include-details --include-milkings --limit 10
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore python -m data_jobs.klauwscore.scripts.collect_klauwscore --summary --dry-run
+```
+
+Fill the local database. Run Uniform Agri first, then Klauwscore, because the
+dashboard joins klauwbehandelingen to the active cow data:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore
+```
+
+Local routes:
+
+- `http://localhost/`: Flask portal.
+- `http://localhost/klauwgezondheid`: Marimo dashboard.
+- `http://dashboards.localhost/`: alternative portal route if your machine
+  resolves `dashboards.localhost`.
+- `http://dashboards.localhost/klauwgezondheid`: alternative dashboard route if
+  your machine resolves `dashboards.localhost`.
+
+Useful local checks:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml ps
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml logs -f traefik portal marimo-klauwgezondheid
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml logs --tail=100 marimo-klauwgezondheid
+```
+
+If port `80` is already in use, stop the other service or change the local
+override port mapping. Use `http://localhost` for local testing; do not use
+`https://localhost` with the local override.
+
+### Production server setup
+
+Production routes:
+
+- `https://dashboards.gebroedersvroege.nl/`: Flask portal.
+- `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
 
 Clone the repository somewhere owned by the deploy user, for example:
 
@@ -211,9 +296,18 @@ PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=true
 DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
+KLAUWSCORE_USERNAME=...
+KLAUWSCORE_PASSWORD=...
+UNIFORM_BASE_URL=https://eu.myherdmanagement.com/restapi
+UNIFORM_USERNAME=...
+UNIFORM_PASSWORD=...
+UNIFORM_CLIENT_ID=...
 ```
 
-Put Klauwscore and Uniform Agri credentials in `deploy/dashboard.env` as well.
+Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
+with `format: raw`, so quotes would be passed into the containers as literal
+characters.
+
 Keep `PORTAL_ADMIN_PASSWORD_HASH` in `deploy/dashboard.env`, not in the Compose
 `.env` file. Werkzeug hashes can contain `$`, and Compose treats `$...` as
 variable interpolation in `.env`. The Compose services read
@@ -226,64 +320,29 @@ Create a portal password hash from a machine with Werkzeug installed:
 python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
 ```
 
-### Start the server stack
-
-Validate the Compose file:
+Validate, migrate, and start the production stack:
 
 ```bash
 docker compose config --quiet
-```
-
-Start PostgreSQL first:
-
-```bash
 docker compose up -d postgres
-```
-
-Run Alembic migrations:
-
-```bash
 docker compose --profile tools run --rm db-migrate
-```
-
-Build and start the full stack:
-
-```bash
 docker compose up -d --build
 ```
 
-Useful status and log commands:
-
-```bash
-docker compose ps
-docker compose logs -f traefik portal marimo-klauwgezondheid
-docker compose logs -f postgres
-docker compose logs --tail=100 marimo-klauwgezondheid
-```
-
-### Run datajobs on the server
-
-Run both jobs manually:
+Run production datajobs manually:
 
 ```bash
 docker compose --profile jobs run --rm datajob-uniform-agri
 docker compose --profile jobs run --rm datajob-klauwscore
 ```
 
-The default Uniform Agri job collects cows, details, and milkings. The default
-Klauwscore job collects the stallijst and persists klauwbehandelingen.
-
-Run Klauwscore with an explicit command, for example for a dry run:
+Useful production checks:
 
 ```bash
-docker compose --profile jobs run --rm datajob-klauwscore python -m data_jobs.klauwscore.scripts.collect_klauwscore --summary --dry-run
-```
-
-Run Uniform Agri with an explicit command, for example limited and without
-database writes:
-
-```bash
-docker compose --profile jobs run --rm datajob-uniform-agri python -m data_jobs.uniform_agri.scripts.koe_data --dry-run --include-details --include-milkings --limit 10
+docker compose ps
+docker compose logs -f traefik portal marimo-klauwgezondheid
+docker compose logs -f postgres
+docker compose logs --tail=100 marimo-klauwgezondheid
 ```
 
 ### Nightly datajobs
@@ -309,9 +368,10 @@ This keeps scheduling visible on the server, avoids long-running scheduler
 logic in the application containers, and makes retries/logging easier to manage
 with the host's normal tools.
 
-### Update the server stack
+### Deploy changes
 
-Pull the newest code and rebuild changed services:
+Bring changes to production by committing and pushing locally, then pulling on
+the server:
 
 ```bash
 cd /opt/vroege-data-jobs
@@ -321,7 +381,7 @@ docker compose --profile tools run --rm db-migrate
 docker compose up -d --force-recreate
 ```
 
-For a dashboard-only dependency change, rebuilding only Marimo is usually
+For a dashboard-only code or dependency change, rebuilding only Marimo is often
 enough:
 
 ```bash
@@ -350,40 +410,6 @@ Restore only after checking the target database:
 gunzip -c /opt/backups/vroege-datajobs-YYYY-MM-DD.sql.gz | docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 ```
 
-### Local Docker testing
-
-For local testing, use the HTTP-only override:
-
-```powershell
-docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml up -d --build
-```
-
-Run local database migrations:
-
-```powershell
-docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
-```
-
-Run local datajobs manually:
-
-```powershell
-docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-uniform-agri
-docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile jobs run --rm datajob-klauwscore
-```
-
-Local routes:
-
-- `http://dashboards.localhost/`: Flask portal.
-- `http://dashboards.localhost/klauwgezondheid`: Marimo dashboard.
-- `http://localhost/`: fallback Flask portal route.
-- `http://localhost/klauwgezondheid`: fallback Marimo dashboard route.
-
-The local override disables TLS and Let's Encrypt, uses port `80`, and sets
-`PORTAL_COOKIE_SECURE=false`. If another local service already uses port `80`,
-stop it first or change the local override port mapping. If
-`dashboards.localhost` does not resolve on your machine, use `localhost` or add
-`127.0.0.1 dashboards.localhost` to your hosts file.
-
 ### Uniform Agri
 
 The Uniform Agri job authenticates with Uniform Agri, collects herd
@@ -393,7 +419,7 @@ optionally fetch actual-tab cow details and milk recordings per animal.
 Required configuration:
 
 ```env
-UNIFORM_BASE_URL=...
+UNIFORM_BASE_URL=https://eu.myherdmanagement.com/restapi
 UNIFORM_USERNAME=...
 UNIFORM_PASSWORD=...
 UNIFORM_CLIENT_ID=...
