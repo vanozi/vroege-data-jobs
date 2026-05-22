@@ -110,6 +110,16 @@ def _(connectorx_database_url, pl):
 def _(df_raw, pl, transforms):
     """Parse notaties en voeg gestructureerde velden toe."""
     df_behandelingen = df_raw.filter(pl.col("behandeling_id").is_not_null())
+    parsed_notatie_schema = {
+        "positie_code": pl.String,
+        "positie": pl.String,
+        "zijde": pl.String,
+        "poot": pl.String,
+        "probleem": pl.String,
+        "categorie": pl.String,
+        "is_mortellaro": pl.Boolean,
+        "is_vierkant": pl.Boolean,
+    }
 
     def _parse_row(notatie):
         parsed = transforms.parse_notatie(notatie)
@@ -125,7 +135,10 @@ def _(df_raw, pl, transforms):
         }
 
     parsed_rows = [_parse_row(row["notatie"]) for row in df_behandelingen.to_dicts()]
-    df_parsed_notities = pl.DataFrame(parsed_rows)
+    df_parsed_notities = pl.DataFrame(
+        parsed_rows,
+        schema=parsed_notatie_schema,
+    )
     df_behandelingen_parsed = pl.concat(
         [df_behandelingen, df_parsed_notities], how="horizontal"
     )
@@ -135,6 +148,33 @@ def _(df_raw, pl, transforms):
 @app.cell
 def _(df_behandelingen_parsed, pl, transforms):
     """Bereken Mortellaro-cases over de volledige actieve-koppel-historie."""
+    mortellaro_case_schema = {
+        **dict(df_behandelingen_parsed.schema),
+        "positie_sort_key": pl.Int64,
+        "mortellaro_case_key": pl.Object,
+        "nieuwe_case": pl.Boolean,
+        "herhaalde_case": pl.Boolean,
+        "eerste_datum": pl.Date,
+        "vorige_mortellaro_datum": pl.Date,
+        "dagen_sinds_vorige": pl.Int64,
+        "dagen_sinds_eerste": pl.Int64,
+        "herhaling_nummer": pl.Int64,
+    }
+    mortellaro_followup_schema = {
+        "mortellaro_case_key": pl.Object,
+        "animal_id": pl.Int64,
+        "eartag_short": pl.String,
+        "name": pl.String,
+        "positie_code": pl.String,
+        "positie": pl.String,
+        "eerste_datum": pl.Date,
+        "laatste_mortellaro_datum": pl.Date,
+        "herhaling_nummer": pl.Int64,
+        "opvolgstatus": pl.String,
+        "volgende_inspectie": pl.Date,
+        "opgelost_op": pl.Date,
+    }
+
     case_rows = transforms.add_mortellaro_case_columns(
         df_behandelingen_parsed.to_dicts()
     )
@@ -142,30 +182,18 @@ def _(df_behandelingen_parsed, pl, transforms):
         df_behandelingen_parsed.to_dicts()
     )
 
-    df_case_columns_all = pl.DataFrame(case_rows)
+    df_case_columns_all = pl.DataFrame(
+        case_rows,
+        schema=mortellaro_case_schema,
+    )
     df_mortellaro_cases_all = df_case_columns_all.filter(
         pl.col("mortellaro_case_key").is_not_null()
     )
 
-    if followup_rows:
-        df_mortellaro_followup_all = pl.DataFrame(followup_rows)
-    else:
-        df_mortellaro_followup_all = pl.DataFrame(
-            {
-                "mortellaro_case_key": [],
-                "animal_id": [],
-                "eartag_short": [],
-                "name": [],
-                "positie_code": [],
-                "positie": [],
-                "eerste_datum": [],
-                "laatste_mortellaro_datum": [],
-                "herhaling_nummer": [],
-                "opvolgstatus": [],
-                "volgende_inspectie": [],
-                "opgelost_op": [],
-            }
-        )
+    df_mortellaro_followup_all = pl.DataFrame(
+        followup_rows,
+        schema=mortellaro_followup_schema,
+    )
     return df_mortellaro_cases_all, df_mortellaro_followup_all
 
 
@@ -509,7 +537,7 @@ def _(
     """Mortellaro overzicht - verzamel content."""
     mortellaro_overzicht_content = mo.vstack(
         [
-            mo.md("## Mortellaro overzicht"),
+            mo.md("## Mortellaro"),
             mortellaro_kpi_cards,
             open_mortellaro_koeien_ui,
             mortellaro_distributie_ui,
@@ -1020,7 +1048,7 @@ def _(
     """Per koe tab - verzamel content."""
     per_koe_content = mo.vstack(
         [
-            mo.md("## Per koe analyse"),
+            mo.md("## Individuele koeien"),
             mo.md(
                 "Klik op een koe in de tabel om gedetailleerde informatie en "
                 "behandelhistorie te zien."
@@ -1047,12 +1075,13 @@ def _(
     """Tab navigatie - hoofdstructuur."""
     tabs = mo.ui.tabs(
         {
-            "Mortellaro overzicht": mortellaro_overzicht_content,
-            "Per koe": per_koe_content,
+            "Overzicht": algemeen_overzicht_content,
+            "Mortellaro": mortellaro_overzicht_content,
+            "Individuele koeien": per_koe_content,
         }
     )
 
-    mo.vstack([algemeen_overzicht_content, tabs])
+    mo.vstack([tabs])
     return
 
 
