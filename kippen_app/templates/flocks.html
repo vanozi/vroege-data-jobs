@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Koppels | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Koppels</h1>
+      <p class="subtitle">Beheer actieve en historische koppels per stal.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-link" href="{{ url_for('flocks_new') }}">Koppel toevoegen</a>
+      <a class="button is-light" href="{{ url_for('dashboard') }}">Terug naar overzicht</a>
+    </div>
+  </div>
+</div>
+
+{% if flocks %}
+<table class="table is-fullwidth is-hoverable">
+  <thead>
+    <tr>
+      <th>Koppel</th>
+      <th>Stal</th>
+      <th>Opzetdatum</th>
+      <th>Einddatum</th>
+      <th class="has-text-right">Hennen</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for flock in flocks %}
+    <tr>
+      <td>{{ flock.flock_name }}</td>
+      <td>{{ flock.house_id }}</td>
+      <td>{{ flock.placement_date }}</td>
+      <td>{% if flock.end_date %}{{ flock.end_date }}{% else %}-{% endif %}</td>
+      <td class="has-text-right">{{ flock.bird_count }}</td>
+      <td>
+        {% if flock.is_active and not flock.archived_at %}
+        <span class="tag is-success">Actief</span>
+        {% else %}
+        <span class="tag is-light">Gearchiveerd</span>
+        {% endif %}
+      </td>
+      <td class="has-text-right">
+        <a href="{{ url_for('flocks_detail', flock_id=flock.id) }}">Bekijken</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="notification is-light">Er zijn nog geen koppels geregistreerd.</div>
+{% endif %}
+{% endblock %}

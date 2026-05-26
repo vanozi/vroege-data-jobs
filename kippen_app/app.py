@@ -13,12 +13,14 @@ from database.repositories.laying_hens_repository import (
     DailyLayingRegistrationsRepository,
 )
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
 from kippen_app import auth
 from kippen_app import config
 from kippen_app import daily
 from kippen_app import dead_hens
 from kippen_app import exports
+from kippen_app import flocks
 from kippen_app import outside_nest
 
 
@@ -52,10 +54,12 @@ def create_app(session_factory=None) -> Flask:
         repositories = _repositories()
         today = date.today()
         today_registration = repositories.daily.get_by_house_and_date(today)
+        active_flock = repositories.flocks.get_current_active_flock()
         return render_template(
             "dashboard.html",
             today=today,
             today_registration=today_registration,
+            active_flock=active_flock,
             dead_hens_today=repositories.dead_hens.count_for_date(today),
             outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
                 today,
@@ -66,6 +70,182 @@ def create_app(session_factory=None) -> Flask:
                 limit=5,
             ),
         )
+
+    @app.get("/kippen/flocks")
+    @login_required
+    def flocks_list():
+        return render_template(
+            "flocks.html",
+            flocks=_repositories().flocks.list_flocks(),
+        )
+
+    @app.get("/kippen/flocks/new")
+    @login_required
+    def flocks_new():
+        return render_template(
+            "flock_form.html",
+            title="Koppel toevoegen",
+            values=flocks.default_values(),
+            errors={},
+            action_url=url_for("flocks_new_post"),
+            submit_label="Koppel opslaan",
+        )
+
+    @app.post("/kippen/flocks/new")
+    @login_required
+    def flocks_new_post():
+        repositories = _repositories()
+        flock, errors, values = flocks.build_flock_from_form(request.form)
+        if errors or flock is None:
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel toevoegen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_new_post"),
+                    submit_label="Koppel opslaan",
+                ),
+                400,
+            )
+
+        try:
+            saved_flock = repositories.flocks.create_flock(flock)
+        except ValueError as exc:
+            errors["form"] = str(exc)
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel toevoegen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_new_post"),
+                    submit_label="Koppel opslaan",
+                ),
+                400,
+            )
+
+        flash("Koppel opgeslagen.", "success")
+        return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
+
+    @app.get("/kippen/flocks/<int:flock_id>")
+    @login_required
+    def flocks_detail(flock_id: int):
+        flock = _repositories().flocks.get_flock_by_id(flock_id)
+        if flock is None:
+            abort(404)
+
+        return render_template("flock_detail.html", flock=flock, end_date_error=None)
+
+    @app.get("/kippen/flocks/<int:flock_id>/edit")
+    @login_required
+    def flocks_edit(flock_id: int):
+        flock = _repositories().flocks.get_flock_by_id(flock_id)
+        if flock is None:
+            abort(404)
+
+        return render_template(
+            "flock_form.html",
+            title="Koppel aanpassen",
+            values=flocks.values_from_flock(flock),
+            errors={},
+            action_url=url_for("flocks_edit_post", flock_id=flock.id),
+            submit_label="Wijzigingen opslaan",
+        )
+
+    @app.post("/kippen/flocks/<int:flock_id>/edit")
+    @login_required
+    def flocks_edit_post(flock_id: int):
+        repositories = _repositories()
+        existing_flock = repositories.flocks.get_flock_by_id(flock_id)
+        if existing_flock is None:
+            abort(404)
+
+        flock, errors, values = flocks.build_flock_from_form(
+            request.form,
+            existing_flock=existing_flock,
+        )
+        if errors or flock is None:
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_edit_post", flock_id=flock_id),
+                    submit_label="Wijzigingen opslaan",
+                ),
+                400,
+            )
+
+        try:
+            saved_flock = repositories.flocks.update_flock(flock_id, flock)
+        except ValueError as exc:
+            errors["form"] = str(exc)
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_edit_post", flock_id=flock_id),
+                    submit_label="Wijzigingen opslaan",
+                ),
+                400,
+            )
+
+        if saved_flock is None:
+            abort(404)
+
+        flash("Koppel aangepast.", "success")
+        return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
+
+    @app.post("/kippen/flocks/<int:flock_id>/archive")
+    @login_required
+    def flocks_archive(flock_id: int):
+        flock = _repositories().flocks.archive_flock(flock_id)
+        if flock is None:
+            abort(404)
+
+        flash("Koppel gearchiveerd.", "success")
+        return redirect(url_for("flocks_detail", flock_id=flock.id))
+
+    @app.post("/kippen/flocks/<int:flock_id>/end-date")
+    @login_required
+    def flocks_set_end_date(flock_id: int):
+        repositories = _repositories()
+        flock = repositories.flocks.get_flock_by_id(flock_id)
+        if flock is None:
+            abort(404)
+
+        end_date, errors, _ = flocks.parse_end_date(request.form)
+        if errors or end_date is None:
+            return (
+                render_template(
+                    "flock_detail.html",
+                    flock=flock,
+                    end_date_error=errors.get("end_date"),
+                ),
+                400,
+            )
+
+        try:
+            saved_flock = repositories.flocks.end_flock(flock_id, end_date)
+        except ValueError as exc:
+            return (
+                render_template(
+                    "flock_detail.html",
+                    flock=flock,
+                    end_date_error=str(exc),
+                ),
+                400,
+            )
+
+        if saved_flock is None:
+            abort(404)
+
+        flash("Einddatum opgeslagen.", "success")
+        return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
 
     @app.get("/kippen/daily/new")
     @login_required
@@ -501,6 +681,7 @@ class LayingHensRepositories:
     """Small container for laying hens repositories."""
 
     def __init__(self, session_factory):
+        self.flocks = FlocksRepository(session_factory)
         self.daily = DailyLayingRegistrationsRepository(session_factory)
         self.dead_hens = DeadHenRegistrationsRepository(session_factory)
         self.outside_nest_rounds = OutsideNestEggRoundsRepository(session_factory)

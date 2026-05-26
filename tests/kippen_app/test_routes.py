@@ -8,6 +8,7 @@ from werkzeug import security
 
 from database.models.laying_hens import DailyLayingRegistration
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
 from kippen_app.app import create_app
 
@@ -92,6 +93,7 @@ def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
     assert "Dagregistratie invullen" in dashboard_response.text
     assert "Dode hen registreren" in dashboard_response.text
     assert "Buitennest ronde registreren" in dashboard_response.text
+    assert "Koppels beheren" in dashboard_response.text
 
 
 def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
@@ -122,6 +124,228 @@ def test_healthz(monkeypatch):
 
     assert response.status_code == 200
     assert response.json == {"status": "ok"}
+
+
+def test_flocks_list_requires_login(monkeypatch):
+    client, _ = _client(monkeypatch)
+
+    response = client.get("/kippen/flocks")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/login"
+
+
+def test_flock_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/flocks/new")
+
+    assert response.status_code == 200
+    assert "Koppel toevoegen" in response.text
+    assert 'name="flock_name"' in response.text
+    assert 'name="bird_count"' in response.text
+
+
+def test_flock_new_post_saves_flock(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Koppel 2026",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "bird_count": "24000",
+            "breed": "Bio leghen",
+            "notes": "Eerste koppel",
+        },
+    )
+
+    assert response.status_code == 302
+    with Session(engine) as session:
+        flock = session.exec(select(Flock)).one()
+
+    assert response.headers["Location"] == f"/kippen/flocks/{flock.id}"
+    assert flock.flock_name == "Koppel 2026"
+    assert flock.house_id == "main"
+    assert flock.bird_count == 24000
+    assert flock.is_active is True
+
+
+def test_flock_new_post_validates_required_values(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "",
+            "house_id": "main",
+            "date_of_birth": "2026-05-01",
+            "placement_date": "2026-04-01",
+            "bird_count": "-1",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Koppelnaam is verplicht." in response.text
+    assert "Opzetdatum kan niet voor geboortedatum liggen." in response.text
+    assert "Aantal hennen mag niet negatief zijn." in response.text
+
+
+def test_flock_new_post_rejects_overlapping_active_flock(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Koppel 1",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "bird_count": "24000",
+        },
+    )
+
+    response = client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Koppel 2",
+            "house_id": "main",
+            "date_of_birth": "2026-02-01",
+            "placement_date": "2026-06-01",
+            "bird_count": "23000",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "overlaps with another flock" in response.text
+
+
+def test_flock_detail_and_list_show_saved_flock(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Koppel detail",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "bird_count": "24000",
+        },
+    )
+    with Session(engine) as session:
+        flock = session.exec(select(Flock)).one()
+
+    list_response = client.get("/kippen/flocks")
+    detail_response = client.get(f"/kippen/flocks/{flock.id}")
+
+    assert list_response.status_code == 200
+    assert "Koppel detail" in list_response.text
+    assert detail_response.status_code == 200
+    assert "Koppel detail" in detail_response.text
+    assert "Einddatum instellen" in detail_response.text
+
+
+def test_flock_edit_updates_existing_flock(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Oude naam",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "bird_count": "24000",
+        },
+    )
+    with Session(engine) as session:
+        flock = session.exec(select(Flock)).one()
+
+    response = client.post(
+        f"/kippen/flocks/{flock.id}/edit",
+        data={
+            "flock_name": "Nieuwe naam",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "end_date": "2027-06-01",
+            "bird_count": "23800",
+            "breed": "Wit",
+            "notes": "Aangepast",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/kippen/flocks/{flock.id}"
+    with Session(engine) as session:
+        updated_flock = session.get(Flock, flock.id)
+
+    assert updated_flock.flock_name == "Nieuwe naam"
+    assert updated_flock.end_date == date(2027, 6, 1)
+    assert updated_flock.bird_count == 23800
+    assert updated_flock.notes == "Aangepast"
+
+
+def test_flock_set_end_date(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Koppel einddatum",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "bird_count": "24000",
+        },
+    )
+    with Session(engine) as session:
+        flock = session.exec(select(Flock)).one()
+
+    response = client.post(
+        f"/kippen/flocks/{flock.id}/end-date",
+        data={"end_date": "2027-05-15"},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/kippen/flocks/{flock.id}"
+    with Session(engine) as session:
+        updated_flock = session.get(Flock, flock.id)
+
+    assert updated_flock.end_date == date(2027, 5, 15)
+
+
+def test_flock_archive_marks_flock_inactive(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": "Koppel archief",
+            "house_id": "main",
+            "date_of_birth": "2026-01-01",
+            "placement_date": "2026-05-01",
+            "bird_count": "24000",
+        },
+    )
+    with Session(engine) as session:
+        flock = session.exec(select(Flock)).one()
+
+    response = client.post(f"/kippen/flocks/{flock.id}/archive")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/kippen/flocks/{flock.id}"
+    with Session(engine) as session:
+        archived_flock = session.get(Flock, flock.id)
+
+    assert archived_flock.is_active is False
+    assert archived_flock.archived_at is not None
 
 
 def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
