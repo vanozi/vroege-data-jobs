@@ -1,7 +1,9 @@
 """Route tests for the kippen registratie app."""
 
 from datetime import date
+from io import BytesIO
 
+from openpyxl import load_workbook
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 from werkzeug import security
@@ -43,7 +45,7 @@ def _create_active_flock(
     *,
     flock_name: str = "Actief koppel",
     placement_date: str = "2026-01-01",
-    end_date: str = "2027-12-31",
+    end_date: str = "2035-12-31",
 ):
     return client.post(
         "/kippen/flocks/new",
@@ -380,6 +382,7 @@ def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
     assert "2026-05-26" in response.text
     assert "Dinsdag" in response.text
     assert "Actief koppel" in response.text
+    assert "33 weken en 6 dagen" in response.text
 
 
 def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
@@ -532,6 +535,8 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     assert response.status_code == 200
     assert "Week 22" in response.text
     assert "2026-05-26" in response.text
+    assert "Actief koppel" in response.text
+    assert "33 weken en 6 dagen" in response.text
     assert "105" in response.text
 
 
@@ -828,6 +833,14 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     )
     assert "legkalender-week-2026-22.xlsx" in response.headers["Content-Disposition"]
     assert response.data.startswith(b"PK")
+    workbook = load_workbook(BytesIO(response.data))
+    worksheet = workbook.active
+    headers = [cell.value for cell in worksheet[3]]
+    row = [cell.value for cell in worksheet[5]]
+    assert "Koppel" in headers
+    assert "Leeftijd" in headers
+    assert "Actief koppel" in row
+    assert "33 weken en 6 dagen" in row
 
 
 def test_week_pdf_export_downloads_pdf(monkeypatch):
@@ -860,5 +873,56 @@ def test_raw_daily_csv_export_downloads_csv(monkeypatch):
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("text/csv")
     assert "kippen-daily.csv" in response.headers["Content-Disposition"]
-    assert "registration_date" in response.data.decode("utf-8-sig")
-    assert "2026-05-26" in response.data.decode("utf-8-sig")
+    csv_text = response.data.decode("utf-8-sig")
+    assert "registration_date" in csv_text
+    assert "flock_name" in csv_text
+    assert "flock_age_weeks" in csv_text
+    assert "flock_age_days" in csv_text
+    assert "Actief koppel" in csv_text
+    assert "2026-05-26" in csv_text
+
+
+def test_raw_dead_hens_csv_export_includes_flock_context(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T08:30",
+            "count": "1",
+            "stable_side": "Albering kant",
+            "section_number": "2",
+            "walkway": "Midden",
+            "found_place": "Onder de stelling",
+        },
+    )
+
+    response = client.get("/kippen/export/dead-hens.csv")
+
+    assert response.status_code == 200
+    csv_text = response.data.decode("utf-8-sig")
+    assert "flock_name" in csv_text
+    assert "flock_age_weeks" in csv_text
+    assert "Actief koppel" in csv_text
+
+
+def test_raw_outside_nest_csv_export_includes_flock_context(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T10:30",
+            "egg_count": "12",
+        },
+    )
+
+    response = client.get("/kippen/export/outside-nest-rounds.csv")
+
+    assert response.status_code == 200
+    csv_text = response.data.decode("utf-8-sig")
+    assert "flock_name" in csv_text
+    assert "flock_age_weeks" in csv_text
+    assert "Actief koppel" in csv_text

@@ -16,6 +16,8 @@ from reportlab.platypus import TableStyle
 WEEK_HEADERS = [
     "Dag",
     "Datum",
+    "Koppel",
+    "Leeftijd",
     "1e soort",
     "2e soort",
     "Dagtotaal",
@@ -48,6 +50,8 @@ def weekly_calendar_xlsx(
     worksheet.append(
         [
             "Week totaal",
+            "",
+            "",
             "",
             totals["first_quality_eggs"],
             totals["second_quality_eggs"],
@@ -104,6 +108,8 @@ def weekly_calendar_pdf(
         [
             "Week totaal",
             "",
+            "",
+            "",
             totals["first_quality_eggs"],
             totals["second_quality_eggs"],
             totals["total_eggs"],
@@ -122,7 +128,7 @@ def weekly_calendar_pdf(
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("ALIGN", (2, 1), (8, -1), "RIGHT"),
+                ("ALIGN", (4, 1), (10, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
             ]
@@ -154,6 +160,8 @@ def _week_export_row(row: dict[str, object]) -> list[object]:
         return [
             row["weekday"],
             row["date"].isoformat(),
+            _flock_name(row),
+            _flock_age_label(row),
             "",
             "",
             "",
@@ -167,6 +175,8 @@ def _week_export_row(row: dict[str, object]) -> list[object]:
     return [
         row["weekday"],
         row["date"].isoformat(),
+        _flock_name(row),
+        _flock_age_label(row),
         registration.first_quality_eggs,
         registration.second_quality_eggs,
         registration.total_eggs,
@@ -183,3 +193,19 @@ def _format_optional_float(value: Optional[float]) -> str:
         return ""
 
     return f"{value:.2f}"
+
+
+def _flock_name(row: dict[str, object]) -> str:
+    flock = row.get("flock")
+    if flock is None:
+        return ""
+
+    return flock.flock_name
+
+
+def _flock_age_label(row: dict[str, object]) -> str:
+    age_context = row.get("flock_age")
+    if age_context is None:
+        return ""
+
+    return str(age_context["label"])

@@ -67,6 +67,9 @@
   {% if active_flock %}
   <a href="{{ url_for('flocks_detail', flock_id=active_flock.id) }}">{{ active_flock.flock_name }}</a>
   sinds {{ active_flock.placement_date }}
+  {% if active_flock_age %}
+  &middot; leeftijd {{ active_flock_age.label }} &middot; dag {{ active_flock_age.total_days }}
+  {% endif %}
   {% else %}
   nog geen actief koppel geregistreerd.
   {% endif %}

@@ -20,6 +20,7 @@ from kippen_app import config
 from kippen_app import daily
 from kippen_app import dead_hens
 from kippen_app import exports
+from kippen_app import flock_age
 from kippen_app import flocks
 from kippen_app import outside_nest
 
@@ -60,6 +61,7 @@ def create_app(session_factory=None) -> Flask:
             today=today,
             today_registration=today_registration,
             active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(active_flock, today),
             dead_hens_today=repositories.dead_hens.count_for_date(today),
             outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
                 today,
@@ -262,6 +264,10 @@ def create_app(session_factory=None) -> Flask:
             submit_label="Opslaan",
             dead_hens_count=repositories.dead_hens.count_for_date(registration_date),
             active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(
+                active_flock,
+                registration_date,
+            ),
         )
 
     @app.post("/kippen/daily/new")
@@ -286,6 +292,10 @@ def create_app(session_factory=None) -> Flask:
                         values,
                     ),
                     active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
                 ),
                 400,
             )
@@ -309,6 +319,7 @@ def create_app(session_factory=None) -> Flask:
                         values,
                     ),
                     active_flock=None,
+                    active_flock_age=None,
                 ),
                 400,
             )
@@ -340,6 +351,10 @@ def create_app(session_factory=None) -> Flask:
             active_flock=repositories.flocks.get_active_flock_for_date(
                 registration.registration_date,
                 house_id=registration.house_id,
+            ),
+            active_flock_age=_flock_age_for_registration(
+                repositories.flocks,
+                registration,
             ),
         )
 
@@ -375,6 +390,10 @@ def create_app(session_factory=None) -> Flask:
                         values,
                     ),
                     active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
                 ),
                 400,
             )
@@ -401,6 +420,7 @@ def create_app(session_factory=None) -> Flask:
                         values,
                     ),
                     active_flock=None,
+                    active_flock_age=None,
                 ),
                 400,
             )
@@ -419,7 +439,8 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/dead-hens/new")
     @login_required
     def dead_hens_new():
-        active_flock = _repositories().flocks.get_active_flock_for_date(date.today())
+        today = date.today()
+        active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "dead_hen_form.html",
             values=dead_hens.default_values(datetime.now()),
@@ -429,6 +450,7 @@ def create_app(session_factory=None) -> Flask:
             found_places=dead_hens.FOUND_PLACES,
             action_url=url_for("dead_hens_new_post"),
             active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(active_flock, today),
         )
 
     @app.post("/kippen/dead-hens/new")
@@ -454,6 +476,11 @@ def create_app(session_factory=None) -> Flask:
                         values,
                         "found_at",
                     ),
+                    active_flock_age=_active_flock_age_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "found_at",
+                    ),
                 ),
                 400,
             )
@@ -474,6 +501,7 @@ def create_app(session_factory=None) -> Flask:
                     found_places=dead_hens.FOUND_PLACES,
                     action_url=url_for("dead_hens_new_post"),
                     active_flock=None,
+                    active_flock_age=None,
                 ),
                 400,
             )
@@ -506,13 +534,15 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/outside-nest-rounds/new")
     @login_required
     def outside_nest_rounds_new():
-        active_flock = _repositories().flocks.get_active_flock_for_date(date.today())
+        today = date.today()
+        active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "outside_nest_round_form.html",
             values=outside_nest.default_values(datetime.now()),
             errors={},
             action_url=url_for("outside_nest_rounds_new_post"),
             active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(active_flock, today),
         )
 
     @app.post("/kippen/outside-nest-rounds/new")
@@ -535,6 +565,11 @@ def create_app(session_factory=None) -> Flask:
                         values,
                         "round_at",
                     ),
+                    active_flock_age=_active_flock_age_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "round_at",
+                    ),
                 ),
                 400,
             )
@@ -552,6 +587,7 @@ def create_app(session_factory=None) -> Flask:
                     errors=errors,
                     action_url=url_for("outside_nest_rounds_new_post"),
                     active_flock=None,
+                    active_flock_age=None,
                 ),
                 400,
             )
@@ -642,12 +678,17 @@ def create_app(session_factory=None) -> Flask:
     @login_required
     def raw_records_csv(record_type: str):
         repositories = _repositories()
+        flocks_by_id = _flocks_by_id(repositories.flocks)
         if record_type == "daily":
             output = exports.records_csv(
                 [
                     "id",
                     "house_id",
                     "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
                     "registration_date",
                     "weekday",
                     "first_quality_eggs",
@@ -663,6 +704,11 @@ def create_app(session_factory=None) -> Flask:
                         item.id,
                         item.house_id,
                         item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.registration_date,
+                        ),
                         item.registration_date,
                         item.weekday,
                         item.first_quality_eggs,
@@ -682,6 +728,10 @@ def create_app(session_factory=None) -> Flask:
                     "id",
                     "house_id",
                     "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
                     "found_at",
                     "count",
                     "stable_side",
@@ -697,6 +747,11 @@ def create_app(session_factory=None) -> Flask:
                         item.id,
                         item.house_id,
                         item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.found_at.date(),
+                        ),
                         item.found_at,
                         item.count,
                         item.stable_side,
@@ -716,6 +771,10 @@ def create_app(session_factory=None) -> Flask:
                     "id",
                     "house_id",
                     "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
                     "round_at",
                     "egg_count",
                     "notes",
@@ -726,6 +785,11 @@ def create_app(session_factory=None) -> Flask:
                         item.id,
                         item.house_id,
                         item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.round_at.date(),
+                        ),
                         item.round_at,
                         item.egg_count,
                         item.notes,
@@ -851,6 +915,22 @@ def _active_flock_for_values(
     )
 
 
+def _active_flock_age_for_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+):
+    try:
+        registration_date = date.fromisoformat(values.get("registration_date", ""))
+    except ValueError:
+        return None
+
+    active_flock = repository.get_active_flock_for_date(
+        registration_date,
+        house_id=values.get("house_id", "main") or "main",
+    )
+    return flock_age.flock_age_context(active_flock, registration_date)
+
+
 def _active_flock_for_datetime_values(
     repository: FlocksRepository,
     values: dict[str, str],
@@ -865,6 +945,37 @@ def _active_flock_for_datetime_values(
         registration_datetime.date(),
         house_id=values.get("house_id", "main") or "main",
     )
+
+
+def _active_flock_age_for_datetime_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+    field_name: str,
+):
+    try:
+        registration_datetime = datetime.fromisoformat(values.get(field_name, ""))
+    except ValueError:
+        return None
+
+    active_flock = repository.get_active_flock_for_date(
+        registration_datetime.date(),
+        house_id=values.get("house_id", "main") or "main",
+    )
+    return flock_age.flock_age_context(active_flock, registration_datetime.date())
+
+
+def _flock_age_for_registration(
+    repository: FlocksRepository,
+    registration,
+):
+    if registration.flock_id is None:
+        return None
+
+    active_flock = repository.get_flock_by_id(registration.flock_id)
+    if active_flock is None:
+        return None
+
+    return flock_age.flock_age_context(active_flock, registration.registration_date)
 
 
 def _missing_active_flock_message(house_id: str) -> str:
@@ -900,14 +1011,23 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
     registrations_by_date = {
         registration.registration_date: registration for registration in registrations
     }
+    flocks_by_id = _flocks_by_id(repositories.flocks)
     rows = []
     for day in week_days:
         registration = registrations_by_date.get(day)
+        active_flock = _flock_for_week_row(
+            repositories.flocks,
+            flocks_by_id,
+            day,
+            registration,
+        )
         rows.append(
             {
                 "date": day,
                 "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
                 "registration": registration,
+                "flock": active_flock,
+                "flock_age": flock_age.flock_age_context(active_flock, day),
                 "dead_hens_count": repositories.dead_hens.count_for_date(day),
                 "outside_nest_egg_count": (
                     repositories.outside_nest_rounds.count_for_date(day)
@@ -916,6 +1036,48 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         )
 
     return rows
+
+
+def _flocks_by_id(repository: FlocksRepository):
+    return {
+        flock.id: flock for flock in repository.list_flocks() if flock.id is not None
+    }
+
+
+def _flock_for_week_row(
+    repository: FlocksRepository,
+    flocks_by_id: dict[int, object],
+    target_date: date,
+    registration,
+):
+    if registration is not None and registration.flock_id is not None:
+        return flocks_by_id.get(registration.flock_id)
+
+    return repository.get_active_flock_for_date(target_date)
+
+
+def _raw_flock_context_values(
+    flocks_by_id: dict[int, object],
+    flock_id: Optional[int],
+    target_date: date,
+) -> list[object]:
+    if flock_id is None:
+        return ["", "", "", ""]
+
+    flock = flocks_by_id.get(flock_id)
+    if flock is None:
+        return ["", "", "", ""]
+
+    age_context = flock_age.flock_age_context(flock, target_date)
+    if age_context is None:
+        return [flock.flock_name, flock.date_of_birth, "", ""]
+
+    return [
+        flock.flock_name,
+        flock.date_of_birth,
+        age_context["weeks"],
+        age_context["days"],
+    ]
 
 
 def _week_totals(rows: list[dict[str, object]]) -> dict[str, float]:

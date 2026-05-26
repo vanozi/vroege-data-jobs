@@ -23,6 +23,9 @@
   <strong>Actief koppel:</strong>
   {% if active_flock %}
   {{ active_flock.flock_name }} sinds {{ active_flock.placement_date }}
+  {% if active_flock_age %}
+  &middot; leeftijd {{ active_flock_age.label }} &middot; dag {{ active_flock_age.total_days }}
+  {% endif %}
   {% else %}
   geen actief koppel voor deze datum.
   {% endif %}

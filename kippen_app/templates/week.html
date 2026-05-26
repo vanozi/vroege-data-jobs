@@ -47,6 +47,8 @@
       <tr>
         <th>Dag</th>
         <th>Datum</th>
+        <th>Koppel</th>
+        <th>Leeftijd</th>
         <th class="has-text-right">1e soort</th>
         <th class="has-text-right">2e soort</th>
         <th class="has-text-right">Dagtotaal</th>
@@ -64,6 +66,8 @@
       <tr>
         <td>{{ row.weekday }}</td>
         <td>{{ row.date }}</td>
+        <td>{% if row.flock %}{{ row.flock.flock_name }}{% else %}-{% endif %}</td>
+        <td>{% if row.flock_age %}{{ row.flock_age.label }}{% else %}-{% endif %}</td>
         {% if registration %}
         <td class="has-text-right">{{ registration.first_quality_eggs }}</td>
         <td class="has-text-right">{{ registration.second_quality_eggs }}</td>
@@ -98,7 +102,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <th colspan="2">Week totaal</th>
+        <th colspan="4">Week totaal</th>
         <th class="has-text-right">{{ totals.first_quality_eggs }}</th>
         <th class="has-text-right">{{ totals.second_quality_eggs }}</th>
         <th class="has-text-right">{{ totals.total_eggs }}</th>
