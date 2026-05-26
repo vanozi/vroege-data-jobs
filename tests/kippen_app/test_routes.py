@@ -396,8 +396,8 @@ def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "20530",
             "second_quality_eggs": "19",
-            "water_liters": "199.55",
-            "feed_kg": "109.25",
+            "water_liters": "199.555",
+            "feed_kg": "109.255",
             "notes": "Normale dag",
         },
     )
@@ -410,8 +410,8 @@ def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
     assert registration.registration_date == date(2026, 5, 26)
     assert registration.weekday == "Dinsdag"
     assert registration.total_eggs == 20549
-    assert registration.water_liters == 199.55
-    assert registration.feed_kg == 109.25
+    assert registration.water_liters == 199.555
+    assert registration.feed_kg == 109.255
     assert registration.created_by == "admin"
     assert registration.flock_id is not None
 
@@ -471,8 +471,8 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "120",
             "second_quality_eggs": "6",
-            "water_liters": "0,25",
-            "feed_kg": "0,80",
+            "water_liters": "0,255",
+            "feed_kg": "0,805",
             "notes": "Aangepast",
         },
     )
@@ -484,12 +484,12 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
 
     assert len(registrations) == 1
     assert registrations[0].total_eggs == 126
-    assert registrations[0].water_liters == 0.25
-    assert registrations[0].feed_kg == 0.80
+    assert registrations[0].water_liters == 0.255
+    assert registrations[0].feed_kg == 0.805
     assert registrations[0].notes == "Aangepast"
 
 
-def test_daily_edit_form_formats_water_and_feed_with_two_decimals(monkeypatch):
+def test_daily_edit_form_formats_water_and_feed_with_three_decimals(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
@@ -510,9 +510,10 @@ def test_daily_edit_form_formats_water_and_feed_with_two_decimals(monkeypatch):
 
     assert response.status_code == 200
     assert 'name="water_liters"' in response.text
-    assert 'value="0.20"' in response.text
+    assert 'step="0.001"' in response.text
+    assert 'value="0.200"' in response.text
     assert 'name="feed_kg"' in response.text
-    assert 'value="0.80"' in response.text
+    assert 'value="0.800"' in response.text
 
 
 def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
@@ -525,8 +526,8 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
-            "water_liters": "10",
-            "feed_kg": "20",
+            "water_liters": "10.123",
+            "feed_kg": "20.456",
         },
     )
 
@@ -820,8 +821,8 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
-            "water_liters": "10",
-            "feed_kg": "20",
+            "water_liters": "10.123",
+            "feed_kg": "20.456",
         },
     )
 
@@ -841,6 +842,8 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     assert "Leeftijd" in headers
     assert "Actief koppel" in row
     assert "33 weken en 5 dagen" in row
+    assert "10.123" in row
+    assert "20.456" in row
 
 
 def test_week_pdf_export_downloads_pdf(monkeypatch):

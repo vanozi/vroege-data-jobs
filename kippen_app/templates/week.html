@@ -75,10 +75,10 @@
         <td class="has-text-right">{{ row.dead_hens_count }}</td>
         <td class="has-text-right">{{ row.outside_nest_egg_count }}</td>
         <td class="has-text-right">
-          {% if registration.water_liters is not none %}{{ "%g"|format(registration.water_liters) }}{% else %}-{% endif %}
+          {% if registration.water_liters is not none %}{{ "%.3f"|format(registration.water_liters) }}{% else %}-{% endif %}
         </td>
         <td class="has-text-right">
-          {% if registration.feed_kg is not none %}{{ "%g"|format(registration.feed_kg) }}{% else %}-{% endif %}
+          {% if registration.feed_kg is not none %}{{ "%.3f"|format(registration.feed_kg) }}{% else %}-{% endif %}
         </td>
         <td>{{ registration.notes or "" }}</td>
         <td class="has-text-right">
@@ -108,8 +108,8 @@
         <th class="has-text-right">{{ totals.total_eggs }}</th>
         <th class="has-text-right">{{ totals.dead_hens_count }}</th>
         <th class="has-text-right">{{ totals.outside_nest_egg_count }}</th>
-        <th class="has-text-right">{{ "%g"|format(totals.water_liters) }}</th>
-        <th class="has-text-right">{{ "%g"|format(totals.feed_kg) }}</th>
+        <th class="has-text-right">{{ "%.3f"|format(totals.water_liters) }}</th>
+        <th class="has-text-right">{{ "%.3f"|format(totals.feed_kg) }}</th>
         <th colspan="2"></th>
       </tr>
     </tfoot>

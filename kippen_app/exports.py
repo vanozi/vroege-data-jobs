@@ -58,8 +58,8 @@ def weekly_calendar_xlsx(
             totals["total_eggs"],
             totals["dead_hens_count"],
             totals["outside_nest_egg_count"],
-            round(totals["water_liters"], 2),
-            round(totals["feed_kg"], 2),
+            round(totals["water_liters"], 3),
+            round(totals["feed_kg"], 3),
             "",
         ]
     )
@@ -115,8 +115,8 @@ def weekly_calendar_pdf(
             totals["total_eggs"],
             totals["dead_hens_count"],
             totals["outside_nest_egg_count"],
-            f"{totals['water_liters']:.2f}",
-            f"{totals['feed_kg']:.2f}",
+            f"{totals['water_liters']:.3f}",
+            f"{totals['feed_kg']:.3f}",
             "",
         ]
     )
@@ -192,7 +192,7 @@ def _format_optional_float(value: Optional[float]) -> str:
     if value is None:
         return ""
 
-    return f"{value:.2f}"
+    return f"{value:.3f}"
 
 
 def _flock_name(row: dict[str, object]) -> str:
