@@ -56,7 +56,7 @@
 
 <div class="buttons">
   <a class="button is-link" href="{{ url_for('daily_new') }}">Dagregistratie invullen</a>
-  <a class="button is-warning" href="#">Dode hen registreren</a>
+  <a class="button is-warning" href="{{ url_for('dead_hens_new') }}">Dode hen registreren</a>
   <a class="button is-info" href="#">Buitennest ronde registreren</a>
   <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
 </div>
@@ -90,12 +90,34 @@
     {% endif %}
   </div>
   <div class="column">
-    <h2 class="title is-5">Laatste dode hennen</h2>
+    <div class="level mb-2">
+      <div class="level-left">
+        <h2 class="title is-5 mb-0">Laatste dode hennen</h2>
+      </div>
+      <div class="level-right">
+        <a href="{{ url_for('dead_hens_list') }}">Alles bekijken</a>
+      </div>
+    </div>
     {% if recent_dead_hens %}
     <table class="table is-fullwidth">
+      <thead>
+        <tr>
+          <th>Tijd</th>
+          <th class="has-text-right">Aantal</th>
+          <th>Plek</th>
+        </tr>
+      </thead>
       <tbody>
         {% for registration in recent_dead_hens %}
-        <tr><td>{{ registration }}</td></tr>
+        <tr>
+          <td>{{ registration.found_at.strftime("%d-%m %H:%M") }}</td>
+          <td class="has-text-right">{{ registration.count }}</td>
+          <td>
+            {{ registration.stable_side }},
+            vak {{ registration.section_number }},
+            {{ registration.walkway | lower }}
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>

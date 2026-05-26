@@ -9,6 +9,7 @@ COPY docker/kippen/requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
+COPY database ./database
 COPY kippen_app ./kippen_app
 
 RUN useradd --create-home --shell /bin/bash appuser \

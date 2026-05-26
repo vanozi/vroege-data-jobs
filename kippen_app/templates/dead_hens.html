@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Dode hennen | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Dode hennen</h1>
+      <p class="subtitle">Recente sterfteregistraties.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-warning" href="{{ url_for('dead_hens_new') }}">Nieuwe registratie</a>
+      <a class="button is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
+    </div>
+  </div>
+</div>
+
+{% if registrations %}
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Datum en tijd</th>
+        <th class="has-text-right">Aantal</th>
+        <th>Kant</th>
+        <th>Vak</th>
+        <th>Gangpad</th>
+        <th>Vindplaats</th>
+        <th>Mogelijke oorzaak</th>
+        <th>Observaties</th>
+        <th>Door</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for registration in registrations %}
+      <tr>
+        <td>{{ registration.found_at.strftime("%d-%m-%Y %H:%M") }}</td>
+        <td class="has-text-right">{{ registration.count }}</td>
+        <td>{{ registration.stable_side or "" }}</td>
+        <td>{{ registration.section_number or "" }}</td>
+        <td>{{ registration.walkway or "" }}</td>
+        <td>{{ registration.found_place or "" }}</td>
+        <td>{{ registration.suspected_cause or "" }}</td>
+        <td>{{ registration.observations or "" }}</td>
+        <td>{{ registration.registered_by or "" }}</td>
+        <td class="has-text-right">
+          <form method="post" action="{{ url_for('dead_hens_delete', registration_id=registration.id) }}">
+            <button class="button is-small is-danger is-light" type="submit">Verwijderen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p>Geen dode-hen registraties gevonden.</p>
+{% endif %}
+{% endblock %}

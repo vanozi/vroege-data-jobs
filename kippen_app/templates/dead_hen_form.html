@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Dode hen registreren | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Dode hen registreren</h1>
+      <p class="subtitle">Sterfte vastleggen met datum, locatie en observatie.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('dead_hens_list') }}">Recente meldingen</a>
+  </div>
+</div>
+
+<form method="post" action="{{ action_url }}">
+  <input type="hidden" name="house_id" value="{{ values.house_id }}">
+
+  <div class="columns">
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="found_at">Datum en tijd</label>
+        <div class="control">
+          <input
+            class="input {% if errors.found_at %}is-danger{% endif %}"
+            id="found_at"
+            name="found_at"
+            type="datetime-local"
+            value="{{ values.found_at }}"
+            required
+          >
+        </div>
+        {% if errors.found_at %}
+        <p class="help is-danger">{{ errors.found_at }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="count">Aantal</label>
+        <div class="control">
+          <input
+            class="input {% if errors.count %}is-danger{% endif %}"
+            id="count"
+            name="count"
+            type="number"
+            min="1"
+            step="1"
+            value="{{ values.count }}"
+            required
+          >
+        </div>
+        {% if errors.count %}
+        <p class="help is-danger">{{ errors.count }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="stable_side">Kant</label>
+        <div class="control">
+          <div class="select is-fullwidth {% if errors.stable_side %}is-danger{% endif %}">
+            <select id="stable_side" name="stable_side">
+              {% for stable_side in stable_sides %}
+              <option value="{{ stable_side }}" {% if values.stable_side == stable_side %}selected{% endif %}>
+                {{ stable_side }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if errors.stable_side %}
+        <p class="help is-danger">{{ errors.stable_side }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="section_number">Vak</label>
+        <div class="control">
+          <div class="select is-fullwidth {% if errors.section_number %}is-danger{% endif %}">
+            <select id="section_number" name="section_number">
+              {% for section_number in [1, 2, 3, 4] %}
+              <option value="{{ section_number }}" {% if values.section_number == section_number|string %}selected{% endif %}>
+                {{ section_number }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if errors.section_number %}
+        <p class="help is-danger">{{ errors.section_number }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="walkway">Gangpad</label>
+        <div class="control">
+          <div class="select is-fullwidth {% if errors.walkway %}is-danger{% endif %}">
+            <select id="walkway" name="walkway">
+              {% for walkway in walkways %}
+              <option value="{{ walkway }}" {% if values.walkway == walkway %}selected{% endif %}>
+                {{ walkway }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if errors.walkway %}
+        <p class="help is-danger">{{ errors.walkway }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="found_place">Vindplaats</label>
+        <div class="control">
+          <div class="select is-fullwidth {% if errors.found_place %}is-danger{% endif %}">
+            <select id="found_place" name="found_place">
+              {% for found_place in found_places %}
+              <option value="{{ found_place }}" {% if values.found_place == found_place %}selected{% endif %}>
+                {{ found_place }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if errors.found_place %}
+        <p class="help is-danger">{{ errors.found_place }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="suspected_cause">Mogelijke oorzaak</label>
+    <div class="control">
+      <input
+        class="input"
+        id="suspected_cause"
+        name="suspected_cause"
+        type="text"
+        value="{{ values.suspected_cause }}"
+      >
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="observations">Observaties</label>
+    <div class="control">
+      <textarea class="textarea" id="observations" name="observations" rows="4">{{ values.observations }}</textarea>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="button is-warning" type="submit">Opslaan</button>
+    <a class="button is-light" href="{{ url_for('dashboard') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

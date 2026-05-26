@@ -1,6 +1,6 @@
 """Flask app factory for the kippen registratie app."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
 from typing import Optional
 
@@ -16,6 +16,7 @@ from database.repositories.laying_hens_repository import OutsideNestEggRoundsRep
 from kippen_app import auth
 from kippen_app import config
 from kippen_app import daily
+from kippen_app import dead_hens
 
 
 def create_app(session_factory=None) -> Flask:
@@ -164,6 +165,65 @@ def create_app(session_factory=None) -> Flask:
 
         flash("Dagregistratie aangepast.", "success")
         return redirect(url_for("daily_edit", registration_id=saved_registration.id))
+
+    @app.get("/kippen/dead-hens/new")
+    @login_required
+    def dead_hens_new():
+        return render_template(
+            "dead_hen_form.html",
+            values=dead_hens.default_values(datetime.now()),
+            errors={},
+            stable_sides=dead_hens.STABLE_SIDES,
+            walkways=dead_hens.WALKWAYS,
+            found_places=dead_hens.FOUND_PLACES,
+            action_url=url_for("dead_hens_new_post"),
+        )
+
+    @app.post("/kippen/dead-hens/new")
+    @login_required
+    def dead_hens_new_post():
+        repositories = _repositories()
+        registration, errors, values = dead_hens.build_dead_hen_registration_from_form(
+            request.form,
+            registered_by=session.get("kippen_username"),
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "dead_hen_form.html",
+                    values=values,
+                    errors=errors,
+                    stable_sides=dead_hens.STABLE_SIDES,
+                    walkways=dead_hens.WALKWAYS,
+                    found_places=dead_hens.FOUND_PLACES,
+                    action_url=url_for("dead_hens_new_post"),
+                ),
+                400,
+            )
+
+        repositories.dead_hens.create_dead_hen_registration(registration)
+        flash("Dode hen registratie opgeslagen.", "success")
+        return redirect(url_for("dead_hens_list"))
+
+    @app.get("/kippen/dead-hens")
+    @login_required
+    def dead_hens_list():
+        return render_template(
+            "dead_hens.html",
+            registrations=_repositories().dead_hens.list_recent(limit=100),
+        )
+
+    @app.post("/kippen/dead-hens/<int:registration_id>/delete")
+    @login_required
+    def dead_hens_delete(registration_id: int):
+        deleted = _repositories().dead_hens.delete_dead_hen_registration(
+            registration_id,
+        )
+        if not deleted:
+            abort(404)
+
+        flash("Dode hen registratie verwijderd.", "success")
+        return redirect(url_for("dead_hens_list"))
 
     @app.get("/kippen/week")
     @login_required

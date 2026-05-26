@@ -136,7 +136,31 @@ class DeadHenRegistrationsRepository(BaseRepository[DeadHenRegistration]):
         if isinstance(registration_data, DeadHenRegistration):
             registration_data = registration_data.model_dump()
 
-        return self.create(registration_data)
+        normalized_data = self._normalize_model_data(registration_data)
+        with self.get_session() as session:
+            registration = DeadHenRegistration(**normalized_data)
+            session.add(registration)
+            session.flush()
+            session.refresh(registration)
+            session.expunge(registration)
+            return registration
+
+    def get_dead_hen_registration_by_id(
+        self,
+        registration_id: int,
+    ) -> Optional[DeadHenRegistration]:
+        """Return one dead hen registration by primary key."""
+        with self.get_session() as session:
+            registration = session.get(DeadHenRegistration, registration_id)
+            if registration is None:
+                return None
+
+            session.expunge(registration)
+            return registration
+
+    def delete_dead_hen_registration(self, registration_id: int) -> bool:
+        """Delete one dead hen registration by primary key."""
+        return self.delete(registration_id)
 
     def list_recent(self, *, limit: int = 10) -> list[DeadHenRegistration]:
         """Return recent dead hen registrations."""

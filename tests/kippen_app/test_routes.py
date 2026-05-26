@@ -7,6 +7,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from werkzeug import security
 
 from database.models.laying_hens import DailyLayingRegistration
+from database.models.laying_hens import DeadHenRegistration
 from kippen_app.app import create_app
 
 
@@ -221,3 +222,127 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     assert "Week 22" in response.text
     assert "2026-05-26" in response.text
     assert "105" in response.text
+
+
+def test_dead_hen_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/dead-hens/new")
+
+    assert response.status_code == 200
+    assert "Dode hen registreren" in response.text
+    assert "Albering kant" in response.text
+    assert "Ziekenboeg kant" in response.text
+
+
+def test_dead_hen_post_saves_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T08:30",
+            "count": "2",
+            "stable_side": "Albering kant",
+            "section_number": "2",
+            "walkway": "Midden",
+            "found_place": "Onder de stelling",
+            "suspected_cause": "Onbekend",
+            "observations": "Gevonden tijdens ochtendronde",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/dead-hens"
+    with Session(engine) as session:
+        registration = session.exec(select(DeadHenRegistration)).one()
+
+    assert registration.count == 2
+    assert registration.stable_side == "Albering kant"
+    assert registration.section_number == 2
+    assert registration.walkway == "Midden"
+    assert registration.found_place == "Onder de stelling"
+    assert registration.registered_by == "admin"
+
+
+def test_dead_hen_post_validates_count(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T08:30",
+            "count": "0",
+            "stable_side": "Albering kant",
+            "section_number": "2",
+            "walkway": "Midden",
+            "found_place": "Onder de stelling",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Aantal moet minimaal 1 zijn." in response.text
+
+
+def test_dead_hen_list_shows_recent_registrations(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T08:30",
+            "count": "1",
+            "stable_side": "Ziekenboeg kant",
+            "section_number": "4",
+            "walkway": "Rechts",
+            "found_place": "In het gangpad",
+            "observations": "Bij achterste vak",
+        },
+    )
+
+    response = client.get("/kippen/dead-hens")
+
+    assert response.status_code == 200
+    assert "Ziekenboeg kant" in response.text
+    assert "In het gangpad" in response.text
+    assert "Bij achterste vak" in response.text
+
+
+def test_dead_hen_counts_are_visible_in_daily_dashboard_and_week(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T08:30",
+            "count": "2",
+            "stable_side": "Albering kant",
+            "section_number": "2",
+            "walkway": "Midden",
+            "found_place": "Onder de stelling",
+        },
+    )
+    client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T15:45",
+            "count": "1",
+            "stable_side": "Ziekenboeg kant",
+            "section_number": "4",
+            "walkway": "Rechts",
+            "found_place": "In het gangpad",
+        },
+    )
+
+    daily_response = client.get("/kippen/daily/new?date=2026-05-26")
+    week_response = client.get("/kippen/week/2026/22")
+
+    assert daily_response.status_code == 200
+    assert 'id="dead_hens_count"' in daily_response.text
+    assert 'value="3"' in daily_response.text
+    assert week_response.status_code == 200
+    assert "Week totaal" in week_response.text
+    assert ">3<" in week_response.text
