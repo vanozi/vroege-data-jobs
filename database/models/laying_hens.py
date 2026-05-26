@@ -3,10 +3,45 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from database.models.base import CreatedTimestampMixin
+
+
+class Flock(
+    CreatedTimestampMixin,
+    SQLModel,
+    table=True,
+):
+    """Production batch of laying hens in one house."""
+
+    __tablename__ = "flocks"
+    __table_args__ = (
+        Index(
+            "ix_flocks_house_active_dates",
+            "house_id",
+            "placement_date",
+            "end_date",
+        ),
+        {
+            "comment": (
+                "Laying hen flocks with lifecycle metadata and active date range."
+            )
+        },
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    flock_name: str = Field(index=True)
+    date_of_birth: date = Field(index=True)
+    placement_date: date = Field(index=True)
+    end_date: Optional[date] = Field(default=None, index=True)
+    bird_count: int = Field(ge=0)
+    breed: Optional[str] = Field(default=None)
+    house_id: str = Field(default="main", index=True)
+    is_active: bool = Field(default=True, index=True)
+    archived_at: Optional[datetime] = Field(default=None, index=True)
+    notes: Optional[str] = Field(default=None)
 
 
 class DailyLayingRegistration(
@@ -32,6 +67,7 @@ class DailyLayingRegistration(
 
     id: Optional[int] = Field(default=None, primary_key=True)
     house_id: str = Field(default="main", index=True)
+    flock_id: Optional[int] = Field(default=None, foreign_key="flocks.id", index=True)
     registration_date: date = Field(index=True)
     weekday: Optional[str] = Field(default=None)
     first_quality_eggs: int = Field(default=0, ge=0)
@@ -57,6 +93,7 @@ class DeadHenRegistration(
 
     id: Optional[int] = Field(default=None, primary_key=True)
     house_id: str = Field(default="main", index=True)
+    flock_id: Optional[int] = Field(default=None, foreign_key="flocks.id", index=True)
     found_at: datetime = Field(index=True)
     count: int = Field(default=1, ge=1)
     stable_side: Optional[str] = Field(default=None)
@@ -82,6 +119,7 @@ class OutsideNestEggRound(
 
     id: Optional[int] = Field(default=None, primary_key=True)
     house_id: str = Field(default="main", index=True)
+    flock_id: Optional[int] = Field(default=None, foreign_key="flocks.id", index=True)
     round_at: datetime = Field(index=True)
     egg_count: int = Field(default=0, ge=0)
     notes: Optional[str] = Field(default=None)

@@ -13,12 +13,15 @@ from database.repositories.laying_hens_repository import (
     DailyLayingRegistrationsRepository,
 )
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
 from kippen_app import auth
 from kippen_app import config
 from kippen_app import daily
 from kippen_app import dead_hens
 from kippen_app import exports
+from kippen_app import flock_age
+from kippen_app import flocks
 from kippen_app import outside_nest
 
 
@@ -52,10 +55,13 @@ def create_app(session_factory=None) -> Flask:
         repositories = _repositories()
         today = date.today()
         today_registration = repositories.daily.get_by_house_and_date(today)
+        active_flock = repositories.flocks.get_current_active_flock()
         return render_template(
             "dashboard.html",
             today=today,
             today_registration=today_registration,
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(active_flock, today),
             dead_hens_today=repositories.dead_hens.count_for_date(today),
             outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
                 today,
@@ -67,10 +73,188 @@ def create_app(session_factory=None) -> Flask:
             ),
         )
 
+    @app.get("/kippen/flocks")
+    @login_required
+    def flocks_list():
+        return render_template(
+            "flocks.html",
+            flocks=_repositories().flocks.list_flocks(),
+        )
+
+    @app.get("/kippen/flocks/new")
+    @login_required
+    def flocks_new():
+        return render_template(
+            "flock_form.html",
+            title="Koppel toevoegen",
+            values=flocks.default_values(),
+            errors={},
+            action_url=url_for("flocks_new_post"),
+            submit_label="Koppel opslaan",
+        )
+
+    @app.post("/kippen/flocks/new")
+    @login_required
+    def flocks_new_post():
+        repositories = _repositories()
+        flock, errors, values = flocks.build_flock_from_form(request.form)
+        if errors or flock is None:
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel toevoegen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_new_post"),
+                    submit_label="Koppel opslaan",
+                ),
+                400,
+            )
+
+        try:
+            saved_flock = repositories.flocks.create_flock(flock)
+        except ValueError as exc:
+            errors["form"] = str(exc)
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel toevoegen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_new_post"),
+                    submit_label="Koppel opslaan",
+                ),
+                400,
+            )
+
+        flash("Koppel opgeslagen.", "success")
+        return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
+
+    @app.get("/kippen/flocks/<int:flock_id>")
+    @login_required
+    def flocks_detail(flock_id: int):
+        flock = _repositories().flocks.get_flock_by_id(flock_id)
+        if flock is None:
+            abort(404)
+
+        return render_template("flock_detail.html", flock=flock, end_date_error=None)
+
+    @app.get("/kippen/flocks/<int:flock_id>/edit")
+    @login_required
+    def flocks_edit(flock_id: int):
+        flock = _repositories().flocks.get_flock_by_id(flock_id)
+        if flock is None:
+            abort(404)
+
+        return render_template(
+            "flock_form.html",
+            title="Koppel aanpassen",
+            values=flocks.values_from_flock(flock),
+            errors={},
+            action_url=url_for("flocks_edit_post", flock_id=flock.id),
+            submit_label="Wijzigingen opslaan",
+        )
+
+    @app.post("/kippen/flocks/<int:flock_id>/edit")
+    @login_required
+    def flocks_edit_post(flock_id: int):
+        repositories = _repositories()
+        existing_flock = repositories.flocks.get_flock_by_id(flock_id)
+        if existing_flock is None:
+            abort(404)
+
+        flock, errors, values = flocks.build_flock_from_form(
+            request.form,
+            existing_flock=existing_flock,
+        )
+        if errors or flock is None:
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_edit_post", flock_id=flock_id),
+                    submit_label="Wijzigingen opslaan",
+                ),
+                400,
+            )
+
+        try:
+            saved_flock = repositories.flocks.update_flock(flock_id, flock)
+        except ValueError as exc:
+            errors["form"] = str(exc)
+            return (
+                render_template(
+                    "flock_form.html",
+                    title="Koppel aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("flocks_edit_post", flock_id=flock_id),
+                    submit_label="Wijzigingen opslaan",
+                ),
+                400,
+            )
+
+        if saved_flock is None:
+            abort(404)
+
+        flash("Koppel aangepast.", "success")
+        return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
+
+    @app.post("/kippen/flocks/<int:flock_id>/archive")
+    @login_required
+    def flocks_archive(flock_id: int):
+        flock = _repositories().flocks.archive_flock(flock_id)
+        if flock is None:
+            abort(404)
+
+        flash("Koppel gearchiveerd.", "success")
+        return redirect(url_for("flocks_detail", flock_id=flock.id))
+
+    @app.post("/kippen/flocks/<int:flock_id>/end-date")
+    @login_required
+    def flocks_set_end_date(flock_id: int):
+        repositories = _repositories()
+        flock = repositories.flocks.get_flock_by_id(flock_id)
+        if flock is None:
+            abort(404)
+
+        end_date, errors, _ = flocks.parse_end_date(request.form)
+        if errors or end_date is None:
+            return (
+                render_template(
+                    "flock_detail.html",
+                    flock=flock,
+                    end_date_error=errors.get("end_date"),
+                ),
+                400,
+            )
+
+        try:
+            saved_flock = repositories.flocks.end_flock(flock_id, end_date)
+        except ValueError as exc:
+            return (
+                render_template(
+                    "flock_detail.html",
+                    flock=flock,
+                    end_date_error=str(exc),
+                ),
+                400,
+            )
+
+        if saved_flock is None:
+            abort(404)
+
+        flash("Einddatum opgeslagen.", "success")
+        return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
+
     @app.get("/kippen/daily/new")
     @login_required
     def daily_new():
+        repositories = _repositories()
         registration_date = _get_requested_date()
+        active_flock = repositories.flocks.get_active_flock_for_date(registration_date)
         return render_template(
             "daily_form.html",
             title="Dagregistratie invullen",
@@ -78,7 +262,12 @@ def create_app(session_factory=None) -> Flask:
             errors={},
             action_url=url_for("daily_new_post"),
             submit_label="Opslaan",
-            dead_hens_count=_repositories().dead_hens.count_for_date(registration_date),
+            dead_hens_count=repositories.dead_hens.count_for_date(registration_date),
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(
+                active_flock,
+                registration_date,
+            ),
         )
 
     @app.post("/kippen/daily/new")
@@ -102,10 +291,40 @@ def create_app(session_factory=None) -> Flask:
                         repositories.dead_hens,
                         values,
                     ),
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "daily_form.html",
+                    title="Dagregistratie invullen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("daily_new_post"),
+                    submit_label="Opslaan",
+                    dead_hens_count=_dead_hens_count_for_values(
+                        repositories.dead_hens,
+                        values,
+                    ),
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
         repositories.daily.upsert_daily_registration(registration)
         flash("Dagregistratie opgeslagen.", "success")
         return redirect(url_for("dashboard"))
@@ -128,6 +347,14 @@ def create_app(session_factory=None) -> Flask:
             dead_hens_count=repositories.dead_hens.count_for_date(
                 registration.registration_date,
                 house_id=registration.house_id,
+            ),
+            active_flock=repositories.flocks.get_active_flock_for_date(
+                registration.registration_date,
+                house_id=registration.house_id,
+            ),
+            active_flock_age=_flock_age_for_registration(
+                repositories.flocks,
+                registration,
             ),
         )
 
@@ -162,10 +389,43 @@ def create_app(session_factory=None) -> Flask:
                         repositories.dead_hens,
                         values,
                     ),
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "daily_form.html",
+                    title="Dagregistratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "daily_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    dead_hens_count=_dead_hens_count_for_values(
+                        repositories.dead_hens,
+                        values,
+                    ),
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
         saved_registration = repositories.daily.update_daily_registration(
             registration_id,
             registration,
@@ -179,6 +439,8 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/dead-hens/new")
     @login_required
     def dead_hens_new():
+        today = date.today()
+        active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "dead_hen_form.html",
             values=dead_hens.default_values(datetime.now()),
@@ -187,6 +449,8 @@ def create_app(session_factory=None) -> Flask:
             walkways=dead_hens.WALKWAYS,
             found_places=dead_hens.FOUND_PLACES,
             action_url=url_for("dead_hens_new_post"),
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(active_flock, today),
         )
 
     @app.post("/kippen/dead-hens/new")
@@ -207,10 +471,42 @@ def create_app(session_factory=None) -> Flask:
                     walkways=dead_hens.WALKWAYS,
                     found_places=dead_hens.FOUND_PLACES,
                     action_url=url_for("dead_hens_new_post"),
+                    active_flock=_active_flock_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "found_at",
+                    ),
+                    active_flock_age=_active_flock_age_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "found_at",
+                    ),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.found_at.date(),
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "dead_hen_form.html",
+                    values=values,
+                    errors=errors,
+                    stable_sides=dead_hens.STABLE_SIDES,
+                    walkways=dead_hens.WALKWAYS,
+                    found_places=dead_hens.FOUND_PLACES,
+                    action_url=url_for("dead_hens_new_post"),
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
         repositories.dead_hens.create_dead_hen_registration(registration)
         flash("Dode hen registratie opgeslagen.", "success")
         return redirect(url_for("dead_hens_list"))
@@ -238,11 +534,15 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/outside-nest-rounds/new")
     @login_required
     def outside_nest_rounds_new():
+        today = date.today()
+        active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "outside_nest_round_form.html",
             values=outside_nest.default_values(datetime.now()),
             errors={},
             action_url=url_for("outside_nest_rounds_new_post"),
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(active_flock, today),
         )
 
     @app.post("/kippen/outside-nest-rounds/new")
@@ -260,10 +560,39 @@ def create_app(session_factory=None) -> Flask:
                     values=values,
                     errors=errors,
                     action_url=url_for("outside_nest_rounds_new_post"),
+                    active_flock=_active_flock_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "round_at",
+                    ),
+                    active_flock_age=_active_flock_age_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "round_at",
+                    ),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            egg_round.round_at.date(),
+            house_id=egg_round.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(egg_round.house_id)
+            return (
+                render_template(
+                    "outside_nest_round_form.html",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("outside_nest_rounds_new_post"),
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        egg_round.flock_id = active_flock.id
         repositories.outside_nest_rounds.create_outside_nest_egg_round(egg_round)
         flash("Buitennest ronde opgeslagen.", "success")
         return redirect(url_for("outside_nest_rounds_list"))
@@ -349,11 +678,17 @@ def create_app(session_factory=None) -> Flask:
     @login_required
     def raw_records_csv(record_type: str):
         repositories = _repositories()
+        flocks_by_id = _flocks_by_id(repositories.flocks)
         if record_type == "daily":
             output = exports.records_csv(
                 [
                     "id",
                     "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
                     "registration_date",
                     "weekday",
                     "first_quality_eggs",
@@ -368,6 +703,12 @@ def create_app(session_factory=None) -> Flask:
                     [
                         item.id,
                         item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.registration_date,
+                        ),
                         item.registration_date,
                         item.weekday,
                         item.first_quality_eggs,
@@ -386,6 +727,11 @@ def create_app(session_factory=None) -> Flask:
                 [
                     "id",
                     "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
                     "found_at",
                     "count",
                     "stable_side",
@@ -400,6 +746,12 @@ def create_app(session_factory=None) -> Flask:
                     [
                         item.id,
                         item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.found_at.date(),
+                        ),
                         item.found_at,
                         item.count,
                         item.stable_side,
@@ -418,6 +770,11 @@ def create_app(session_factory=None) -> Flask:
                 [
                     "id",
                     "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
                     "round_at",
                     "egg_count",
                     "notes",
@@ -427,6 +784,12 @@ def create_app(session_factory=None) -> Flask:
                     [
                         item.id,
                         item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.round_at.date(),
+                        ),
                         item.round_at,
                         item.egg_count,
                         item.notes,
@@ -501,6 +864,7 @@ class LayingHensRepositories:
     """Small container for laying hens repositories."""
 
     def __init__(self, session_factory):
+        self.flocks = FlocksRepository(session_factory)
         self.daily = DailyLayingRegistrationsRepository(session_factory)
         self.dead_hens = DeadHenRegistrationsRepository(session_factory)
         self.outside_nest_rounds = OutsideNestEggRoundsRepository(session_factory)
@@ -536,6 +900,91 @@ def _dead_hens_count_for_values(
     )
 
 
+def _active_flock_for_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+):
+    try:
+        registration_date = date.fromisoformat(values.get("registration_date", ""))
+    except ValueError:
+        return None
+
+    return repository.get_active_flock_for_date(
+        registration_date,
+        house_id=values.get("house_id", "main") or "main",
+    )
+
+
+def _active_flock_age_for_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+):
+    try:
+        registration_date = date.fromisoformat(values.get("registration_date", ""))
+    except ValueError:
+        return None
+
+    active_flock = repository.get_active_flock_for_date(
+        registration_date,
+        house_id=values.get("house_id", "main") or "main",
+    )
+    return flock_age.flock_age_context(active_flock, registration_date)
+
+
+def _active_flock_for_datetime_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+    field_name: str,
+):
+    try:
+        registration_datetime = datetime.fromisoformat(values.get(field_name, ""))
+    except ValueError:
+        return None
+
+    return repository.get_active_flock_for_date(
+        registration_datetime.date(),
+        house_id=values.get("house_id", "main") or "main",
+    )
+
+
+def _active_flock_age_for_datetime_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+    field_name: str,
+):
+    try:
+        registration_datetime = datetime.fromisoformat(values.get(field_name, ""))
+    except ValueError:
+        return None
+
+    active_flock = repository.get_active_flock_for_date(
+        registration_datetime.date(),
+        house_id=values.get("house_id", "main") or "main",
+    )
+    return flock_age.flock_age_context(active_flock, registration_datetime.date())
+
+
+def _flock_age_for_registration(
+    repository: FlocksRepository,
+    registration,
+):
+    if registration.flock_id is None:
+        return None
+
+    active_flock = repository.get_flock_by_id(registration.flock_id)
+    if active_flock is None:
+        return None
+
+    return flock_age.flock_age_context(active_flock, registration.registration_date)
+
+
+def _missing_active_flock_message(house_id: str) -> str:
+    return (
+        "Geen actief koppel gevonden voor deze datum in stal "
+        f"{house_id}. Maak eerst een actief koppel aan."
+    )
+
+
 def _week_days(year: int, week: int) -> Optional[list[date]]:
     try:
         first_day = date.fromisocalendar(year, week, 1)
@@ -562,14 +1011,23 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
     registrations_by_date = {
         registration.registration_date: registration for registration in registrations
     }
+    flocks_by_id = _flocks_by_id(repositories.flocks)
     rows = []
     for day in week_days:
         registration = registrations_by_date.get(day)
+        active_flock = _flock_for_week_row(
+            repositories.flocks,
+            flocks_by_id,
+            day,
+            registration,
+        )
         rows.append(
             {
                 "date": day,
                 "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
                 "registration": registration,
+                "flock": active_flock,
+                "flock_age": flock_age.flock_age_context(active_flock, day),
                 "dead_hens_count": repositories.dead_hens.count_for_date(day),
                 "outside_nest_egg_count": (
                     repositories.outside_nest_rounds.count_for_date(day)
@@ -578,6 +1036,48 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         )
 
     return rows
+
+
+def _flocks_by_id(repository: FlocksRepository):
+    return {
+        flock.id: flock for flock in repository.list_flocks() if flock.id is not None
+    }
+
+
+def _flock_for_week_row(
+    repository: FlocksRepository,
+    flocks_by_id: dict[int, object],
+    target_date: date,
+    registration,
+):
+    if registration is not None and registration.flock_id is not None:
+        return flocks_by_id.get(registration.flock_id)
+
+    return repository.get_active_flock_for_date(target_date)
+
+
+def _raw_flock_context_values(
+    flocks_by_id: dict[int, object],
+    flock_id: Optional[int],
+    target_date: date,
+) -> list[object]:
+    if flock_id is None:
+        return ["", "", "", ""]
+
+    flock = flocks_by_id.get(flock_id)
+    if flock is None:
+        return ["", "", "", ""]
+
+    age_context = flock_age.flock_age_context(flock, target_date)
+    if age_context is None:
+        return [flock.flock_name, flock.date_of_birth, "", ""]
+
+    return [
+        flock.flock_name,
+        flock.date_of_birth,
+        age_context["weeks"],
+        age_context["days"],
+    ]
 
 
 def _week_totals(rows: list[dict[str, object]]) -> dict[str, float]:

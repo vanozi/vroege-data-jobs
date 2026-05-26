@@ -59,6 +59,20 @@
   <a class="button is-warning" href="{{ url_for('dead_hens_new') }}">Dode hen registreren</a>
   <a class="button is-info" href="{{ url_for('outside_nest_rounds_new') }}">Buitennest ronde registreren</a>
   <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
+  <a class="button is-light" href="{{ url_for('flocks_list') }}">Koppels beheren</a>
+</div>
+
+<div class="notification is-light">
+  <strong>Actief koppel:</strong>
+  {% if active_flock %}
+  <a href="{{ url_for('flocks_detail', flock_id=active_flock.id) }}">{{ active_flock.flock_name }}</a>
+  sinds {{ active_flock.placement_date }}
+  {% if active_flock_age %}
+  &middot; leeftijd {{ active_flock_age.label }} &middot; dag {{ active_flock_age.total_days }}
+  {% endif %}
+  {% else %}
+  nog geen actief koppel geregistreerd.
+  {% endif %}
 </div>
 
 <div class="buttons are-small">

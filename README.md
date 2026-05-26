@@ -253,6 +253,11 @@ Run database migrations:
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
 ```
 
+The flock-management migration creates the `flocks` table and makes
+`flock_id` required for Kippen daily, dead-hen, and outside-nest registrations.
+It intentionally deletes existing rows in those three registration tables,
+because new registrations must belong to the active flock for their date.
+
 Run dry runs before writing data:
 
 ```powershell
@@ -492,11 +497,34 @@ directly to the app, and the Flask root route redirects to `/kippen`.
 Useful routes:
 
 - `/kippen/dashboard`: overview after login.
+- `/kippen/flocks`: flock management.
+- `/kippen/flocks/new`: create a flock.
 - `/kippen/daily/new`: daily laying calendar entry.
 - `/kippen/dead-hens/new`: dead hen registration.
 - `/kippen/outside-nest-rounds/new`: outside-nest egg round.
 - `/kippen/week`: current week overview.
 - `/kippen/week/<year>/<week>`: specific ISO week overview.
+
+Flock workflow:
+
+1. Run database migrations before using the Kippen app.
+2. Log in to `/kippen`.
+3. Open **Koppels beheren**.
+4. Create the active flock with a name, date of birth, placement date, and bird
+   count.
+5. Leave `Einddatum` empty while the flock is still active.
+6. Enter daily registrations, dead-hen registrations, and outside-nest rounds.
+
+Registrations are only accepted when there is an active flock in the same house
+for the registration date. For now the app uses one house, `main`. Future houses
+can have overlapping flock dates, but one house cannot have overlapping active
+flocks. When a flock leaves the house, set its `Einddatum` from the flock detail
+page. Use **Koppel archiveren** only when the flock should no longer be used for
+new registrations.
+
+The dashboard and registration pages show the active flock plus bird age in
+weeks, days, and total days. Weekly overviews and exports include flock context
+and age for each day.
 
 Weekly exports:
 
@@ -509,6 +537,9 @@ Raw CSV exports:
 - `/kippen/export/dead-hens.csv`: dead hen registrations.
 - `/kippen/export/outside-nest-rounds.csv`: outside-nest egg rounds.
 
+Raw CSV exports include `flock_id`, `flock_name`, `flock_date_of_birth`,
+`flock_age_weeks`, and `flock_age_days`.
+
 Example:
 
 ```text
@@ -516,9 +547,10 @@ https://kippen.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
 ```
 
 Backups are database-level. The PostgreSQL backup command above includes the
-Kippen tables (`daily_laying_registrations`, `dead_hen_registrations`, and
-`outside_nest_egg_rounds`). For operational exports that can be opened directly
-in Excel, use the weekly Excel export and raw CSV links in the app.
+Kippen tables (`flocks`, `daily_laying_registrations`,
+`dead_hen_registrations`, and `outside_nest_egg_rounds`). For operational
+exports that can be opened directly in Excel, use the weekly Excel export and
+raw CSV links in the app.
 
 ### Uniform Agri
 

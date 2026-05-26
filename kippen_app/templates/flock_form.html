@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">{{ title }}</h1>
+      <p class="subtitle">Basisgegevens en actieve periode van het koppel.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('flocks_list') }}">Terug naar koppels</a>
+  </div>
+</div>
+
+{% if errors.form %}
+<div class="notification is-danger">{{ errors.form }}</div>
+{% endif %}
+
+<form method="post" action="{{ action_url }}">
+  <input type="hidden" name="house_id" value="{{ values.house_id }}">
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="flock_name">Koppelnaam</label>
+        <div class="control">
+          <input
+            class="input {% if errors.flock_name %}is-danger{% endif %}"
+            id="flock_name"
+            name="flock_name"
+            type="text"
+            value="{{ values.flock_name }}"
+            required
+          >
+        </div>
+        {% if errors.flock_name %}
+        <p class="help is-danger">{{ errors.flock_name }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="bird_count">Aantal hennen</label>
+        <div class="control">
+          <input
+            class="input {% if errors.bird_count %}is-danger{% endif %}"
+            id="bird_count"
+            name="bird_count"
+            type="number"
+            min="0"
+            step="1"
+            value="{{ values.bird_count }}"
+            required
+          >
+        </div>
+        {% if errors.bird_count %}
+        <p class="help is-danger">{{ errors.bird_count }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="date_of_birth">Geboortedatum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.date_of_birth %}is-danger{% endif %}"
+            id="date_of_birth"
+            name="date_of_birth"
+            type="date"
+            value="{{ values.date_of_birth }}"
+            required
+          >
+        </div>
+        {% if errors.date_of_birth %}
+        <p class="help is-danger">{{ errors.date_of_birth }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="placement_date">Opzetdatum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.placement_date %}is-danger{% endif %}"
+            id="placement_date"
+            name="placement_date"
+            type="date"
+            value="{{ values.placement_date }}"
+            required
+          >
+        </div>
+        {% if errors.placement_date %}
+        <p class="help is-danger">{{ errors.placement_date }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="end_date">Einddatum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.end_date %}is-danger{% endif %}"
+            id="end_date"
+            name="end_date"
+            type="date"
+            value="{{ values.end_date }}"
+          >
+        </div>
+        {% if errors.end_date %}
+        <p class="help is-danger">{{ errors.end_date }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="breed">Ras</label>
+    <div class="control">
+      <input
+        class="input"
+        id="breed"
+        name="breed"
+        type="text"
+        value="{{ values.breed }}"
+      >
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="notes">Opmerkingen</label>
+    <div class="control">
+      <textarea class="textarea" id="notes" name="notes" rows="4">{{ values.notes }}</textarea>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="button is-link" type="submit">{{ submit_label }}</button>
+    <a class="button is-light" href="{{ url_for('flocks_list') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

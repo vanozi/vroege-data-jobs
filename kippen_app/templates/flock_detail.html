@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}{{ flock.flock_name }} | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">{{ flock.flock_name }}</h1>
+      <p class="subtitle">Koppelgegevens voor stal {{ flock.house_id }}.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-link" href="{{ url_for('flocks_edit', flock_id=flock.id) }}">Bewerken</a>
+      <a class="button is-light" href="{{ url_for('flocks_list') }}">Terug naar koppels</a>
+    </div>
+  </div>
+</div>
+
+<div class="columns">
+  <div class="column">
+    <div class="box">
+      <p class="heading">Status</p>
+      <p class="title is-5">
+        {% if flock.is_active and not flock.archived_at %}Actief{% else %}Gearchiveerd{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Aantal hennen</p>
+      <p class="title is-5">{{ flock.bird_count }}</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Periode</p>
+      <p class="title is-6">
+        {{ flock.placement_date }} -
+        {% if flock.end_date %}{{ flock.end_date }}{% else %}open{% endif %}
+      </p>
+    </div>
+  </div>
+</div>
+
+<table class="table is-fullwidth">
+  <tbody>
+    <tr>
+      <th>Geboortedatum</th>
+      <td>{{ flock.date_of_birth }}</td>
+    </tr>
+    <tr>
+      <th>Opzetdatum</th>
+      <td>{{ flock.placement_date }}</td>
+    </tr>
+    <tr>
+      <th>Einddatum</th>
+      <td>{% if flock.end_date %}{{ flock.end_date }}{% else %}-{% endif %}</td>
+    </tr>
+    <tr>
+      <th>Ras</th>
+      <td>{% if flock.breed %}{{ flock.breed }}{% else %}-{% endif %}</td>
+    </tr>
+    <tr>
+      <th>Opmerkingen</th>
+      <td>{% if flock.notes %}{{ flock.notes }}{% else %}-{% endif %}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="columns">
+  <div class="column">
+    <h2 class="title is-5">Einddatum instellen</h2>
+    <form method="post" action="{{ url_for('flocks_set_end_date', flock_id=flock.id) }}">
+      <div class="field">
+        <label class="label" for="end_date">Einddatum</label>
+        <div class="control">
+          <input
+            class="input {% if end_date_error %}is-danger{% endif %}"
+            id="end_date"
+            name="end_date"
+            type="date"
+            value="{% if flock.end_date %}{{ flock.end_date }}{% endif %}"
+            required
+          >
+        </div>
+        {% if end_date_error %}
+        <p class="help is-danger">{{ end_date_error }}</p>
+        {% endif %}
+      </div>
+      <button class="button is-warning" type="submit">Einddatum opslaan</button>
+    </form>
+  </div>
+  <div class="column">
+    <h2 class="title is-5">Archiveren</h2>
+    <p class="mb-3">Archiveer het koppel wanneer het niet meer gebruikt mag worden voor nieuwe registraties.</p>
+    {% if flock.is_active and not flock.archived_at %}
+    <form method="post" action="{{ url_for('flocks_archive', flock_id=flock.id) }}">
+      <button class="button is-danger" type="submit">Koppel archiveren</button>
+    </form>
+    {% else %}
+    <button class="button is-light" type="button" disabled>Al gearchiveerd</button>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
