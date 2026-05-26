@@ -382,7 +382,7 @@ def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
     assert "2026-05-26" in response.text
     assert "Dinsdag" in response.text
     assert "Actief koppel" in response.text
-    assert "33 weken en 6 dagen" in response.text
+    assert "33 weken en 5 dagen" in response.text
 
 
 def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
@@ -536,7 +536,7 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     assert "Week 22" in response.text
     assert "2026-05-26" in response.text
     assert "Actief koppel" in response.text
-    assert "33 weken en 6 dagen" in response.text
+    assert "33 weken en 5 dagen" in response.text
     assert "105" in response.text
 
 
@@ -840,7 +840,7 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     assert "Koppel" in headers
     assert "Leeftijd" in headers
     assert "Actief koppel" in row
-    assert "33 weken en 6 dagen" in row
+    assert "33 weken en 5 dagen" in row
 
 
 def test_week_pdf_export_downloads_pdf(monkeypatch):

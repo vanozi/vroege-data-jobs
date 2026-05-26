@@ -9,7 +9,7 @@ from database.models.laying_hens import Flock
 
 @dataclass(frozen=True)
 class BirdAge:
-    """Bird age expressed in total days, full weeks, and remaining days."""
+    """Official laying curve age in days, full weeks, and remaining days."""
 
     total_days: int
     weeks: int
@@ -17,13 +17,14 @@ class BirdAge:
 
 
 def calculate_bird_age(date_of_birth: date, target_date: date) -> BirdAge:
-    """Return bird age on a target date."""
-    total_days = (target_date - date_of_birth).days
-    if total_days < 0:
+    """Return official laying curve age on a target date."""
+    elapsed_days = (target_date - date_of_birth).days
+    if elapsed_days < 0:
         raise ValueError("Target date cannot be before date of birth.")
 
-    weeks, days = divmod(total_days, 7)
-    return BirdAge(total_days=total_days, weeks=weeks, days=days)
+    curve_day = max(elapsed_days - 1, 0)
+    weeks, days = divmod(curve_day, 7)
+    return BirdAge(total_days=curve_day, weeks=weeks, days=days)
 
 
 def calculate_flock_age(flock: Flock, target_date: date) -> BirdAge:
