@@ -172,13 +172,15 @@ PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en k
 
 The repository includes a standalone [`docker-compose.yml`](docker-compose.yml)
 with its own Traefik proxy, PostgreSQL database, Flask portal, Marimo
-klauwgezondheid dashboard, Alembic migration runner, and datajob containers. It
-does not depend on another Compose project.
+klauwgezondheid dashboard, Kippen registratie app, Alembic migration runner,
+and datajob containers. It does not depend on another Compose project.
 
 The services use separate Dockerfiles and dependency files:
 
 - [`docker/portal/Dockerfile`](docker/portal/Dockerfile): Flask portal and
   Gunicorn.
+- [`docker/kippen/Dockerfile`](docker/kippen/Dockerfile): Kippen registratie
+  Flask app and Gunicorn.
 - [`docker/marimo/Dockerfile`](docker/marimo/Dockerfile): Marimo dashboard and
   dashboard data dependencies.
 - [`docker/database/Dockerfile`](docker/database/Dockerfile): Alembic migration
@@ -191,6 +193,7 @@ endpoint. Direct access to the Marimo route without a valid portal session
 returns unauthorized. The Marimo web app manifest at
 `/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
 may fetch manifests without session cookies; it does not expose dashboard data.
+The Kippen registratie app at `/kippen` has its own Flask login session.
 
 ### Local quickstart
 
@@ -210,6 +213,9 @@ Set at least these values in `deploy/dashboard.env`:
 PORTAL_SECRET_KEY=change-me
 PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
+KIPPEN_APP_SECRET_KEY=change-me
+KIPPEN_APP_ADMIN_USERNAME=admin
+KIPPEN_APP_ADMIN_PASSWORD_HASH=...
 DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/gebroeders_vroege
 KLAUWSCORE_USERNAME=...
 KLAUWSCORE_PASSWORD=...
@@ -231,6 +237,9 @@ Create a portal password hash:
 ```powershell
 .\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
 ```
+
+Use the same command for `KIPPEN_APP_ADMIN_PASSWORD_HASH` if the Kippen app
+should use the same password.
 
 Start the local stack:
 
