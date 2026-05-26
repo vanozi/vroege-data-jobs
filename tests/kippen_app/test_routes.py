@@ -8,6 +8,7 @@ from werkzeug import security
 
 from database.models.laying_hens import DailyLayingRegistration
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import OutsideNestEggRound
 from kippen_app.app import create_app
 
 
@@ -43,6 +44,15 @@ def test_index_redirects_to_dashboard(monkeypatch):
 
     assert response.status_code == 302
     assert response.headers["Location"] == "/kippen/dashboard"
+
+
+def test_root_redirects_to_kippen(monkeypatch):
+    client, _ = _client(monkeypatch)
+
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen"
 
 
 def test_dashboard_redirects_to_login_without_session(monkeypatch):
@@ -379,3 +389,158 @@ def test_dead_hen_counts_are_visible_in_daily_dashboard_and_week(monkeypatch):
     assert week_response.status_code == 200
     assert "Week totaal" in week_response.text
     assert ">3<" in week_response.text
+
+
+def test_outside_nest_round_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/outside-nest-rounds/new")
+
+    assert response.status_code == 200
+    assert "Buitennest ronde registreren" in response.text
+    assert "Aantal eieren" in response.text
+
+
+def test_outside_nest_round_post_saves_round(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T10:30",
+            "egg_count": "12",
+            "notes": "Ochtendronde",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/outside-nest-rounds"
+    with Session(engine) as session:
+        egg_round = session.exec(select(OutsideNestEggRound)).one()
+
+    assert egg_round.egg_count == 12
+    assert egg_round.notes == "Ochtendronde"
+    assert egg_round.registered_by == "admin"
+
+
+def test_outside_nest_round_post_validates_negative_egg_count(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T10:30",
+            "egg_count": "-1",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Aantal eieren mag niet negatief zijn." in response.text
+
+
+def test_outside_nest_rounds_list_shows_recent_rounds(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T10:30",
+            "egg_count": "12",
+            "notes": "Ochtendronde",
+        },
+    )
+
+    response = client.get("/kippen/outside-nest-rounds")
+
+    assert response.status_code == 200
+    assert "26-05-2026 10:30" in response.text
+    assert "Ochtendronde" in response.text
+
+
+def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T10:30",
+            "egg_count": "12",
+        },
+    )
+    client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T15:00",
+            "egg_count": "8",
+        },
+    )
+
+    dashboard_response = client.get("/kippen/dashboard")
+    week_response = client.get("/kippen/week/2026/22")
+
+    assert dashboard_response.status_code == 200
+    assert "Buitennest eieren vandaag" in dashboard_response.text
+    assert ">20<" in dashboard_response.text
+    assert week_response.status_code == 200
+    assert "Buitennest" in week_response.text
+    assert ">20<" in week_response.text
+
+
+def test_week_excel_export_downloads_xlsx(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+            "water_liters": "10",
+            "feed_kg": "20",
+        },
+    )
+
+    response = client.get("/kippen/week/2026/22/export.xlsx")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "legkalender-week-2026-22.xlsx" in response.headers["Content-Disposition"]
+    assert response.data.startswith(b"PK")
+
+
+def test_week_pdf_export_downloads_pdf(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/week/2026/22/export.pdf")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("application/pdf")
+    assert "legkalender-week-2026-22.pdf" in response.headers["Content-Disposition"]
+    assert response.data.startswith(b"%PDF")
+
+
+def test_raw_daily_csv_export_downloads_csv(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+
+    response = client.get("/kippen/export/daily.csv")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert "kippen-daily.csv" in response.headers["Content-Disposition"]
+    assert "registration_date" in response.data.decode("utf-8-sig")
+    assert "2026-05-26" in response.data.decode("utf-8-sig")

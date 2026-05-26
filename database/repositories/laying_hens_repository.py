@@ -66,6 +66,17 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
                 session.expunge(registration)
             return registrations
 
+    def list_all(self) -> list[DailyLayingRegistration]:
+        """Return all daily registrations ordered by date."""
+        with self.get_session() as session:
+            statement = select(DailyLayingRegistration).order_by(
+                DailyLayingRegistration.registration_date.asc(),
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
     def get_daily_registration_by_id(
         self,
         registration_id: int,
@@ -175,6 +186,17 @@ class DeadHenRegistrationsRepository(BaseRepository[DeadHenRegistration]):
                 session.expunge(registration)
             return registrations
 
+    def list_all(self) -> list[DeadHenRegistration]:
+        """Return all dead hen registrations ordered by found time."""
+        with self.get_session() as session:
+            statement = select(DeadHenRegistration).order_by(
+                DeadHenRegistration.found_at.asc(),
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
     def count_for_date(
         self,
         registration_date: date,
@@ -208,7 +230,31 @@ class OutsideNestEggRoundsRepository(BaseRepository[OutsideNestEggRound]):
         if isinstance(round_data, OutsideNestEggRound):
             round_data = round_data.model_dump()
 
-        return self.create(round_data)
+        normalized_data = self._normalize_model_data(round_data)
+        with self.get_session() as session:
+            egg_round = OutsideNestEggRound(**normalized_data)
+            session.add(egg_round)
+            session.flush()
+            session.refresh(egg_round)
+            session.expunge(egg_round)
+            return egg_round
+
+    def get_outside_nest_egg_round_by_id(
+        self,
+        round_id: int,
+    ) -> Optional[OutsideNestEggRound]:
+        """Return one outside-nest egg round by primary key."""
+        with self.get_session() as session:
+            egg_round = session.get(OutsideNestEggRound, round_id)
+            if egg_round is None:
+                return None
+
+            session.expunge(egg_round)
+            return egg_round
+
+    def delete_outside_nest_egg_round(self, round_id: int) -> bool:
+        """Delete one outside-nest egg round by primary key."""
+        return self.delete(round_id)
 
     def list_recent(self, *, limit: int = 10) -> list[OutsideNestEggRound]:
         """Return recent outside-nest egg rounds."""
@@ -222,3 +268,32 @@ class OutsideNestEggRoundsRepository(BaseRepository[OutsideNestEggRound]):
             for egg_round in rounds:
                 session.expunge(egg_round)
             return rounds
+
+    def list_all(self) -> list[OutsideNestEggRound]:
+        """Return all outside-nest egg rounds ordered by round time."""
+        with self.get_session() as session:
+            statement = select(OutsideNestEggRound).order_by(
+                OutsideNestEggRound.round_at.asc(),
+            )
+            rounds = list(session.exec(statement).all())
+            for egg_round in rounds:
+                session.expunge(egg_round)
+            return rounds
+
+    def count_for_date(
+        self,
+        registration_date: date,
+        *,
+        house_id: str = "main",
+    ) -> int:
+        """Return outside-nest egg count for one house/date."""
+        day_start = datetime.combine(registration_date, datetime.min.time())
+        day_end = datetime.combine(registration_date, datetime.max.time())
+        with self.get_session() as session:
+            statement = select(OutsideNestEggRound).where(
+                OutsideNestEggRound.house_id == house_id,
+                OutsideNestEggRound.round_at >= day_start,
+                OutsideNestEggRound.round_at <= day_end,
+            )
+            rounds = session.exec(statement).all()
+            return sum(egg_round.egg_count for egg_round in rounds)

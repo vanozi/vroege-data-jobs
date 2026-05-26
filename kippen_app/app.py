@@ -6,6 +6,7 @@ from typing import Optional
 
 from flask import Flask, abort, current_app, flash, redirect, render_template
 from flask import request, session, url_for
+from flask import send_file
 
 from database import database
 from database.repositories.laying_hens_repository import (
@@ -17,6 +18,8 @@ from kippen_app import auth
 from kippen_app import config
 from kippen_app import daily
 from kippen_app import dead_hens
+from kippen_app import exports
+from kippen_app import outside_nest
 
 
 def create_app(session_factory=None) -> Flask:
@@ -39,6 +42,10 @@ def create_app(session_factory=None) -> Flask:
     def index():
         return redirect(url_for("dashboard"))
 
+    @app.get("/")
+    def root_index():
+        return redirect(url_for("index"))
+
     @app.get("/kippen/dashboard")
     @login_required
     def dashboard():
@@ -50,6 +57,9 @@ def create_app(session_factory=None) -> Flask:
             today=today,
             today_registration=today_registration,
             dead_hens_today=repositories.dead_hens.count_for_date(today),
+            outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
+                today,
+            ),
             recent_daily_registrations=repositories.daily.list_recent(limit=7),
             recent_dead_hens=repositories.dead_hens.list_recent(limit=5),
             recent_outside_nest_rounds=repositories.outside_nest_rounds.list_recent(
@@ -225,6 +235,59 @@ def create_app(session_factory=None) -> Flask:
         flash("Dode hen registratie verwijderd.", "success")
         return redirect(url_for("dead_hens_list"))
 
+    @app.get("/kippen/outside-nest-rounds/new")
+    @login_required
+    def outside_nest_rounds_new():
+        return render_template(
+            "outside_nest_round_form.html",
+            values=outside_nest.default_values(datetime.now()),
+            errors={},
+            action_url=url_for("outside_nest_rounds_new_post"),
+        )
+
+    @app.post("/kippen/outside-nest-rounds/new")
+    @login_required
+    def outside_nest_rounds_new_post():
+        repositories = _repositories()
+        egg_round, errors, values = outside_nest.build_outside_nest_round_from_form(
+            request.form,
+            registered_by=session.get("kippen_username"),
+        )
+        if errors or egg_round is None:
+            return (
+                render_template(
+                    "outside_nest_round_form.html",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("outside_nest_rounds_new_post"),
+                ),
+                400,
+            )
+
+        repositories.outside_nest_rounds.create_outside_nest_egg_round(egg_round)
+        flash("Buitennest ronde opgeslagen.", "success")
+        return redirect(url_for("outside_nest_rounds_list"))
+
+    @app.get("/kippen/outside-nest-rounds")
+    @login_required
+    def outside_nest_rounds_list():
+        return render_template(
+            "outside_nest_rounds.html",
+            rounds=_repositories().outside_nest_rounds.list_recent(limit=100),
+        )
+
+    @app.post("/kippen/outside-nest-rounds/<int:round_id>/delete")
+    @login_required
+    def outside_nest_rounds_delete(round_id: int):
+        deleted = _repositories().outside_nest_rounds.delete_outside_nest_egg_round(
+            round_id,
+        )
+        if not deleted:
+            abort(404)
+
+        flash("Buitennest ronde verwijderd.", "success")
+        return redirect(url_for("outside_nest_rounds_list"))
+
     @app.get("/kippen/week")
     @login_required
     def week_current():
@@ -234,27 +297,7 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/week/<int:year>/<int:week>")
     @login_required
     def week_overview(year: int, week: int):
-        week_days = _week_days(year, week)
-        if week_days is None:
-            abort(404)
-
-        repositories = _repositories()
-        registrations = repositories.daily.list_between(week_days[0], week_days[-1])
-        registrations_by_date = {
-            registration.registration_date: registration
-            for registration in registrations
-        }
-        rows = []
-        for day in week_days:
-            registration = registrations_by_date.get(day)
-            rows.append(
-                {
-                    "date": day,
-                    "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
-                    "registration": registration,
-                    "dead_hens_count": repositories.dead_hens.count_for_date(day),
-                }
-            )
+        rows = _week_rows(year, week)
 
         return render_template(
             "week.html",
@@ -264,6 +307,142 @@ def create_app(session_factory=None) -> Flask:
             next_week=_offset_week(year, week, 1),
             rows=rows,
             totals=_week_totals(rows),
+        )
+
+    @app.get("/kippen/week/<int:year>/<int:week>/export.xlsx")
+    @login_required
+    def week_export_xlsx(year: int, week: int):
+        rows = _week_rows(year, week)
+        output = exports.weekly_calendar_xlsx(
+            year=year,
+            week=week,
+            rows=rows,
+            totals=_week_totals(rows),
+        )
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"legkalender-week-{year}-{week:02d}.xlsx",
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+
+    @app.get("/kippen/week/<int:year>/<int:week>/export.pdf")
+    @login_required
+    def week_export_pdf(year: int, week: int):
+        rows = _week_rows(year, week)
+        output = exports.weekly_calendar_pdf(
+            year=year,
+            week=week,
+            rows=rows,
+            totals=_week_totals(rows),
+        )
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"legkalender-week-{year}-{week:02d}.pdf",
+            mimetype="application/pdf",
+        )
+
+    @app.get("/kippen/export/<record_type>.csv")
+    @login_required
+    def raw_records_csv(record_type: str):
+        repositories = _repositories()
+        if record_type == "daily":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "registration_date",
+                    "weekday",
+                    "first_quality_eggs",
+                    "second_quality_eggs",
+                    "total_eggs",
+                    "water_liters",
+                    "feed_kg",
+                    "notes",
+                    "created_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.registration_date,
+                        item.weekday,
+                        item.first_quality_eggs,
+                        item.second_quality_eggs,
+                        item.total_eggs,
+                        item.water_liters,
+                        item.feed_kg,
+                        item.notes,
+                        item.created_by,
+                    ]
+                    for item in repositories.daily.list_all()
+                ],
+            )
+        elif record_type == "dead-hens":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "found_at",
+                    "count",
+                    "stable_side",
+                    "section_number",
+                    "walkway",
+                    "found_place",
+                    "suspected_cause",
+                    "observations",
+                    "registered_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.found_at,
+                        item.count,
+                        item.stable_side,
+                        item.section_number,
+                        item.walkway,
+                        item.found_place,
+                        item.suspected_cause,
+                        item.observations,
+                        item.registered_by,
+                    ]
+                    for item in repositories.dead_hens.list_all()
+                ],
+            )
+        elif record_type == "outside-nest-rounds":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "round_at",
+                    "egg_count",
+                    "notes",
+                    "registered_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.round_at,
+                        item.egg_count,
+                        item.notes,
+                        item.registered_by,
+                    ]
+                    for item in repositories.outside_nest_rounds.list_all()
+                ],
+            )
+        else:
+            abort(404)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"kippen-{record_type}.csv",
+            mimetype="text/csv",
         )
 
     @app.get("/kippen/login")
@@ -373,18 +552,48 @@ def _offset_week(year: int, week: int, offset: int) -> tuple[int, int]:
     return target_year, target_week
 
 
+def _week_rows(year: int, week: int) -> list[dict[str, object]]:
+    week_days = _week_days(year, week)
+    if week_days is None:
+        abort(404)
+
+    repositories = _repositories()
+    registrations = repositories.daily.list_between(week_days[0], week_days[-1])
+    registrations_by_date = {
+        registration.registration_date: registration for registration in registrations
+    }
+    rows = []
+    for day in week_days:
+        registration = registrations_by_date.get(day)
+        rows.append(
+            {
+                "date": day,
+                "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
+                "registration": registration,
+                "dead_hens_count": repositories.dead_hens.count_for_date(day),
+                "outside_nest_egg_count": (
+                    repositories.outside_nest_rounds.count_for_date(day)
+                ),
+            }
+        )
+
+    return rows
+
+
 def _week_totals(rows: list[dict[str, object]]) -> dict[str, float]:
     totals = {
         "first_quality_eggs": 0,
         "second_quality_eggs": 0,
         "total_eggs": 0,
         "dead_hens_count": 0,
+        "outside_nest_egg_count": 0,
         "water_liters": 0.0,
         "feed_kg": 0.0,
     }
     for row in rows:
         registration = row["registration"]
         totals["dead_hens_count"] += int(row["dead_hens_count"])
+        totals["outside_nest_egg_count"] += int(row["outside_nest_egg_count"])
         if registration is None:
             continue
 

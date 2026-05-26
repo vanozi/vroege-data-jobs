@@ -163,7 +163,7 @@ services:
       - dashboards
     labels:
       - traefik.enable=true
-      - traefik.http.routers.kippen-app.rule=Host(`${DASHBOARD_HOST}`) && PathPrefix(`/kippen`)
+      - traefik.http.routers.kippen-app.rule=(Host(`${DASHBOARD_HOST}`) && PathPrefix(`/kippen`)) || Host(`${KIPPEN_APP_HOST}`)
       - traefik.http.routers.kippen-app.entrypoints=websecure
       - traefik.http.routers.kippen-app.tls.certresolver=letsencrypt
       - traefik.http.routers.kippen-app.priority=110

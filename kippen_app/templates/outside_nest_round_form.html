@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Buitennest ronde registreren | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Buitennest ronde registreren</h1>
+      <p class="subtitle">Ronde vastleggen met datum, tijd en gevonden eieren.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('outside_nest_rounds_list') }}">Recente rondes</a>
+  </div>
+</div>
+
+<form method="post" action="{{ action_url }}">
+  <input type="hidden" name="house_id" value="{{ values.house_id }}">
+
+  <div class="columns">
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="round_at">Datum en tijd</label>
+        <div class="control">
+          <input
+            class="input {% if errors.round_at %}is-danger{% endif %}"
+            id="round_at"
+            name="round_at"
+            type="datetime-local"
+            value="{{ values.round_at }}"
+            required
+          >
+        </div>
+        {% if errors.round_at %}
+        <p class="help is-danger">{{ errors.round_at }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="egg_count">Aantal eieren</label>
+        <div class="control">
+          <input
+            class="input {% if errors.egg_count %}is-danger{% endif %}"
+            id="egg_count"
+            name="egg_count"
+            type="number"
+            min="0"
+            step="1"
+            value="{{ values.egg_count }}"
+            required
+          >
+        </div>
+        {% if errors.egg_count %}
+        <p class="help is-danger">{{ errors.egg_count }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="notes">Opmerkingen</label>
+    <div class="control">
+      <textarea class="textarea" id="notes" name="notes" rows="4">{{ values.notes }}</textarea>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="button is-info" type="submit">Opslaan</button>
+    <a class="button is-light" href="{{ url_for('dashboard') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

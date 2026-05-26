@@ -24,6 +24,18 @@
       >
         Volgende week
       </a>
+      <a
+        class="button is-success is-light"
+        href="{{ url_for('week_export_xlsx', year=year, week=week) }}"
+      >
+        Excel
+      </a>
+      <a
+        class="button is-danger is-light"
+        href="{{ url_for('week_export_pdf', year=year, week=week) }}"
+      >
+        PDF
+      </a>
       <a class="button is-link is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
     </div>
   </div>
@@ -39,6 +51,7 @@
         <th class="has-text-right">2e soort</th>
         <th class="has-text-right">Dagtotaal</th>
         <th class="has-text-right">Dode hennen</th>
+        <th class="has-text-right">Buitennest</th>
         <th class="has-text-right">Water</th>
         <th class="has-text-right">Voer</th>
         <th>Opmerkingen</th>
@@ -56,6 +69,7 @@
         <td class="has-text-right">{{ registration.second_quality_eggs }}</td>
         <td class="has-text-right">{{ registration.total_eggs }}</td>
         <td class="has-text-right">{{ row.dead_hens_count }}</td>
+        <td class="has-text-right">{{ row.outside_nest_egg_count }}</td>
         <td class="has-text-right">
           {% if registration.water_liters is not none %}{{ "%g"|format(registration.water_liters) }}{% else %}-{% endif %}
         </td>
@@ -71,6 +85,7 @@
         <td class="has-text-right">-</td>
         <td class="has-text-right">-</td>
         <td class="has-text-right">{{ row.dead_hens_count }}</td>
+        <td class="has-text-right">{{ row.outside_nest_egg_count }}</td>
         <td class="has-text-right">-</td>
         <td class="has-text-right">-</td>
         <td></td>
@@ -88,6 +103,7 @@
         <th class="has-text-right">{{ totals.second_quality_eggs }}</th>
         <th class="has-text-right">{{ totals.total_eggs }}</th>
         <th class="has-text-right">{{ totals.dead_hens_count }}</th>
+        <th class="has-text-right">{{ totals.outside_nest_egg_count }}</th>
         <th class="has-text-right">{{ "%g"|format(totals.water_liters) }}</th>
         <th class="has-text-right">{{ "%g"|format(totals.feed_kg) }}</th>
         <th colspan="2"></th>

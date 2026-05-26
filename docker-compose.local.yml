@@ -39,7 +39,7 @@ services:
       KIPPEN_APP_COOKIE_SECURE: "false"
     labels: !override
       - traefik.enable=true
-      - traefik.http.routers.kippen-app.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/kippen`)
+      - traefik.http.routers.kippen-app.rule=((Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/kippen`)) || Host(`kippen.localhost`)
       - traefik.http.routers.kippen-app.entrypoints=web
       - traefik.http.routers.kippen-app.priority=110
       - traefik.http.routers.kippen-app.service=kippen-app

@@ -275,6 +275,8 @@ Local routes:
 
 - `http://localhost/`: Flask portal.
 - `http://localhost/kippen`: Kippen registratie app.
+- `http://kippen.localhost/`: alternative local Kippen route if your machine
+  resolves `kippen.localhost`.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
 - `http://localhost/tank-terminal`: Tanken Marimo dashboard.
 - `http://localhost:8080`: Adminer database editor.
@@ -313,6 +315,9 @@ Production routes:
 
 - `https://dashboards.gebroedersvroege.nl/`: Flask portal.
 - `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
+- `https://kippen.gebroedersvroege.nl/`: Kippen registratie app. This host
+  redirects to `/kippen`, while the existing
+  `https://dashboards.gebroedersvroege.nl/kippen` path remains available.
 
 Clone the repository somewhere owned by the deploy user, for example:
 
@@ -333,6 +338,7 @@ Set at least these values in `.env`:
 
 ```env
 DASHBOARD_HOST=dashboards.gebroedersvroege.nl
+KIPPEN_APP_HOST=kippen.gebroedersvroege.nl
 TRAEFIK_ACME_EMAIL=admin@example.nl
 POSTGRES_DB=gebroeders_vroege
 POSTGRES_USER=postgres
@@ -353,6 +359,11 @@ PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=true
+KIPPEN_APP_SECRET_KEY=change-me
+KIPPEN_APP_ADMIN_USERNAME=admin
+KIPPEN_APP_ADMIN_PASSWORD_HASH=...
+KIPPEN_APP_SESSION_HOURS=12
+KIPPEN_APP_COOKIE_SECURE=true
 DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
 KLAUWSCORE_USERNAME=...
 KLAUWSCORE_PASSWORD=...
@@ -471,6 +482,43 @@ Restore only after checking the target database:
 ```bash
 gunzip -c /opt/backups/vroege-datajobs-YYYY-MM-DD.sql.gz | docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 ```
+
+### Kippen registratie app
+
+The Kippen registratie app is served by the `kippen-app` service. Production
+uses `KIPPEN_APP_HOST=kippen.gebroedersvroege.nl`; Traefik routes that host
+directly to the app, and the Flask root route redirects to `/kippen`.
+
+Useful routes:
+
+- `/kippen/dashboard`: overview after login.
+- `/kippen/daily/new`: daily laying calendar entry.
+- `/kippen/dead-hens/new`: dead hen registration.
+- `/kippen/outside-nest-rounds/new`: outside-nest egg round.
+- `/kippen/week`: current week overview.
+- `/kippen/week/<year>/<week>`: specific ISO week overview.
+
+Weekly exports:
+
+- `/kippen/week/<year>/<week>/export.xlsx`: Excel laying calendar export.
+- `/kippen/week/<year>/<week>/export.pdf`: PDF laying calendar export.
+
+Raw CSV exports:
+
+- `/kippen/export/daily.csv`: daily laying registrations.
+- `/kippen/export/dead-hens.csv`: dead hen registrations.
+- `/kippen/export/outside-nest-rounds.csv`: outside-nest egg rounds.
+
+Example:
+
+```text
+https://kippen.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
+```
+
+Backups are database-level. The PostgreSQL backup command above includes the
+Kippen tables (`daily_laying_registrations`, `dead_hen_registrations`, and
+`outside_nest_egg_rounds`). For operational exports that can be opened directly
+in Excel, use the weekly Excel export and raw CSV links in the app.
 
 ### Uniform Agri
 

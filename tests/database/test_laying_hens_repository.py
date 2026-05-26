@@ -170,6 +170,37 @@ def test_outside_nest_egg_round_repository_creates_round():
     assert recent[0].egg_count == 12
 
 
+def test_outside_nest_egg_round_repository_counts_for_date():
+    engine = _create_test_engine()
+    repository = OutsideNestEggRoundsRepository(_session_factory(engine))
+
+    repository.create_outside_nest_egg_round(
+        OutsideNestEggRound(
+            round_at=datetime(2026, 5, 26, 9, 15),
+            egg_count=12,
+            registered_by="admin",
+        )
+    )
+    repository.create_outside_nest_egg_round(
+        OutsideNestEggRound(
+            round_at=datetime(2026, 5, 26, 15, 30),
+            egg_count=8,
+            registered_by="admin",
+        )
+    )
+    repository.create_outside_nest_egg_round(
+        OutsideNestEggRound(
+            round_at=datetime(2026, 5, 27, 9, 15),
+            egg_count=4,
+            registered_by="admin",
+        )
+    )
+
+    assert repository.count_for_date(date(2026, 5, 26)) == 20
+    assert repository.count_for_date(date(2026, 5, 27)) == 4
+    assert repository.count_for_date(date(2026, 5, 28)) == 0
+
+
 def _create_test_engine():
     engine = create_engine(
         "sqlite://",

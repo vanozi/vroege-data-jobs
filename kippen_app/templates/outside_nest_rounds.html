@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Buitennest rondes | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Buitennest rondes</h1>
+      <p class="subtitle">Recente rondes voor buitennest eieren.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-info" href="{{ url_for('outside_nest_rounds_new') }}">Nieuwe ronde</a>
+      <a class="button is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
+    </div>
+  </div>
+</div>
+
+{% if rounds %}
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Datum en tijd</th>
+        <th class="has-text-right">Aantal eieren</th>
+        <th>Opmerkingen</th>
+        <th>Door</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for round in rounds %}
+      <tr>
+        <td>{{ round.round_at.strftime("%d-%m-%Y %H:%M") }}</td>
+        <td class="has-text-right">{{ round.egg_count }}</td>
+        <td>{{ round.notes or "" }}</td>
+        <td>{{ round.registered_by or "" }}</td>
+        <td class="has-text-right">
+          <form method="post" action="{{ url_for('outside_nest_rounds_delete', round_id=round.id) }}">
+            <button class="button is-small is-danger is-light" type="submit">Verwijderen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p>Geen buitennest rondes gevonden.</p>
+{% endif %}
+{% endblock %}

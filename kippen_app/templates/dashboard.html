@@ -48,8 +48,8 @@
   <div class="column">
     <div class="box">
       <p class="heading">Buitennest eieren vandaag</p>
-      <p class="title is-4">-</p>
-      <p class="subtitle is-6">Wordt in fase 5 berekend.</p>
+      <p class="title is-4">{{ outside_nest_eggs_today }}</p>
+      <p class="subtitle is-6">Berekend uit rondes</p>
     </div>
   </div>
 </div>
@@ -57,8 +57,14 @@
 <div class="buttons">
   <a class="button is-link" href="{{ url_for('daily_new') }}">Dagregistratie invullen</a>
   <a class="button is-warning" href="{{ url_for('dead_hens_new') }}">Dode hen registreren</a>
-  <a class="button is-info" href="#">Buitennest ronde registreren</a>
+  <a class="button is-info" href="{{ url_for('outside_nest_rounds_new') }}">Buitennest ronde registreren</a>
   <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
+</div>
+
+<div class="buttons are-small">
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='daily') }}">Dagregistraties CSV</a>
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='dead-hens') }}">Dode hennen CSV</a>
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='outside-nest-rounds') }}">Buitennest CSV</a>
 </div>
 
 <div class="columns mt-4">
@@ -126,12 +132,28 @@
     {% endif %}
   </div>
   <div class="column">
-    <h2 class="title is-5">Laatste buitennest rondes</h2>
+    <div class="level mb-2">
+      <div class="level-left">
+        <h2 class="title is-5 mb-0">Laatste buitennest rondes</h2>
+      </div>
+      <div class="level-right">
+        <a href="{{ url_for('outside_nest_rounds_list') }}">Alles bekijken</a>
+      </div>
+    </div>
     {% if recent_outside_nest_rounds %}
     <table class="table is-fullwidth">
+      <thead>
+        <tr>
+          <th>Tijd</th>
+          <th class="has-text-right">Eieren</th>
+        </tr>
+      </thead>
       <tbody>
         {% for registration in recent_outside_nest_rounds %}
-        <tr><td>{{ registration }}</td></tr>
+        <tr>
+          <td>{{ registration.round_at.strftime("%d-%m %H:%M") }}</td>
+          <td class="has-text-right">{{ registration.egg_count }}</td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
