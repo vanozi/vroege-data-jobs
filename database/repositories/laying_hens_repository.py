@@ -253,6 +253,7 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
         if isinstance(registration_data, DailyLayingRegistration):
             registration_data = registration_data.model_dump()
 
+        self._ensure_flock_id(registration_data)
         return self.upsert(
             registration_data,
             unique_fields=["house_id", "registration_date"],
@@ -268,6 +269,7 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
             registration_data = registration_data.model_dump()
 
         normalized_data = self._normalize_model_data(registration_data)
+        self._ensure_flock_id(normalized_data)
         normalized_data.pop("id", None)
         with self.get_session() as session:
             registration = session.get(DailyLayingRegistration, registration_id)
@@ -293,6 +295,10 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
             for registration in registrations:
                 session.expunge(registration)
             return registrations
+
+    def _ensure_flock_id(self, registration_data: dict[str, object]) -> None:
+        if registration_data.get("flock_id") is None:
+            raise ValueError("Daily laying registration requires a flock_id.")
 
     def list_all(self) -> list[DailyLayingRegistration]:
         """Return all daily registrations ordered by date."""
@@ -376,6 +382,8 @@ class DeadHenRegistrationsRepository(BaseRepository[DeadHenRegistration]):
             registration_data = registration_data.model_dump()
 
         normalized_data = self._normalize_model_data(registration_data)
+        if normalized_data.get("flock_id") is None:
+            raise ValueError("Dead hen registration requires a flock_id.")
         with self.get_session() as session:
             registration = DeadHenRegistration(**normalized_data)
             session.add(registration)
@@ -459,6 +467,8 @@ class OutsideNestEggRoundsRepository(BaseRepository[OutsideNestEggRound]):
             round_data = round_data.model_dump()
 
         normalized_data = self._normalize_model_data(round_data)
+        if normalized_data.get("flock_id") is None:
+            raise ValueError("Outside-nest egg round requires a flock_id.")
         with self.get_session() as session:
             egg_round = OutsideNestEggRound(**normalized_data)
             session.add(egg_round)

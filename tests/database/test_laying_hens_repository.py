@@ -196,11 +196,21 @@ def test_flock_repository_delete_rejects_linked_registrations():
 
 def test_upsert_daily_registration_updates_existing_house_date():
     engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
     repository = DailyLayingRegistrationsRepository(_session_factory(engine))
     registration_date = date(2026, 5, 26)
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
 
     created = repository.upsert_daily_registration(
         DailyLayingRegistration(
+            flock_id=flock.id,
             house_id="main",
             registration_date=registration_date,
             weekday="Dinsdag",
@@ -215,6 +225,7 @@ def test_upsert_daily_registration_updates_existing_house_date():
     )
     updated = repository.upsert_daily_registration(
         {
+            "flock_id": flock.id,
             "house_id": "main",
             "registration_date": registration_date,
             "weekday": "Dinsdag",
@@ -241,11 +252,30 @@ def test_upsert_daily_registration_updates_existing_house_date():
 
 def test_daily_registration_unique_key_is_per_house():
     engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
     repository = DailyLayingRegistrationsRepository(_session_factory(engine))
     registration_date = date(2026, 5, 26)
+    main_flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Main koppel",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    future_house_flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Future house koppel",
+            house_id="future-house",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
 
     repository.upsert_daily_registration(
         DailyLayingRegistration(
+            flock_id=main_flock.id,
             house_id="main",
             registration_date=registration_date,
             first_quality_eggs=100,
@@ -253,6 +283,7 @@ def test_daily_registration_unique_key_is_per_house():
     )
     repository.upsert_daily_registration(
         DailyLayingRegistration(
+            flock_id=future_house_flock.id,
             house_id="future-house",
             registration_date=registration_date,
             first_quality_eggs=200,
@@ -267,9 +298,19 @@ def test_daily_registration_unique_key_is_per_house():
 
 def test_update_daily_registration_updates_by_id():
     engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
     repository = DailyLayingRegistrationsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
     created = repository.upsert_daily_registration(
         DailyLayingRegistration(
+            flock_id=flock.id,
             registration_date=date(2026, 5, 26),
             first_quality_eggs=100,
             second_quality_eggs=5,
@@ -280,6 +321,7 @@ def test_update_daily_registration_updates_by_id():
     updated = repository.update_daily_registration(
         created.id,
         {
+            "flock_id": flock.id,
             "registration_date": date(2026, 5, 27),
             "weekday": "Woensdag",
             "first_quality_eggs": 120,
@@ -325,6 +367,7 @@ def test_dead_hen_repository_counts_for_date():
     )
     repository.create_dead_hen_registration(
         DeadHenRegistration(
+            flock_id=flock.id,
             found_at=datetime(2026, 5, 26, 15, 0),
             count=1,
             stable_side="Ziekenboeg kant",
@@ -372,10 +415,20 @@ def test_outside_nest_egg_round_repository_creates_round():
 
 def test_outside_nest_egg_round_repository_counts_for_date():
     engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
     repository = OutsideNestEggRoundsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
 
     repository.create_outside_nest_egg_round(
         OutsideNestEggRound(
+            flock_id=flock.id,
             round_at=datetime(2026, 5, 26, 9, 15),
             egg_count=12,
             registered_by="admin",
@@ -383,6 +436,7 @@ def test_outside_nest_egg_round_repository_counts_for_date():
     )
     repository.create_outside_nest_egg_round(
         OutsideNestEggRound(
+            flock_id=flock.id,
             round_at=datetime(2026, 5, 26, 15, 30),
             egg_count=8,
             registered_by="admin",
@@ -390,6 +444,7 @@ def test_outside_nest_egg_round_repository_counts_for_date():
     )
     repository.create_outside_nest_egg_round(
         OutsideNestEggRound(
+            flock_id=flock.id,
             round_at=datetime(2026, 5, 27, 9, 15),
             egg_count=4,
             registered_by="admin",

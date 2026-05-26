@@ -250,7 +250,9 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/daily/new")
     @login_required
     def daily_new():
+        repositories = _repositories()
         registration_date = _get_requested_date()
+        active_flock = repositories.flocks.get_active_flock_for_date(registration_date)
         return render_template(
             "daily_form.html",
             title="Dagregistratie invullen",
@@ -258,7 +260,8 @@ def create_app(session_factory=None) -> Flask:
             errors={},
             action_url=url_for("daily_new_post"),
             submit_label="Opslaan",
-            dead_hens_count=_repositories().dead_hens.count_for_date(registration_date),
+            dead_hens_count=repositories.dead_hens.count_for_date(registration_date),
+            active_flock=active_flock,
         )
 
     @app.post("/kippen/daily/new")
@@ -282,10 +285,35 @@ def create_app(session_factory=None) -> Flask:
                         repositories.dead_hens,
                         values,
                     ),
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "daily_form.html",
+                    title="Dagregistratie invullen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("daily_new_post"),
+                    submit_label="Opslaan",
+                    dead_hens_count=_dead_hens_count_for_values(
+                        repositories.dead_hens,
+                        values,
+                    ),
+                    active_flock=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
         repositories.daily.upsert_daily_registration(registration)
         flash("Dagregistratie opgeslagen.", "success")
         return redirect(url_for("dashboard"))
@@ -306,6 +334,10 @@ def create_app(session_factory=None) -> Flask:
             action_url=url_for("daily_edit_post", registration_id=registration.id),
             submit_label="Wijzigingen opslaan",
             dead_hens_count=repositories.dead_hens.count_for_date(
+                registration.registration_date,
+                house_id=registration.house_id,
+            ),
+            active_flock=repositories.flocks.get_active_flock_for_date(
                 registration.registration_date,
                 house_id=registration.house_id,
             ),
@@ -342,10 +374,38 @@ def create_app(session_factory=None) -> Flask:
                         repositories.dead_hens,
                         values,
                     ),
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "daily_form.html",
+                    title="Dagregistratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "daily_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    dead_hens_count=_dead_hens_count_for_values(
+                        repositories.dead_hens,
+                        values,
+                    ),
+                    active_flock=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
         saved_registration = repositories.daily.update_daily_registration(
             registration_id,
             registration,
@@ -359,6 +419,7 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/dead-hens/new")
     @login_required
     def dead_hens_new():
+        active_flock = _repositories().flocks.get_active_flock_for_date(date.today())
         return render_template(
             "dead_hen_form.html",
             values=dead_hens.default_values(datetime.now()),
@@ -367,6 +428,7 @@ def create_app(session_factory=None) -> Flask:
             walkways=dead_hens.WALKWAYS,
             found_places=dead_hens.FOUND_PLACES,
             action_url=url_for("dead_hens_new_post"),
+            active_flock=active_flock,
         )
 
     @app.post("/kippen/dead-hens/new")
@@ -387,10 +449,36 @@ def create_app(session_factory=None) -> Flask:
                     walkways=dead_hens.WALKWAYS,
                     found_places=dead_hens.FOUND_PLACES,
                     action_url=url_for("dead_hens_new_post"),
+                    active_flock=_active_flock_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "found_at",
+                    ),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.found_at.date(),
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "dead_hen_form.html",
+                    values=values,
+                    errors=errors,
+                    stable_sides=dead_hens.STABLE_SIDES,
+                    walkways=dead_hens.WALKWAYS,
+                    found_places=dead_hens.FOUND_PLACES,
+                    action_url=url_for("dead_hens_new_post"),
+                    active_flock=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
         repositories.dead_hens.create_dead_hen_registration(registration)
         flash("Dode hen registratie opgeslagen.", "success")
         return redirect(url_for("dead_hens_list"))
@@ -418,11 +506,13 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/outside-nest-rounds/new")
     @login_required
     def outside_nest_rounds_new():
+        active_flock = _repositories().flocks.get_active_flock_for_date(date.today())
         return render_template(
             "outside_nest_round_form.html",
             values=outside_nest.default_values(datetime.now()),
             errors={},
             action_url=url_for("outside_nest_rounds_new_post"),
+            active_flock=active_flock,
         )
 
     @app.post("/kippen/outside-nest-rounds/new")
@@ -440,10 +530,33 @@ def create_app(session_factory=None) -> Flask:
                     values=values,
                     errors=errors,
                     action_url=url_for("outside_nest_rounds_new_post"),
+                    active_flock=_active_flock_for_datetime_values(
+                        repositories.flocks,
+                        values,
+                        "round_at",
+                    ),
                 ),
                 400,
             )
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            egg_round.round_at.date(),
+            house_id=egg_round.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(egg_round.house_id)
+            return (
+                render_template(
+                    "outside_nest_round_form.html",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("outside_nest_rounds_new_post"),
+                    active_flock=None,
+                ),
+                400,
+            )
+
+        egg_round.flock_id = active_flock.id
         repositories.outside_nest_rounds.create_outside_nest_egg_round(egg_round)
         flash("Buitennest ronde opgeslagen.", "success")
         return redirect(url_for("outside_nest_rounds_list"))
@@ -534,6 +647,7 @@ def create_app(session_factory=None) -> Flask:
                 [
                     "id",
                     "house_id",
+                    "flock_id",
                     "registration_date",
                     "weekday",
                     "first_quality_eggs",
@@ -548,6 +662,7 @@ def create_app(session_factory=None) -> Flask:
                     [
                         item.id,
                         item.house_id,
+                        item.flock_id,
                         item.registration_date,
                         item.weekday,
                         item.first_quality_eggs,
@@ -566,6 +681,7 @@ def create_app(session_factory=None) -> Flask:
                 [
                     "id",
                     "house_id",
+                    "flock_id",
                     "found_at",
                     "count",
                     "stable_side",
@@ -580,6 +696,7 @@ def create_app(session_factory=None) -> Flask:
                     [
                         item.id,
                         item.house_id,
+                        item.flock_id,
                         item.found_at,
                         item.count,
                         item.stable_side,
@@ -598,6 +715,7 @@ def create_app(session_factory=None) -> Flask:
                 [
                     "id",
                     "house_id",
+                    "flock_id",
                     "round_at",
                     "egg_count",
                     "notes",
@@ -607,6 +725,7 @@ def create_app(session_factory=None) -> Flask:
                     [
                         item.id,
                         item.house_id,
+                        item.flock_id,
                         item.round_at,
                         item.egg_count,
                         item.notes,
@@ -714,6 +833,44 @@ def _dead_hens_count_for_values(
     return repository.count_for_date(
         registration_date,
         house_id=values.get("house_id", "main") or "main",
+    )
+
+
+def _active_flock_for_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+):
+    try:
+        registration_date = date.fromisoformat(values.get("registration_date", ""))
+    except ValueError:
+        return None
+
+    return repository.get_active_flock_for_date(
+        registration_date,
+        house_id=values.get("house_id", "main") or "main",
+    )
+
+
+def _active_flock_for_datetime_values(
+    repository: FlocksRepository,
+    values: dict[str, str],
+    field_name: str,
+):
+    try:
+        registration_datetime = datetime.fromisoformat(values.get(field_name, ""))
+    except ValueError:
+        return None
+
+    return repository.get_active_flock_for_date(
+        registration_datetime.date(),
+        house_id=values.get("house_id", "main") or "main",
+    )
+
+
+def _missing_active_flock_message(house_id: str) -> str:
+    return (
+        "Geen actief koppel gevonden voor deze datum in stal "
+        f"{house_id}. Maak eerst een actief koppel aan."
     )
 
 

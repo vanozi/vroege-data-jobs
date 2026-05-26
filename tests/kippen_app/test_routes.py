@@ -38,6 +38,26 @@ def _login(client):
     )
 
 
+def _create_active_flock(
+    client,
+    *,
+    flock_name: str = "Actief koppel",
+    placement_date: str = "2026-01-01",
+    end_date: str = "2027-12-31",
+):
+    return client.post(
+        "/kippen/flocks/new",
+        data={
+            "flock_name": flock_name,
+            "house_id": "main",
+            "date_of_birth": "2025-10-01",
+            "placement_date": placement_date,
+            "end_date": end_date,
+            "bird_count": "24000",
+        },
+    )
+
+
 def test_index_redirects_to_dashboard(monkeypatch):
     client, _ = _client(monkeypatch)
 
@@ -351,6 +371,7 @@ def test_flock_archive_marks_flock_inactive(monkeypatch):
 def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
     response = client.get("/kippen/daily/new?date=2026-05-26")
 
@@ -358,11 +379,13 @@ def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
     assert "Dagregistratie invullen" in response.text
     assert "2026-05-26" in response.text
     assert "Dinsdag" in response.text
+    assert "Actief koppel" in response.text
 
 
 def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
     response = client.post(
         "/kippen/daily/new",
@@ -387,6 +410,24 @@ def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
     assert registration.water_liters == 199.55
     assert registration.feed_kg == 109.25
     assert registration.created_by == "admin"
+    assert registration.flock_id is not None
+
+
+def test_daily_new_post_requires_active_flock_for_date(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "20530",
+            "second_quality_eggs": "19",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Geen actief koppel gevonden" in response.text
 
 
 def test_daily_new_post_validates_negative_values(monkeypatch):
@@ -409,6 +450,7 @@ def test_daily_new_post_validates_negative_values(monkeypatch):
 def test_daily_edit_updates_existing_registration(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/daily/new",
         data={
@@ -447,6 +489,7 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
 def test_daily_edit_form_formats_water_and_feed_with_two_decimals(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/daily/new",
         data={
@@ -472,6 +515,7 @@ def test_daily_edit_form_formats_water_and_feed_with_two_decimals(monkeypatch):
 def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/daily/new",
         data={
@@ -494,6 +538,7 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
 def test_dead_hen_new_form_renders_for_logged_in_user(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
     response = client.get("/kippen/dead-hens/new")
 
@@ -501,11 +546,13 @@ def test_dead_hen_new_form_renders_for_logged_in_user(monkeypatch):
     assert "Dode hen registreren" in response.text
     assert "Albering kant" in response.text
     assert "Ziekenboeg kant" in response.text
+    assert "Actief koppel" in response.text
 
 
 def test_dead_hen_post_saves_registration(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
     response = client.post(
         "/kippen/dead-hens/new",
@@ -532,6 +579,27 @@ def test_dead_hen_post_saves_registration(monkeypatch):
     assert registration.walkway == "Midden"
     assert registration.found_place == "Onder de stelling"
     assert registration.registered_by == "admin"
+    assert registration.flock_id is not None
+
+
+def test_dead_hen_post_requires_active_flock_for_date(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/dead-hens/new",
+        data={
+            "found_at": "2026-05-26T08:30",
+            "count": "2",
+            "stable_side": "Albering kant",
+            "section_number": "2",
+            "walkway": "Midden",
+            "found_place": "Onder de stelling",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Geen actief koppel gevonden" in response.text
 
 
 def test_dead_hen_post_validates_count(monkeypatch):
@@ -557,6 +625,7 @@ def test_dead_hen_post_validates_count(monkeypatch):
 def test_dead_hen_list_shows_recent_registrations(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/dead-hens/new",
         data={
@@ -581,6 +650,7 @@ def test_dead_hen_list_shows_recent_registrations(monkeypatch):
 def test_dead_hen_counts_are_visible_in_daily_dashboard_and_week(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/dead-hens/new",
         data={
@@ -618,17 +688,20 @@ def test_dead_hen_counts_are_visible_in_daily_dashboard_and_week(monkeypatch):
 def test_outside_nest_round_new_form_renders_for_logged_in_user(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
     response = client.get("/kippen/outside-nest-rounds/new")
 
     assert response.status_code == 200
     assert "Buitennest ronde registreren" in response.text
     assert "Aantal eieren" in response.text
+    assert "Actief koppel" in response.text
 
 
 def test_outside_nest_round_post_saves_round(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
     response = client.post(
         "/kippen/outside-nest-rounds/new",
@@ -647,6 +720,23 @@ def test_outside_nest_round_post_saves_round(monkeypatch):
     assert egg_round.egg_count == 12
     assert egg_round.notes == "Ochtendronde"
     assert egg_round.registered_by == "admin"
+    assert egg_round.flock_id is not None
+
+
+def test_outside_nest_round_post_requires_active_flock_for_date(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/outside-nest-rounds/new",
+        data={
+            "round_at": "2026-05-26T10:30",
+            "egg_count": "12",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Geen actief koppel gevonden" in response.text
 
 
 def test_outside_nest_round_post_validates_negative_egg_count(monkeypatch):
@@ -668,6 +758,7 @@ def test_outside_nest_round_post_validates_negative_egg_count(monkeypatch):
 def test_outside_nest_rounds_list_shows_recent_rounds(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
@@ -687,6 +778,7 @@ def test_outside_nest_rounds_list_shows_recent_rounds(monkeypatch):
 def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
@@ -716,6 +808,7 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
 def test_week_excel_export_downloads_xlsx(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/daily/new",
         data={
@@ -752,6 +845,7 @@ def test_week_pdf_export_downloads_pdf(monkeypatch):
 def test_raw_daily_csv_export_downloads_csv(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
     client.post(
         "/kippen/daily/new",
         data={

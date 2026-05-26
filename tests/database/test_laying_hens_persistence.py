@@ -39,6 +39,7 @@ def test_save_daily_laying_registration_calculates_total_and_logs(caplog):
     repository = FakeDailyLayingRegistrationsRepository()
     logger = logging.getLogger("test_save_daily_laying_registration")
     registration = DailyLayingRegistration(
+        flock_id=1,
         registration_date=date(2026, 5, 26),
         first_quality_eggs=20530,
         second_quality_eggs=19,
@@ -61,7 +62,7 @@ def test_save_daily_laying_registration_dry_run_skips_writes():
     repository = FakeDailyLayingRegistrationsRepository()
 
     saved_count = laying_hens.save_daily_laying_registration(
-        DailyLayingRegistration(registration_date=date(2026, 5, 26)),
+        DailyLayingRegistration(flock_id=1, registration_date=date(2026, 5, 26)),
         repository,
         dry_run=True,
     )
@@ -73,7 +74,7 @@ def test_save_daily_laying_registration_dry_run_skips_writes():
 def test_save_daily_laying_registration_requires_repository():
     with pytest.raises(ValueError, match="repository is required"):
         laying_hens.save_daily_laying_registration(
-            DailyLayingRegistration(registration_date=date(2026, 5, 26)),
+            DailyLayingRegistration(flock_id=1, registration_date=date(2026, 5, 26)),
             None,
         )
 
@@ -81,6 +82,7 @@ def test_save_daily_laying_registration_requires_repository():
 def test_save_dead_hen_registration_creates_row():
     repository = FakeDeadHenRegistrationsRepository()
     registration = DeadHenRegistration(
+        flock_id=1,
         found_at=datetime(2026, 5, 26, 8, 30),
         count=1,
     )
@@ -97,6 +99,7 @@ def test_save_dead_hen_registration_creates_row():
 def test_save_outside_nest_egg_round_creates_row():
     repository = FakeOutsideNestEggRoundsRepository()
     egg_round = OutsideNestEggRound(
+        flock_id=1,
         round_at=datetime(2026, 5, 26, 9, 15),
         egg_count=12,
     )

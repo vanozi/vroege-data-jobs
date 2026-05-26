@@ -50,9 +50,13 @@ def upgrade() -> None:
     op.create_index(op.f("ix_flocks_is_active"), "flocks", ["is_active"])
     op.create_index(op.f("ix_flocks_placement_date"), "flocks", ["placement_date"])
 
+    op.execute("DELETE FROM daily_laying_registrations")
+    op.execute("DELETE FROM dead_hen_registrations")
+    op.execute("DELETE FROM outside_nest_egg_rounds")
+
     op.add_column(
         "daily_laying_registrations",
-        sa.Column("flock_id", sa.Integer(), nullable=True),
+        sa.Column("flock_id", sa.Integer(), nullable=False),
     )
     op.create_foreign_key(
         "fk_daily_laying_registrations_flock_id_flocks",
@@ -69,7 +73,7 @@ def upgrade() -> None:
 
     op.add_column(
         "dead_hen_registrations",
-        sa.Column("flock_id", sa.Integer(), nullable=True),
+        sa.Column("flock_id", sa.Integer(), nullable=False),
     )
     op.create_foreign_key(
         "fk_dead_hen_registrations_flock_id_flocks",
@@ -86,7 +90,7 @@ def upgrade() -> None:
 
     op.add_column(
         "outside_nest_egg_rounds",
-        sa.Column("flock_id", sa.Integer(), nullable=True),
+        sa.Column("flock_id", sa.Integer(), nullable=False),
     )
     op.create_foreign_key(
         "fk_outside_nest_egg_rounds_flock_id_flocks",
