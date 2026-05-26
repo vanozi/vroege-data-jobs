@@ -694,8 +694,8 @@ def create_app(session_factory=None) -> Flask:
                     "first_quality_eggs",
                     "second_quality_eggs",
                     "total_eggs",
-                    "water_liters",
-                    "feed_kg",
+                    "water_ml",
+                    "feed_grams",
                     "notes",
                     "created_by",
                 ],
@@ -714,8 +714,8 @@ def create_app(session_factory=None) -> Flask:
                         item.first_quality_eggs,
                         item.second_quality_eggs,
                         item.total_eggs,
-                        item.water_liters,
-                        item.feed_kg,
+                        item.water_ml,
+                        item.feed_grams,
                         item.notes,
                         item.created_by,
                     ]
@@ -1080,15 +1080,15 @@ def _raw_flock_context_values(
     ]
 
 
-def _week_totals(rows: list[dict[str, object]]) -> dict[str, float]:
+def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
     totals = {
         "first_quality_eggs": 0,
         "second_quality_eggs": 0,
         "total_eggs": 0,
         "dead_hens_count": 0,
         "outside_nest_egg_count": 0,
-        "water_liters": 0.0,
-        "feed_kg": 0.0,
+        "water_ml": 0,
+        "feed_grams": 0,
     }
     for row in rows:
         registration = row["registration"]
@@ -1100,7 +1100,7 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, float]:
         totals["first_quality_eggs"] += registration.first_quality_eggs
         totals["second_quality_eggs"] += registration.second_quality_eggs
         totals["total_eggs"] += registration.total_eggs
-        totals["water_liters"] += registration.water_liters or 0
-        totals["feed_kg"] += registration.feed_kg or 0
+        totals["water_ml"] += registration.water_ml or 0
+        totals["feed_grams"] += registration.feed_grams or 0
 
     return totals

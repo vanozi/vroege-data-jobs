@@ -217,8 +217,8 @@ def test_upsert_daily_registration_updates_existing_house_date():
             first_quality_eggs=20530,
             second_quality_eggs=19,
             total_eggs=20549,
-            water_liters=199,
-            feed_kg=109,
+            water_ml=199000,
+            feed_grams=109000,
             notes="Eerste invoer",
             created_by="admin",
         )
@@ -232,8 +232,8 @@ def test_upsert_daily_registration_updates_existing_house_date():
             "first_quality_eggs": 20600,
             "second_quality_eggs": 20,
             "total_eggs": 20620,
-            "water_liters": 201,
-            "feed_kg": 110,
+            "water_ml": 201000,
+            "feed_grams": 110000,
             "notes": "Gecorrigeerd",
             "created_by": "admin",
         }

@@ -40,15 +40,15 @@ def build_daily_registration_from_form(
         "2e soort eieren",
         errors,
     )
-    water_liters = _parse_optional_float(
-        values["water_liters"],
-        "water_liters",
+    water_ml = _parse_optional_int(
+        values["water_ml"],
+        "water_ml",
         "Water",
         errors,
     )
-    feed_kg = _parse_optional_float(
-        values["feed_kg"],
-        "feed_kg",
+    feed_grams = _parse_optional_int(
+        values["feed_grams"],
+        "feed_grams",
         "Voer",
         errors,
     )
@@ -65,8 +65,8 @@ def build_daily_registration_from_form(
         first_quality_eggs=first_quality_eggs,
         second_quality_eggs=second_quality_eggs,
         total_eggs=total_eggs,
-        water_liters=water_liters,
-        feed_kg=feed_kg,
+        water_ml=water_ml,
+        feed_grams=feed_grams,
         notes=values["notes"] or None,
         created_by=created_by,
     )
@@ -86,8 +86,8 @@ def values_from_registration(
         "first_quality_eggs": str(registration.first_quality_eggs),
         "second_quality_eggs": str(registration.second_quality_eggs),
         "total_eggs": str(registration.total_eggs),
-        "water_liters": _optional_number_to_str(registration.water_liters),
-        "feed_kg": _optional_number_to_str(registration.feed_kg),
+        "water_ml": _optional_number_to_str(registration.water_ml),
+        "feed_grams": _optional_number_to_str(registration.feed_grams),
         "notes": registration.notes or "",
     }
 
@@ -101,8 +101,8 @@ def default_values(registration_date: date) -> dict[str, str]:
         "first_quality_eggs": "0",
         "second_quality_eggs": "0",
         "total_eggs": "0",
-        "water_liters": "",
-        "feed_kg": "",
+        "water_ml": "",
+        "feed_grams": "",
         "notes": "",
     }
 
@@ -115,8 +115,8 @@ def _initial_values(form_data: Mapping[str, str]) -> dict[str, str]:
         "first_quality_eggs": form_data.get("first_quality_eggs", "0").strip(),
         "second_quality_eggs": form_data.get("second_quality_eggs", "0").strip(),
         "total_eggs": form_data.get("total_eggs", "0").strip(),
-        "water_liters": form_data.get("water_liters", "").strip(),
-        "feed_kg": form_data.get("feed_kg", "").strip(),
+        "water_ml": form_data.get("water_ml", "").strip(),
+        "feed_grams": form_data.get("feed_grams", "").strip(),
         "notes": form_data.get("notes", "").strip(),
     }
 
@@ -152,19 +152,19 @@ def _parse_int(
     return value
 
 
-def _parse_optional_float(
+def _parse_optional_int(
     raw_value: str,
     field_name: str,
     label: str,
     errors: dict[str, str],
-) -> Optional[float]:
+) -> Optional[int]:
     if raw_value == "":
         return None
 
     try:
-        value = float(raw_value.replace(",", "."))
+        value = int(raw_value)
     except ValueError:
-        errors[field_name] = f"{label} moet een getal zijn."
+        errors[field_name] = f"{label} moet een heel getal zijn."
         return None
 
     if value < 0:
@@ -174,8 +174,8 @@ def _parse_optional_float(
     return value
 
 
-def _optional_number_to_str(value: Optional[float]) -> str:
+def _optional_number_to_str(value: Optional[int]) -> str:
     if value is None:
         return ""
 
-    return f"{value:.3f}"
+    return str(value)

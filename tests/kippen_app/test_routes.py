@@ -396,8 +396,8 @@ def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "20530",
             "second_quality_eggs": "19",
-            "water_liters": "199.555",
-            "feed_kg": "109.255",
+            "water_ml": "199555",
+            "feed_grams": "109255",
             "notes": "Normale dag",
         },
     )
@@ -410,8 +410,8 @@ def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
     assert registration.registration_date == date(2026, 5, 26)
     assert registration.weekday == "Dinsdag"
     assert registration.total_eggs == 20549
-    assert registration.water_liters == 199.555
-    assert registration.feed_kg == 109.255
+    assert registration.water_ml == 199555
+    assert registration.feed_grams == 109255
     assert registration.created_by == "admin"
     assert registration.flock_id is not None
 
@@ -471,8 +471,8 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "120",
             "second_quality_eggs": "6",
-            "water_liters": "0,255",
-            "feed_kg": "0,805",
+            "water_ml": "255",
+            "feed_grams": "805",
             "notes": "Aangepast",
         },
     )
@@ -484,12 +484,12 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
 
     assert len(registrations) == 1
     assert registrations[0].total_eggs == 126
-    assert registrations[0].water_liters == 0.255
-    assert registrations[0].feed_kg == 0.805
+    assert registrations[0].water_ml == 255
+    assert registrations[0].feed_grams == 805
     assert registrations[0].notes == "Aangepast"
 
 
-def test_daily_edit_form_formats_water_and_feed_with_three_decimals(monkeypatch):
+def test_daily_edit_form_formats_water_and_feed_as_whole_units(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
@@ -499,8 +499,8 @@ def test_daily_edit_form_formats_water_and_feed_with_three_decimals(monkeypatch)
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
-            "water_liters": "0.2",
-            "feed_kg": "0.8",
+            "water_ml": "200",
+            "feed_grams": "800",
         },
     )
     with Session(engine) as session:
@@ -509,11 +509,11 @@ def test_daily_edit_form_formats_water_and_feed_with_three_decimals(monkeypatch)
     response = client.get(f"/kippen/daily/{registration.id}/edit")
 
     assert response.status_code == 200
-    assert 'name="water_liters"' in response.text
-    assert 'step="0.001"' in response.text
-    assert 'value="0.200"' in response.text
-    assert 'name="feed_kg"' in response.text
-    assert 'value="0.800"' in response.text
+    assert 'name="water_ml"' in response.text
+    assert 'step="1"' in response.text
+    assert 'value="200"' in response.text
+    assert 'name="feed_grams"' in response.text
+    assert 'value="800"' in response.text
 
 
 def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
@@ -526,8 +526,8 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
-            "water_liters": "10.123",
-            "feed_kg": "20.456",
+            "water_ml": "10123",
+            "feed_grams": "20456",
         },
     )
 
@@ -821,8 +821,8 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
-            "water_liters": "10.123",
-            "feed_kg": "20.456",
+            "water_ml": "10123",
+            "feed_grams": "20456",
         },
     )
 
@@ -842,8 +842,8 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     assert "Leeftijd" in headers
     assert "Actief koppel" in row
     assert "33 weken en 5 dagen" in row
-    assert "10.123" in row
-    assert "20.456" in row
+    assert "10123" in row
+    assert "20456" in row
 
 
 def test_week_pdf_export_downloads_pdf(monkeypatch):

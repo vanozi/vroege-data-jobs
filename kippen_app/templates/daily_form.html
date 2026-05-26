@@ -145,39 +145,39 @@
   <div class="columns">
     <div class="column">
       <div class="field">
-        <label class="label" for="water_liters">Water in liters</label>
+        <label class="label" for="water_ml">Water in milliliter</label>
         <div class="control">
           <input
-            class="input {% if errors.water_liters %}is-danger{% endif %}"
-            id="water_liters"
-            name="water_liters"
+            class="input {% if errors.water_ml %}is-danger{% endif %}"
+            id="water_ml"
+            name="water_ml"
             type="number"
             min="0"
-            step="0.001"
-            value="{{ values.water_liters }}"
+            step="1"
+            value="{{ values.water_ml }}"
           >
         </div>
-        {% if errors.water_liters %}
-        <p class="help is-danger">{{ errors.water_liters }}</p>
+        {% if errors.water_ml %}
+        <p class="help is-danger">{{ errors.water_ml }}</p>
         {% endif %}
       </div>
     </div>
     <div class="column">
       <div class="field">
-        <label class="label" for="feed_kg">Voer in kg</label>
+        <label class="label" for="feed_grams">Voer in gram</label>
         <div class="control">
           <input
-            class="input {% if errors.feed_kg %}is-danger{% endif %}"
-            id="feed_kg"
-            name="feed_kg"
+            class="input {% if errors.feed_grams %}is-danger{% endif %}"
+            id="feed_grams"
+            name="feed_grams"
             type="number"
             min="0"
-            step="0.001"
-            value="{{ values.feed_kg }}"
+            step="1"
+            value="{{ values.feed_grams }}"
           >
         </div>
-        {% if errors.feed_kg %}
-        <p class="help is-danger">{{ errors.feed_kg }}</p>
+        {% if errors.feed_grams %}
+        <p class="help is-danger">{{ errors.feed_grams }}</p>
         {% endif %}
       </div>
     </div>

@@ -23,8 +23,8 @@ WEEK_HEADERS = [
     "Dagtotaal",
     "Dode hennen",
     "Buitennest",
-    "Water",
-    "Voer",
+    "Water (ml)",
+    "Voer (g)",
     "Opmerkingen",
 ]
 
@@ -58,8 +58,8 @@ def weekly_calendar_xlsx(
             totals["total_eggs"],
             totals["dead_hens_count"],
             totals["outside_nest_egg_count"],
-            round(totals["water_liters"], 3),
-            round(totals["feed_kg"], 3),
+            totals["water_ml"],
+            totals["feed_grams"],
             "",
         ]
     )
@@ -115,8 +115,8 @@ def weekly_calendar_pdf(
             totals["total_eggs"],
             totals["dead_hens_count"],
             totals["outside_nest_egg_count"],
-            f"{totals['water_liters']:.3f}",
-            f"{totals['feed_kg']:.3f}",
+            totals["water_ml"],
+            totals["feed_grams"],
             "",
         ]
     )
@@ -182,17 +182,17 @@ def _week_export_row(row: dict[str, object]) -> list[object]:
         registration.total_eggs,
         row["dead_hens_count"],
         row["outside_nest_egg_count"],
-        _format_optional_float(registration.water_liters),
-        _format_optional_float(registration.feed_kg),
+        _format_optional_int(registration.water_ml),
+        _format_optional_int(registration.feed_grams),
         registration.notes or "",
     ]
 
 
-def _format_optional_float(value: Optional[float]) -> str:
+def _format_optional_int(value: Optional[int]) -> str:
     if value is None:
         return ""
 
-    return f"{value:.3f}"
+    return str(value)
 
 
 def _flock_name(row: dict[str, object]) -> str:

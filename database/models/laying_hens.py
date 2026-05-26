@@ -73,8 +73,8 @@ class DailyLayingRegistration(
     first_quality_eggs: int = Field(default=0, ge=0)
     second_quality_eggs: int = Field(default=0, ge=0)
     total_eggs: int = Field(default=0, ge=0)
-    water_liters: Optional[float] = Field(default=None, ge=0)
-    feed_kg: Optional[float] = Field(default=None, ge=0)
+    water_ml: Optional[int] = Field(default=None, ge=0)
+    feed_grams: Optional[int] = Field(default=None, ge=0)
     notes: Optional[str] = Field(default=None)
     created_by: Optional[str] = Field(default=None)
 
