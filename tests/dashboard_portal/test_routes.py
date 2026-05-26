@@ -51,6 +51,8 @@ def test_login_with_correct_credentials_allows_index(monkeypatch):
     index_response = client.get("/")
     assert index_response.status_code == 200
     assert "Klauwgezondheid" in index_response.text
+    assert "Tanken" in index_response.text
+    assert 'href="/tank-terminal"' in index_response.text
 
 
 def test_logout_clears_session(monkeypatch):

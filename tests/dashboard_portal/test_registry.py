@@ -12,12 +12,14 @@ def clear_dashboard_registry_env(monkeypatch):
     monkeypatch.delenv("PORTAL_DASHBOARDS_JSON", raising=False)
 
 
-def test_dashboard_registry_contains_default_klauwgezondheid():
+def test_dashboard_registry_contains_default_dashboards():
     dashboards = registry.get_dashboard_links()
 
-    assert dashboards
+    assert len(dashboards) == 2
     assert dashboards[0].name == "Klauwgezondheid"
     assert dashboards[0].url == "/klauwgezondheid"
+    assert dashboards[1].name == "Tanken"
+    assert dashboards[1].url == "/tank-terminal"
 
 
 def test_dashboard_registry_can_be_configured_from_environment(monkeypatch):

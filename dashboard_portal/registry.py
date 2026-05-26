@@ -22,7 +22,13 @@ DEFAULT_DASHBOARDS = [
         description="Mortellaro en klauwgezondheid van de actieve koppel.",
         url="/klauwgezondheid",
         status="Productie",
-    )
+    ),
+    DashboardLink(
+        name="Tanken",
+        description="Dieseltransacties per voertuig, chauffeur en CSV-import.",
+        url="/tank-terminal",
+        status="Concept",
+    ),
 ]
 
 

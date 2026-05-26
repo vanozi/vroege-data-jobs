@@ -143,6 +143,40 @@ services:
       timeout: 5s
       retries: 3
 
+  kippen-app:
+    build:
+      context: .
+      dockerfile: docker/kippen/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - gunicorn
+      - "kippen_app.app:create_app()"
+      - --bind
+      - 0.0.0.0:8010
+      - --workers
+      - "2"
+    expose:
+      - "8010"
+    networks:
+      - dashboards
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kippen-app.rule=Host(`${DASHBOARD_HOST}`) && PathPrefix(`/kippen`)
+      - traefik.http.routers.kippen-app.entrypoints=websecure
+      - traefik.http.routers.kippen-app.tls.certresolver=letsencrypt
+      - traefik.http.routers.kippen-app.priority=110
+      - traefik.http.routers.kippen-app.service=kippen-app
+      - traefik.http.services.kippen-app.loadbalancer.server.port=8010
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/kippen/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   marimo-klauwgezondheid:
     build:
       context: .
@@ -190,6 +224,54 @@ services:
       - traefik.http.routers.marimo-klauwgezondheid-manifest.tls.certresolver=letsencrypt
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
       - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid
+
+  marimo-tank-terminal:
+    build:
+      context: .
+      dockerfile: docker/marimo/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/tank_terminal_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2719"
+      - --base-url
+      - /tank-terminal
+      - --proxy
+      - https://${DASHBOARD_HOST}
+      - --no-token
+    expose:
+      - "2719"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marimo-tank-terminal.rule=Host(`${DASHBOARD_HOST}`) && PathPrefix(`/tank-terminal`)
+      - traefik.http.routers.marimo-tank-terminal.entrypoints=websecure
+      - traefik.http.routers.marimo-tank-terminal.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-tank-terminal.middlewares=portal-auth
+      - traefik.http.routers.marimo-tank-terminal.priority=100
+      - traefik.http.routers.marimo-tank-terminal.service=marimo-tank-terminal
+      - traefik.http.services.marimo-tank-terminal.loadbalancer.server.port=2719
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-tank-terminal-manifest.rule=Host(`${DASHBOARD_HOST}`) && Path(`/tank-terminal/manifest.json`)
+      - traefik.http.routers.marimo-tank-terminal-manifest.entrypoints=websecure
+      - traefik.http.routers.marimo-tank-terminal-manifest.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-tank-terminal-manifest.priority=200
+      - traefik.http.routers.marimo-tank-terminal-manifest.service=marimo-tank-terminal
 
 networks:
   dashboards:

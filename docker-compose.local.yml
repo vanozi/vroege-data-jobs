@@ -21,6 +21,30 @@ services:
       - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
 
+  adminer:
+    image: adminer:4.8.1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8080:8080"
+    networks:
+      - dashboards
+
+  kippen-app:
+    environment:
+      KIPPEN_APP_COOKIE_SECURE: "false"
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.kippen-app.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/kippen`)
+      - traefik.http.routers.kippen-app.entrypoints=web
+      - traefik.http.routers.kippen-app.priority=110
+      - traefik.http.routers.kippen-app.service=kippen-app
+      - traefik.http.services.kippen-app.loadbalancer.server.port=8010
+
   marimo-klauwgezondheid:
     command: !override
       - python
@@ -51,3 +75,34 @@ services:
       - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=web
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
       - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid
+
+  marimo-tank-terminal:
+    command: !override
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/tank_terminal_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2719"
+      - --base-url
+      - /tank-terminal
+      - --proxy
+      - http://dashboards.localhost
+      - --no-token
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.marimo-tank-terminal.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/tank-terminal`)
+      - traefik.http.routers.marimo-tank-terminal.entrypoints=web
+      - traefik.http.routers.marimo-tank-terminal.middlewares=portal-auth
+      - traefik.http.routers.marimo-tank-terminal.priority=100
+      - traefik.http.routers.marimo-tank-terminal.service=marimo-tank-terminal
+      - traefik.http.services.marimo-tank-terminal.loadbalancer.server.port=2719
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-tank-terminal-manifest.rule=(Host(`dashboards.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)) && Path(`/tank-terminal/manifest.json`)
+      - traefik.http.routers.marimo-tank-terminal-manifest.entrypoints=web
+      - traefik.http.routers.marimo-tank-terminal-manifest.priority=200
+      - traefik.http.routers.marimo-tank-terminal-manifest.service=marimo-tank-terminal

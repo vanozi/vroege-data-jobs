@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from data_jobs.tank_terminal.config import TankTerminalConfig
 from data_jobs.tank_terminal.page_objects.login_page import LoginPage
@@ -44,11 +45,10 @@ def collect_tank_terminal_rows(
             page.goto(f"{config.base_url}/cgi-bin/index.php")
             _login(page, config)
             _open_transactions(page)
-            table_html = page.inner_html(TransactionsPage.transaction_table)
+            rows = _parse_visible_transactions(page)
         finally:
             browser.close()
 
-    rows = parse_transactions_table(table_html)
     if limit is not None:
         rows = rows[:limit]
 
@@ -81,11 +81,59 @@ def _login(page: Page, config: TankTerminalConfig) -> None:
         continue_button.click()
         page.wait_for_load_state("networkidle")
 
+    username_input = page.locator(LoginPage.username_input)
+    if username_input.count() > 0 and username_input.is_visible():
+        raise ValueError(
+            "Tank Terminal login did not complete; check "
+            "TANK_TERMINAL_USERNAME and TANK_TERMINAL_PASSWORD."
+        )
+
 
 def _open_transactions(page: Page) -> None:
-    page.locator(OverviewPage.transaction_list).click()
-    page.wait_for_load_state("networkidle")
-    page.locator(TransactionsPage.transaction_table).wait_for(state="visible")
+    for selector in OverviewPage.transaction_links:
+        link = page.locator(selector).first
+        try:
+            link.wait_for(state="visible", timeout=5_000)
+        except PlaywrightTimeoutError:
+            continue
+
+        link.click(timeout=5_000)
+        page.wait_for_load_state("networkidle")
+        break
+
+    page.locator(TransactionsPage.transaction_tables).first.wait_for(state="visible")
+
+
+def _parse_visible_transactions(page: Page) -> list[ParsedTankTransaction]:
+    transaction_tables = page.locator(TransactionsPage.transaction_tables)
+    table_count = transaction_tables.count()
+    table_previews = []
+
+    for index in range(table_count):
+        table = transaction_tables.nth(index)
+        try:
+            table.wait_for(state="visible", timeout=2_000)
+        except PlaywrightTimeoutError:
+            continue
+
+        table_previews.append(_preview_text(table.inner_text(timeout=2_000)))
+        rows = parse_transactions_table(table.inner_html())
+        if rows:
+            return rows
+
+    page_html = page.content()
+    rows = parse_transactions_table(page_html)
+    if rows:
+        return rows
+
+    raise ValueError(
+        "Could not find Tank Terminal transaction rows on the transactions page. "
+        f"candidate_tables={table_count} previews={table_previews[:5]}"
+    )
+
+
+def _preview_text(value: str) -> str:
+    return " ".join(value.split())[:300]
 
 
 def _dedupe_transactions(

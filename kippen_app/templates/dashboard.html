@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Overzicht | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Kippen Registratie</h1>
+      <p class="subtitle">Dagelijkse registraties voor de leghennenstal.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <form method="post" action="{{ url_for('logout') }}">
+      <button class="button is-light" type="submit">Uitloggen</button>
+    </form>
+  </div>
+</div>
+
+<div class="columns">
+  <div class="column">
+    <div class="box">
+      <p class="heading">Vandaag</p>
+      <p class="title is-4">{{ today }}</p>
+      <p class="subtitle is-6">Dagregistratie nog niet gekoppeld aan database.</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Eieren vandaag</p>
+      <p class="title is-4">-</p>
+      <p class="subtitle is-6">Wordt in fase 3 berekend.</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Dode hennen vandaag</p>
+      <p class="title is-4">-</p>
+      <p class="subtitle is-6">Wordt in fase 4 berekend.</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Buitennest eieren vandaag</p>
+      <p class="title is-4">-</p>
+      <p class="subtitle is-6">Wordt in fase 5 berekend.</p>
+    </div>
+  </div>
+</div>
+
+<div class="buttons">
+  <a class="button is-link" href="#">Dagregistratie invullen</a>
+  <a class="button is-warning" href="#">Dode hen registreren</a>
+  <a class="button is-info" href="#">Buitennest ronde registreren</a>
+  <a class="button is-success" href="#">Weekoverzicht bekijken</a>
+</div>
+
+<div class="columns mt-4">
+  <div class="column">
+    <h2 class="title is-5">Laatste dagregistraties</h2>
+    {% if recent_daily_registrations %}
+    <table class="table is-fullwidth">
+      <tbody>
+        {% for registration in recent_daily_registrations %}
+        <tr><td>{{ registration }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>Geen dagregistraties gevonden.</p>
+    {% endif %}
+  </div>
+  <div class="column">
+    <h2 class="title is-5">Laatste dode hennen</h2>
+    {% if recent_dead_hens %}
+    <table class="table is-fullwidth">
+      <tbody>
+        {% for registration in recent_dead_hens %}
+        <tr><td>{{ registration }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>Geen dode-hen registraties gevonden.</p>
+    {% endif %}
+  </div>
+  <div class="column">
+    <h2 class="title is-5">Laatste buitennest rondes</h2>
+    {% if recent_outside_nest_rounds %}
+    <table class="table is-fullwidth">
+      <tbody>
+        {% for registration in recent_outside_nest_rounds %}
+        <tr><td>{{ registration }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>Geen buitennest rondes gevonden.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

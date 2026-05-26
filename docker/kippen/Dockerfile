@@ -5,13 +5,11 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
-COPY docker/marimo/requirements.txt /tmp/requirements.txt
+COPY docker/kippen/requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
-COPY dashboard ./dashboard
-COPY database ./database
-COPY data_jobs ./data_jobs
+COPY kippen_app ./kippen_app
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app

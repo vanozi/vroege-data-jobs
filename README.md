@@ -165,7 +165,7 @@ shows `Klauwgezondheid` at `/klauwgezondheid`. You can override the visible
 dashboards with `PORTAL_DASHBOARDS_JSON`:
 
 ```env
-PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en klauwgezondheid van de actieve koppel.","url":"/klauwgezondheid","status":"Productie"}]
+PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en klauwgezondheid van de actieve koppel.","url":"/klauwgezondheid","status":"Productie"},{"name":"Tanken","description":"Dieseltransacties per voertuig, chauffeur en CSV-import.","url":"/tank-terminal","status":"Concept"}]
 ```
 
 ### Docker Compose stack
@@ -265,11 +265,26 @@ docker compose --env-file .env.local.example -f docker-compose.yml -f docker-com
 Local routes:
 
 - `http://localhost/`: Flask portal.
+- `http://localhost/kippen`: Kippen registratie app.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
+- `http://localhost/tank-terminal`: Tanken Marimo dashboard.
+- `http://localhost:8080`: Adminer database editor.
 - `http://dashboards.localhost/`: alternative portal route if your machine
   resolves `dashboards.localhost`.
+- `http://dashboards.localhost/kippen`: alternative Kippen registratie route if
+  your machine resolves `dashboards.localhost`.
 - `http://dashboards.localhost/klauwgezondheid`: alternative dashboard route if
   your machine resolves `dashboards.localhost`.
+- `http://dashboards.localhost/tank-terminal`: alternative Tanken route if your
+  machine resolves `dashboards.localhost`.
+
+Adminer login for the local stack:
+
+- System: `PostgreSQL`
+- Server: `postgres`
+- Username: `postgres`
+- Password: `postgres`
+- Database: `gebroeders_vroege`
 
 Useful local checks:
 

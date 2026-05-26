@@ -1,0 +1,1 @@
+"""Kippen registratie Flask app."""

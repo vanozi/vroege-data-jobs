@@ -89,3 +89,40 @@ def test_parse_transactions_table_normalizes_rows():
 
     assert rows[2].meter_value is None
     assert rows[2].meter_type is None
+
+
+def test_parse_transactions_table_uses_current_header_order():
+    html = """
+    <table>
+      <tbody>
+        <tr>
+          <td>Driver</td>
+          <td>Vehicle</td>
+          <td>Product</td>
+          <td>Quantity</td>
+          <td>Start date-time</td>
+          <td>Transaction number</td>
+          <td>Transaction duration</td>
+          <td>Meter</td>
+        </tr>
+        <tr>
+          <td>Jeffrey</td>
+          <td>Siloking 2022</td>
+          <td>Diesel</td>
+          <td>87.47&nbsp;L</td>
+          <td>23/08/2022&nbsp;10:30:38</td>
+          <td>001012235085</td>
+          <td>00:01:07</td>
+          <td>271&nbsp;h</td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    rows = parsers.parse_transactions_table(html)
+
+    assert len(rows) == 1
+    assert rows[0].driver == "Jeffrey"
+    assert rows[0].vehicle == "Siloking 2022"
+    assert rows[0].product == "Diesel"
+    assert rows[0].transaction_number == "001012235085"

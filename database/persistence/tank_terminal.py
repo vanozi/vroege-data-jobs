@@ -61,6 +61,38 @@ def save_tank_transaction_models(
     return saved_count
 
 
+def save_tank_transaction_models_by_start_date_time(
+    models: list[TankTransaction],
+    repository: Optional[TankTransactionsRepository],
+    *,
+    dry_run: bool = False,
+    logger: Optional[logging.Logger] = None,
+) -> int:
+    """Upsert TankTransaction models by start date-time and return count."""
+    if dry_run:
+        _log_count(
+            logger,
+            "Dry run: would save %d tank transaction models by start date-time.",
+            len(models),
+        )
+        return len(models)
+
+    if repository is None:
+        raise ValueError("repository is required when dry_run is False.")
+
+    saved_count = 0
+    for model in models:
+        repository.upsert_tank_transaction_by_start_date_time(model)
+        saved_count += 1
+
+    _log_count(
+        logger,
+        "Saved %d tank transaction models by start date-time.",
+        saved_count,
+    )
+    return saved_count
+
+
 def _log_count(
     logger: Optional[logging.Logger],
     message: str,
