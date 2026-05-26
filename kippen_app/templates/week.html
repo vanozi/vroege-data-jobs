@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Week {{ week }} | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Week {{ week }}</h1>
+      <p class="subtitle">Dagregistraties voor {{ year }}.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a
+        class="button is-light"
+        href="{{ url_for('week_overview', year=previous_week[0], week=previous_week[1]) }}"
+      >
+        Vorige week
+      </a>
+      <a
+        class="button is-light"
+        href="{{ url_for('week_overview', year=next_week[0], week=next_week[1]) }}"
+      >
+        Volgende week
+      </a>
+      <a class="button is-link is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
+    </div>
+  </div>
+</div>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Dag</th>
+        <th>Datum</th>
+        <th class="has-text-right">1e soort</th>
+        <th class="has-text-right">2e soort</th>
+        <th class="has-text-right">Dagtotaal</th>
+        <th class="has-text-right">Dode hennen</th>
+        <th class="has-text-right">Water</th>
+        <th class="has-text-right">Voer</th>
+        <th>Opmerkingen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set registration = row.registration %}
+      <tr>
+        <td>{{ row.weekday }}</td>
+        <td>{{ row.date }}</td>
+        {% if registration %}
+        <td class="has-text-right">{{ registration.first_quality_eggs }}</td>
+        <td class="has-text-right">{{ registration.second_quality_eggs }}</td>
+        <td class="has-text-right">{{ registration.total_eggs }}</td>
+        <td class="has-text-right">{{ row.dead_hens_count }}</td>
+        <td class="has-text-right">
+          {% if registration.water_liters is not none %}{{ "%g"|format(registration.water_liters) }}{% else %}-{% endif %}
+        </td>
+        <td class="has-text-right">
+          {% if registration.feed_kg is not none %}{{ "%g"|format(registration.feed_kg) }}{% else %}-{% endif %}
+        </td>
+        <td>{{ registration.notes or "" }}</td>
+        <td class="has-text-right">
+          <a href="{{ url_for('daily_edit', registration_id=registration.id) }}">Bewerken</a>
+        </td>
+        {% else %}
+        <td class="has-text-right">-</td>
+        <td class="has-text-right">-</td>
+        <td class="has-text-right">-</td>
+        <td class="has-text-right">{{ row.dead_hens_count }}</td>
+        <td class="has-text-right">-</td>
+        <td class="has-text-right">-</td>
+        <td></td>
+        <td class="has-text-right">
+          <a href="{{ url_for('daily_new', date=row.date.isoformat()) }}">Invullen</a>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="2">Week totaal</th>
+        <th class="has-text-right">{{ totals.first_quality_eggs }}</th>
+        <th class="has-text-right">{{ totals.second_quality_eggs }}</th>
+        <th class="has-text-right">{{ totals.total_eggs }}</th>
+        <th class="has-text-right">{{ totals.dead_hens_count }}</th>
+        <th class="has-text-right">{{ "%g"|format(totals.water_liters) }}</th>
+        <th class="has-text-right">{{ "%g"|format(totals.feed_kg) }}</th>
+        <th colspan="2"></th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endblock %}

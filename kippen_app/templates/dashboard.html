@@ -22,21 +22,27 @@
     <div class="box">
       <p class="heading">Vandaag</p>
       <p class="title is-4">{{ today }}</p>
-      <p class="subtitle is-6">Dagregistratie nog niet gekoppeld aan database.</p>
+      {% if today_registration %}
+      <p class="subtitle is-6">{{ today_registration.weekday }}</p>
+      {% else %}
+      <p class="subtitle is-6">Nog geen dagregistratie.</p>
+      {% endif %}
     </div>
   </div>
   <div class="column">
     <div class="box">
       <p class="heading">Eieren vandaag</p>
-      <p class="title is-4">-</p>
-      <p class="subtitle is-6">Wordt in fase 3 berekend.</p>
+      <p class="title is-4">
+        {% if today_registration %}{{ today_registration.total_eggs }}{% else %}-{% endif %}
+      </p>
+      <p class="subtitle is-6">1e + 2e soort</p>
     </div>
   </div>
   <div class="column">
     <div class="box">
       <p class="heading">Dode hennen vandaag</p>
-      <p class="title is-4">-</p>
-      <p class="subtitle is-6">Wordt in fase 4 berekend.</p>
+      <p class="title is-4">{{ dead_hens_today }}</p>
+      <p class="subtitle is-6">Berekend uit meldingen</p>
     </div>
   </div>
   <div class="column">
@@ -49,10 +55,10 @@
 </div>
 
 <div class="buttons">
-  <a class="button is-link" href="#">Dagregistratie invullen</a>
+  <a class="button is-link" href="{{ url_for('daily_new') }}">Dagregistratie invullen</a>
   <a class="button is-warning" href="#">Dode hen registreren</a>
   <a class="button is-info" href="#">Buitennest ronde registreren</a>
-  <a class="button is-success" href="#">Weekoverzicht bekijken</a>
+  <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
 </div>
 
 <div class="columns mt-4">
@@ -60,9 +66,22 @@
     <h2 class="title is-5">Laatste dagregistraties</h2>
     {% if recent_daily_registrations %}
     <table class="table is-fullwidth">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th class="has-text-right">Totaal</th>
+          <th></th>
+        </tr>
+      </thead>
       <tbody>
         {% for registration in recent_daily_registrations %}
-        <tr><td>{{ registration }}</td></tr>
+        <tr>
+          <td>{{ registration.registration_date }}</td>
+          <td class="has-text-right">{{ registration.total_eggs }}</td>
+          <td class="has-text-right">
+            <a href="{{ url_for('daily_edit', registration_id=registration.id) }}">Bewerken</a>
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>

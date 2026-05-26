@@ -1,7 +1,12 @@
 """Route tests for the kippen registratie app."""
 
+from datetime import date
+
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine, select
 from werkzeug import security
 
+from database.models.laying_hens import DailyLayingRegistration
 from kippen_app.app import create_app
 
 
@@ -12,13 +17,26 @@ def _client(monkeypatch):
         "KIPPEN_APP_ADMIN_PASSWORD_HASH",
         security.generate_password_hash("correct-password"),
     )
-    app = create_app()
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine)
+    app = create_app(lambda: Session(engine, expire_on_commit=False))
     app.config.update(TESTING=True)
-    return app.test_client()
+    return app.test_client(), engine
+
+
+def _login(client):
+    return client.post(
+        "/kippen/login",
+        data={"username": "admin", "password": "correct-password"},
+    )
 
 
 def test_index_redirects_to_dashboard(monkeypatch):
-    client = _client(monkeypatch)
+    client, _ = _client(monkeypatch)
 
     response = client.get("/kippen")
 
@@ -27,7 +45,7 @@ def test_index_redirects_to_dashboard(monkeypatch):
 
 
 def test_dashboard_redirects_to_login_without_session(monkeypatch):
-    client = _client(monkeypatch)
+    client, _ = _client(monkeypatch)
 
     response = client.get("/kippen/dashboard")
 
@@ -36,7 +54,7 @@ def test_dashboard_redirects_to_login_without_session(monkeypatch):
 
 
 def test_login_with_wrong_credentials_fails(monkeypatch):
-    client = _client(monkeypatch)
+    client, _ = _client(monkeypatch)
 
     response = client.post(
         "/kippen/login",
@@ -48,7 +66,7 @@ def test_login_with_wrong_credentials_fails(monkeypatch):
 
 
 def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
-    client = _client(monkeypatch)
+    client, _ = _client(monkeypatch)
 
     response = client.post(
         "/kippen/login",
@@ -66,11 +84,8 @@ def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
 
 
 def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
-    client = _client(monkeypatch)
-    client.post(
-        "/kippen/login",
-        data={"username": "admin", "password": "correct-password"},
-    )
+    client, _ = _client(monkeypatch)
+    _login(client)
 
     response = client.get("/kippen/login")
 
@@ -79,11 +94,8 @@ def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
 
 
 def test_logout_clears_session(monkeypatch):
-    client = _client(monkeypatch)
-    client.post(
-        "/kippen/login",
-        data={"username": "admin", "password": "correct-password"},
-    )
+    client, _ = _client(monkeypatch)
+    _login(client)
 
     response = client.post("/kippen/logout")
 
@@ -93,9 +105,119 @@ def test_logout_clears_session(monkeypatch):
 
 
 def test_healthz(monkeypatch):
-    client = _client(monkeypatch)
+    client, _ = _client(monkeypatch)
 
     response = client.get("/kippen/healthz")
 
     assert response.status_code == 200
     assert response.json == {"status": "ok"}
+
+
+def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/daily/new?date=2026-05-26")
+
+    assert response.status_code == 200
+    assert "Dagregistratie invullen" in response.text
+    assert "2026-05-26" in response.text
+    assert "Dinsdag" in response.text
+
+
+def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "20530",
+            "second_quality_eggs": "19",
+            "water_liters": "199.5",
+            "feed_kg": "109",
+            "notes": "Normale dag",
+        },
+    )
+
+    assert response.status_code == 302
+    with Session(engine) as session:
+        registration = session.exec(select(DailyLayingRegistration)).one()
+
+    assert registration.registration_date == date(2026, 5, 26)
+    assert registration.weekday == "Dinsdag"
+    assert registration.total_eggs == 20549
+    assert registration.created_by == "admin"
+
+
+def test_daily_new_post_validates_negative_values(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "-1",
+            "second_quality_eggs": "0",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "mag niet negatief" in response.text
+
+
+def test_daily_edit_updates_existing_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        registration = session.exec(select(DailyLayingRegistration)).one()
+
+    response = client.post(
+        f"/kippen/daily/{registration.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "120",
+            "second_quality_eggs": "6",
+            "notes": "Aangepast",
+        },
+    )
+
+    assert response.status_code == 302
+    with Session(engine) as session:
+        registrations = session.exec(select(DailyLayingRegistration)).all()
+
+    assert len(registrations) == 1
+    assert registrations[0].total_eggs == 126
+    assert registrations[0].notes == "Aangepast"
+
+
+def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+            "water_liters": "10",
+            "feed_kg": "20",
+        },
+    )
+
+    response = client.get("/kippen/week/2026/22")
+
+    assert response.status_code == 200
+    assert "Week 22" in response.text
+    assert "2026-05-26" in response.text
+    assert "105" in response.text
