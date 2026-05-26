@@ -178,4 +178,4 @@ def _optional_number_to_str(value: Optional[float]) -> str:
     if value is None:
         return ""
 
-    return f"{value:g}"
+    return f"{value:.2f}"

@@ -136,19 +136,22 @@ def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "20530",
             "second_quality_eggs": "19",
-            "water_liters": "199.5",
-            "feed_kg": "109",
+            "water_liters": "199.55",
+            "feed_kg": "109.25",
             "notes": "Normale dag",
         },
     )
 
     assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/dashboard"
     with Session(engine) as session:
         registration = session.exec(select(DailyLayingRegistration)).one()
 
     assert registration.registration_date == date(2026, 5, 26)
     assert registration.weekday == "Dinsdag"
     assert registration.total_eggs == 20549
+    assert registration.water_liters == 199.55
+    assert registration.feed_kg == 109.25
     assert registration.created_by == "admin"
 
 
@@ -189,17 +192,47 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
             "registration_date": "2026-05-26",
             "first_quality_eggs": "120",
             "second_quality_eggs": "6",
+            "water_liters": "0,25",
+            "feed_kg": "0,80",
             "notes": "Aangepast",
         },
     )
 
     assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/dashboard"
     with Session(engine) as session:
         registrations = session.exec(select(DailyLayingRegistration)).all()
 
     assert len(registrations) == 1
     assert registrations[0].total_eggs == 126
+    assert registrations[0].water_liters == 0.25
+    assert registrations[0].feed_kg == 0.80
     assert registrations[0].notes == "Aangepast"
+
+
+def test_daily_edit_form_formats_water_and_feed_with_two_decimals(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/daily/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+            "water_liters": "0.2",
+            "feed_kg": "0.8",
+        },
+    )
+    with Session(engine) as session:
+        registration = session.exec(select(DailyLayingRegistration)).one()
+
+    response = client.get(f"/kippen/daily/{registration.id}/edit")
+
+    assert response.status_code == 200
+    assert 'name="water_liters"' in response.text
+    assert 'value="0.20"' in response.text
+    assert 'name="feed_kg"' in response.text
+    assert 'value="0.80"' in response.text
 
 
 def test_week_overview_shows_saved_registration_and_totals(monkeypatch):

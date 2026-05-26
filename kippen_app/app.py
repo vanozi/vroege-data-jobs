@@ -96,9 +96,9 @@ def create_app(session_factory=None) -> Flask:
                 400,
             )
 
-        saved_registration = repositories.daily.upsert_daily_registration(registration)
+        repositories.daily.upsert_daily_registration(registration)
         flash("Dagregistratie opgeslagen.", "success")
-        return redirect(url_for("daily_edit", registration_id=saved_registration.id))
+        return redirect(url_for("dashboard"))
 
     @app.get("/kippen/daily/<int:registration_id>/edit")
     @login_required
@@ -164,7 +164,7 @@ def create_app(session_factory=None) -> Flask:
             abort(404)
 
         flash("Dagregistratie aangepast.", "success")
-        return redirect(url_for("daily_edit", registration_id=saved_registration.id))
+        return redirect(url_for("dashboard"))
 
     @app.get("/kippen/dead-hens/new")
     @login_required
