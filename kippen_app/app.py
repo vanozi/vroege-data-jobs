@@ -13,13 +13,19 @@ from database.repositories.laying_hens_repository import (
     DailyLayingRegistrationsRepository,
 )
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import EggRegistrationsRepository
+from database.repositories.laying_hens_repository import (
+    FeedWaterRegistrationsRepository,
+)
 from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
 from kippen_app import auth
 from kippen_app import config
 from kippen_app import daily
 from kippen_app import dead_hens
+from kippen_app import eggs
 from kippen_app import exports
+from kippen_app import feed_water
 from kippen_app import flock_age
 from kippen_app import flocks
 from kippen_app import outside_nest
@@ -435,6 +441,396 @@ def create_app(session_factory=None) -> Flask:
 
         flash("Dagregistratie aangepast.", "success")
         return redirect(url_for("dashboard"))
+
+    @app.get("/kippen/eggs")
+    @login_required
+    def egg_registrations_list():
+        return render_template(
+            "egg_registrations.html",
+            registrations=_repositories().eggs.list_recent(limit=100),
+        )
+
+    @app.get("/kippen/eggs/new")
+    @login_required
+    def egg_registrations_new():
+        repositories = _repositories()
+        registration_date = _get_requested_date()
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration_date,
+        )
+        return render_template(
+            "egg_form.html",
+            title="Eieren registreren",
+            values=eggs.default_values(registration_date),
+            errors={},
+            action_url=url_for("egg_registrations_new_post"),
+            submit_label="Opslaan",
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(
+                active_flock,
+                registration_date,
+            ),
+        )
+
+    @app.post("/kippen/eggs/new")
+    @login_required
+    def egg_registrations_new_post():
+        repositories = _repositories()
+        registration, errors, values = eggs.build_egg_registration_from_form(
+            request.form,
+            created_by=session.get("kippen_username"),
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "egg_form.html",
+                    title="Eieren registreren",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("egg_registrations_new_post"),
+                    submit_label="Opslaan",
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
+                ),
+                400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "egg_form.html",
+                    title="Eieren registreren",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("egg_registrations_new_post"),
+                    submit_label="Opslaan",
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
+        repositories.eggs.upsert_egg_registration(registration)
+        flash("Eiregistratie opgeslagen.", "success")
+        return redirect(url_for("egg_registrations_list"))
+
+    @app.get("/kippen/eggs/<int:registration_id>/edit")
+    @login_required
+    def egg_registrations_edit(registration_id: int):
+        repositories = _repositories()
+        registration = repositories.eggs.get_egg_registration_by_id(registration_id)
+        if registration is None:
+            abort(404)
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        return render_template(
+            "egg_form.html",
+            title="Eiregistratie aanpassen",
+            values=eggs.values_from_registration(registration),
+            errors={},
+            action_url=url_for(
+                "egg_registrations_edit_post",
+                registration_id=registration.id,
+            ),
+            submit_label="Wijzigingen opslaan",
+            active_flock=active_flock,
+            active_flock_age=_flock_age_for_registration(
+                repositories.flocks,
+                registration,
+            ),
+        )
+
+    @app.post("/kippen/eggs/<int:registration_id>/edit")
+    @login_required
+    def egg_registrations_edit_post(registration_id: int):
+        repositories = _repositories()
+        existing_registration = repositories.eggs.get_egg_registration_by_id(
+            registration_id,
+        )
+        if existing_registration is None:
+            abort(404)
+
+        registration, errors, values = eggs.build_egg_registration_from_form(
+            request.form,
+            created_by=session.get("kippen_username"),
+            existing_registration=existing_registration,
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "egg_form.html",
+                    title="Eiregistratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "egg_registrations_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
+                ),
+                400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "egg_form.html",
+                    title="Eiregistratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "egg_registrations_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
+        saved_registration = repositories.eggs.update_egg_registration(
+            registration_id,
+            registration,
+        )
+        if saved_registration is None:
+            abort(404)
+
+        flash("Eiregistratie aangepast.", "success")
+        return redirect(url_for("egg_registrations_list"))
+
+    @app.post("/kippen/eggs/<int:registration_id>/delete")
+    @login_required
+    def egg_registrations_delete(registration_id: int):
+        deleted = _repositories().eggs.delete_egg_registration(registration_id)
+        if not deleted:
+            abort(404)
+
+        flash("Eiregistratie verwijderd.", "success")
+        return redirect(url_for("egg_registrations_list"))
+
+    @app.get("/kippen/feed-water")
+    @login_required
+    def feed_water_registrations_list():
+        return render_template(
+            "feed_water_registrations.html",
+            registrations=_repositories().feed_water.list_recent(limit=100),
+        )
+
+    @app.get("/kippen/feed-water/new")
+    @login_required
+    def feed_water_registrations_new():
+        repositories = _repositories()
+        registration_date = _get_requested_date()
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration_date,
+        )
+        return render_template(
+            "feed_water_form.html",
+            title="Water en voer registreren",
+            values=feed_water.default_values(registration_date),
+            errors={},
+            action_url=url_for("feed_water_registrations_new_post"),
+            submit_label="Opslaan",
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(
+                active_flock,
+                registration_date,
+            ),
+        )
+
+    @app.post("/kippen/feed-water/new")
+    @login_required
+    def feed_water_registrations_new_post():
+        repositories = _repositories()
+        registration, errors, values = (
+            feed_water.build_feed_water_registration_from_form(
+                request.form,
+                created_by=session.get("kippen_username"),
+            )
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registreren",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("feed_water_registrations_new_post"),
+                    submit_label="Opslaan",
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
+                ),
+                400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registreren",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("feed_water_registrations_new_post"),
+                    submit_label="Opslaan",
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
+        repositories.feed_water.upsert_feed_water_registration(registration)
+        flash("Water en voer registratie opgeslagen.", "success")
+        return redirect(url_for("feed_water_registrations_list"))
+
+    @app.get("/kippen/feed-water/<int:registration_id>/edit")
+    @login_required
+    def feed_water_registrations_edit(registration_id: int):
+        repositories = _repositories()
+        registration = repositories.feed_water.get_feed_water_registration_by_id(
+            registration_id,
+        )
+        if registration is None:
+            abort(404)
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        return render_template(
+            "feed_water_form.html",
+            title="Water en voer registratie aanpassen",
+            values=feed_water.values_from_registration(registration),
+            errors={},
+            action_url=url_for(
+                "feed_water_registrations_edit_post",
+                registration_id=registration.id,
+            ),
+            submit_label="Wijzigingen opslaan",
+            active_flock=active_flock,
+            active_flock_age=_flock_age_for_registration(
+                repositories.flocks,
+                registration,
+            ),
+        )
+
+    @app.post("/kippen/feed-water/<int:registration_id>/edit")
+    @login_required
+    def feed_water_registrations_edit_post(registration_id: int):
+        repositories = _repositories()
+        existing_registration = (
+            repositories.feed_water.get_feed_water_registration_by_id(
+                registration_id,
+            )
+        )
+        if existing_registration is None:
+            abort(404)
+
+        registration, errors, values = (
+            feed_water.build_feed_water_registration_from_form(
+                request.form,
+                created_by=session.get("kippen_username"),
+                existing_registration=existing_registration,
+            )
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "feed_water_registrations_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
+                ),
+                400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "feed_water_registrations_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
+        saved_registration = repositories.feed_water.update_feed_water_registration(
+            registration_id,
+            registration,
+        )
+        if saved_registration is None:
+            abort(404)
+
+        flash("Water en voer registratie aangepast.", "success")
+        return redirect(url_for("feed_water_registrations_list"))
+
+    @app.post("/kippen/feed-water/<int:registration_id>/delete")
+    @login_required
+    def feed_water_registrations_delete(registration_id: int):
+        deleted = _repositories().feed_water.delete_feed_water_registration(
+            registration_id,
+        )
+        if not deleted:
+            abort(404)
+
+        flash("Water en voer registratie verwijderd.", "success")
+        return redirect(url_for("feed_water_registrations_list"))
 
     @app.get("/kippen/dead-hens/new")
     @login_required
@@ -866,6 +1262,8 @@ class LayingHensRepositories:
     def __init__(self, session_factory):
         self.flocks = FlocksRepository(session_factory)
         self.daily = DailyLayingRegistrationsRepository(session_factory)
+        self.eggs = EggRegistrationsRepository(session_factory)
+        self.feed_water = FeedWaterRegistrationsRepository(session_factory)
         self.dead_hens = DeadHenRegistrationsRepository(session_factory)
         self.outside_nest_rounds = OutsideNestEggRoundsRepository(session_factory)
 

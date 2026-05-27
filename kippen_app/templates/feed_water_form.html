@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">{{ title }}</h1>
+      <p class="subtitle">Water en voer per dag registreren.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('feed_water_registrations_list') }}">Water en voer registraties</a>
+  </div>
+</div>
+
+{% if errors.form %}
+<div class="notification is-danger">{{ errors.form }}</div>
+{% endif %}
+
+<div class="notification is-light">
+  <strong>Actief koppel:</strong>
+  {% if active_flock %}
+  {{ active_flock.flock_name }} sinds {{ active_flock.placement_date }}
+  {% if active_flock_age %}
+  &middot; leeftijd {{ active_flock_age.label }} &middot; dag {{ active_flock_age.total_days }}
+  {% endif %}
+  {% else %}
+  geen actief koppel voor deze datum.
+  {% endif %}
+</div>
+
+<form method="post" action="{{ action_url }}">
+  <input type="hidden" name="house_id" value="{{ values.house_id }}">
+
+  <div class="columns">
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="registration_date">Datum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.registration_date %}is-danger{% endif %}"
+            id="registration_date"
+            name="registration_date"
+            type="date"
+            value="{{ values.registration_date }}"
+            required
+          >
+        </div>
+        {% if errors.registration_date %}
+        <p class="help is-danger">{{ errors.registration_date }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="weekday">Weekdag</label>
+        <div class="control">
+          <input class="input" id="weekday" name="weekday" type="text" value="{{ values.weekday }}" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="water_ml">Water in milliliter</label>
+        <div class="control">
+          <input
+            class="input {% if errors.water_ml %}is-danger{% endif %}"
+            id="water_ml"
+            name="water_ml"
+            type="number"
+            min="0"
+            step="1"
+            value="{{ values.water_ml }}"
+            required
+          >
+        </div>
+        {% if errors.water_ml %}
+        <p class="help is-danger">{{ errors.water_ml }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="feed_grams">Voer in gram</label>
+        <div class="control">
+          <input
+            class="input {% if errors.feed_grams %}is-danger{% endif %}"
+            id="feed_grams"
+            name="feed_grams"
+            type="number"
+            min="0"
+            step="1"
+            value="{{ values.feed_grams }}"
+            required
+          >
+        </div>
+        {% if errors.feed_grams %}
+        <p class="help is-danger">{{ errors.feed_grams }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="notes">Opmerkingen</label>
+    <div class="control">
+      <textarea class="textarea" id="notes" name="notes" rows="4">{{ values.notes }}</textarea>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="button is-link" type="submit">{{ submit_label }}</button>
+    <a class="button is-light" href="{{ url_for('dashboard') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

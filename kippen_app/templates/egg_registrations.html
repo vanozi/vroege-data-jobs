@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Eiregistraties | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Eiregistraties</h1>
+      <p class="subtitle">Recente registraties voor 1e en 2e soort eieren.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-link" href="{{ url_for('egg_registrations_new') }}">Nieuwe eiregistratie</a>
+      <a class="button is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
+    </div>
+  </div>
+</div>
+
+{% if registrations %}
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Weekdag</th>
+        <th class="has-text-right">1e soort</th>
+        <th class="has-text-right">2e soort</th>
+        <th class="has-text-right">Totaal</th>
+        <th>Opmerkingen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for registration in registrations %}
+      <tr>
+        <td>{{ registration.registration_date }}</td>
+        <td>{{ registration.weekday or "" }}</td>
+        <td class="has-text-right">{{ registration.first_quality_eggs }}</td>
+        <td class="has-text-right">{{ registration.second_quality_eggs }}</td>
+        <td class="has-text-right">{{ registration.total_eggs }}</td>
+        <td>{{ registration.notes or "" }}</td>
+        <td class="has-text-right">
+          <div class="buttons are-small is-justify-content-flex-end">
+            <a class="button is-light" href="{{ url_for('egg_registrations_edit', registration_id=registration.id) }}">Bewerken</a>
+            <form method="post" action="{{ url_for('egg_registrations_delete', registration_id=registration.id) }}">
+              <button class="button is-danger is-light" type="submit">Verwijderen</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p>Geen eiregistraties gevonden.</p>
+{% endif %}
+{% endblock %}
