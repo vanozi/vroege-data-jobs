@@ -1,6 +1,7 @@
 """Flask app factory for the kippen registratie app."""
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 from typing import Optional
 
@@ -10,6 +11,12 @@ from flask import send_file
 
 from database import database
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import (
+    EggPackagingWeightConfigsRepository,
+)
+from database.repositories.laying_hens_repository import (
+    EggPalletWeightRegistrationsRepository,
+)
 from database.repositories.laying_hens_repository import EggRegistrationsRepository
 from database.repositories.laying_hens_repository import (
     FeedWaterRegistrationsRepository,
@@ -25,6 +32,8 @@ from kippen_app import feed_water
 from kippen_app import flock_age
 from kippen_app import flocks
 from kippen_app import outside_nest
+from kippen_app import packaging_weights
+from kippen_app import pallet_weights
 from kippen_app import weekdays
 
 
@@ -80,6 +89,10 @@ def create_app(session_factory=None) -> Flask:
             recent_dead_hens=repositories.dead_hens.list_recent(limit=5),
             recent_outside_nest_rounds=repositories.outside_nest_rounds.list_recent(
                 limit=5,
+            ),
+            recent_pallet_weights=repositories.pallet_weights.list_recent(limit=5),
+            today_average_egg_weight_grams=_average_egg_weight_grams(
+                repositories.pallet_weights.list_between(today, today),
             ),
         )
 
@@ -830,6 +843,360 @@ def create_app(session_factory=None) -> Flask:
         flash("Buitennest ronde verwijderd.", "success")
         return redirect(url_for("outside_nest_rounds_list"))
 
+    @app.get("/kippen/packaging-weights")
+    @login_required
+    def packaging_weights_list():
+        return render_template(
+            "packaging_weights.html",
+            configs=_repositories().packaging_weights.list_packaging_weight_configs(),
+        )
+
+    @app.get("/kippen/packaging-weights/new")
+    @login_required
+    def packaging_weights_new():
+        return render_template(
+            "packaging_weight_form.html",
+            title="Leeggoed configuratie toevoegen",
+            values=packaging_weights.default_values(date.today()),
+            errors={},
+            action_url=url_for("packaging_weights_new_post"),
+            submit_label="Configuratie opslaan",
+        )
+
+    @app.post("/kippen/packaging-weights/new")
+    @login_required
+    def packaging_weights_new_post():
+        repositories = _repositories()
+        config_model, errors, values = (
+            packaging_weights.build_packaging_weight_config_from_form(request.form)
+        )
+        if errors or config_model is None:
+            return _render_packaging_weight_form(
+                title="Leeggoed configuratie toevoegen",
+                values=values,
+                errors=errors,
+                action_url=url_for("packaging_weights_new_post"),
+                submit_label="Configuratie opslaan",
+                status_code=400,
+            )
+
+        try:
+            repositories.packaging_weights.create_packaging_weight_config(config_model)
+        except ValueError as exc:
+            errors["form"] = str(exc)
+            return _render_packaging_weight_form(
+                title="Leeggoed configuratie toevoegen",
+                values=values,
+                errors=errors,
+                action_url=url_for("packaging_weights_new_post"),
+                submit_label="Configuratie opslaan",
+                status_code=400,
+            )
+
+        flash("Leeggoed configuratie opgeslagen.", "success")
+        return redirect(url_for("packaging_weights_list"))
+
+    @app.get("/kippen/packaging-weights/<int:config_id>/edit")
+    @login_required
+    def packaging_weights_edit(config_id: int):
+        config_model = (
+            _repositories().packaging_weights.get_packaging_weight_config_by_id(
+                config_id,
+            )
+        )
+        if config_model is None:
+            abort(404)
+
+        return render_template(
+            "packaging_weight_form.html",
+            title="Leeggoed configuratie aanpassen",
+            values=packaging_weights.values_from_config(config_model),
+            errors={},
+            action_url=url_for("packaging_weights_edit_post", config_id=config_id),
+            submit_label="Wijzigingen opslaan",
+        )
+
+    @app.post("/kippen/packaging-weights/<int:config_id>/edit")
+    @login_required
+    def packaging_weights_edit_post(config_id: int):
+        repositories = _repositories()
+        existing_config = (
+            repositories.packaging_weights.get_packaging_weight_config_by_id(
+                config_id,
+            )
+        )
+        if existing_config is None:
+            abort(404)
+
+        config_model, errors, values = (
+            packaging_weights.build_packaging_weight_config_from_form(
+                request.form,
+                existing_config=existing_config,
+            )
+        )
+        if errors or config_model is None:
+            return _render_packaging_weight_form(
+                title="Leeggoed configuratie aanpassen",
+                values=values,
+                errors=errors,
+                action_url=url_for("packaging_weights_edit_post", config_id=config_id),
+                submit_label="Wijzigingen opslaan",
+                status_code=400,
+            )
+
+        try:
+            saved_config = (
+                repositories.packaging_weights.update_packaging_weight_config(
+                    config_id,
+                    config_model,
+                )
+            )
+        except ValueError as exc:
+            errors["form"] = str(exc)
+            return _render_packaging_weight_form(
+                title="Leeggoed configuratie aanpassen",
+                values=values,
+                errors=errors,
+                action_url=url_for("packaging_weights_edit_post", config_id=config_id),
+                submit_label="Wijzigingen opslaan",
+                status_code=400,
+            )
+
+        if saved_config is None:
+            abort(404)
+
+        flash("Leeggoed configuratie aangepast.", "success")
+        return redirect(url_for("packaging_weights_list"))
+
+    @app.post("/kippen/packaging-weights/<int:config_id>/archive")
+    @login_required
+    def packaging_weights_archive(config_id: int):
+        archived_config = (
+            _repositories().packaging_weights.archive_packaging_weight_config(config_id)
+        )
+        if archived_config is None:
+            abort(404)
+
+        flash("Leeggoed configuratie gearchiveerd.", "success")
+        return redirect(url_for("packaging_weights_list"))
+
+    @app.get("/kippen/pallet-weights")
+    @login_required
+    def pallet_weights_list():
+        return render_template(
+            "pallet_weights.html",
+            registrations=_repositories().pallet_weights.list_recent(limit=100),
+        )
+
+    @app.get("/kippen/pallet-weights/new")
+    @login_required
+    def pallet_weights_new():
+        repositories = _repositories()
+        registration_date = _get_requested_date()
+        return render_template(
+            "pallet_weight_form.html",
+            title="Palletgewicht registreren",
+            values=pallet_weights.default_values(registration_date),
+            errors={},
+            action_url=url_for("pallet_weights_new_post"),
+            submit_label="Opslaan",
+            active_flock=repositories.flocks.get_active_flock_for_date(
+                registration_date,
+            ),
+            active_flock_age=flock_age.flock_age_context(
+                repositories.flocks.get_active_flock_for_date(registration_date),
+                registration_date,
+            ),
+            packaging_configs=repositories.packaging_weights.list_active_for_date(
+                registration_date,
+            ),
+        )
+
+    @app.post("/kippen/pallet-weights/new")
+    @login_required
+    def pallet_weights_new_post():
+        repositories = _repositories()
+        selected_config = _packaging_config_from_form(repositories, request.form)
+        registration, errors, values = (
+            pallet_weights.build_pallet_weight_registration_from_form(
+                request.form,
+                packaging_config=selected_config,
+                created_by=session.get("kippen_username"),
+            )
+        )
+        if errors or registration is None:
+            return _render_pallet_weight_form(
+                repositories,
+                title="Palletgewicht registreren",
+                values=values,
+                errors=errors,
+                action_url=url_for("pallet_weights_new_post"),
+                submit_label="Opslaan",
+                selected_config=selected_config,
+                status_code=400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return _render_pallet_weight_form(
+                repositories,
+                title="Palletgewicht registreren",
+                values=values,
+                errors=errors,
+                action_url=url_for("pallet_weights_new_post"),
+                submit_label="Opslaan",
+                selected_config=selected_config,
+                status_code=400,
+            )
+
+        if not _packaging_config_is_active_for_registration(
+            repositories,
+            registration,
+        ):
+            errors["packaging_weight_config_id"] = (
+                "Leeggoed configuratie is niet actief op deze datum."
+            )
+            return _render_pallet_weight_form(
+                repositories,
+                title="Palletgewicht registreren",
+                values=values,
+                errors=errors,
+                action_url=url_for("pallet_weights_new_post"),
+                submit_label="Opslaan",
+                selected_config=selected_config,
+                status_code=400,
+            )
+
+        registration.flock_id = active_flock.id
+        repositories.pallet_weights.create_pallet_weight_registration(registration)
+        flash("Palletgewicht opgeslagen.", "success")
+        return redirect(url_for("pallet_weights_list"))
+
+    @app.get("/kippen/pallet-weights/<int:registration_id>/edit")
+    @login_required
+    def pallet_weights_edit(registration_id: int):
+        repositories = _repositories()
+        registration = repositories.pallet_weights.get_pallet_weight_registration_by_id(
+            registration_id,
+        )
+        if registration is None:
+            abort(404)
+
+        selected_config = (
+            repositories.packaging_weights.get_packaging_weight_config_by_id(
+                registration.packaging_weight_config_id,
+            )
+        )
+        return render_template(
+            "pallet_weight_form.html",
+            title="Palletgewicht aanpassen",
+            values=pallet_weights.values_from_registration(registration),
+            errors={},
+            action_url=url_for(
+                "pallet_weights_edit_post",
+                registration_id=registration.id,
+            ),
+            submit_label="Wijzigingen opslaan",
+            active_flock=_flock_for_registration_by_id(
+                repositories.flocks,
+                registration.flock_id,
+            ),
+            active_flock_age=_flock_age_for_registration(
+                repositories.flocks,
+                registration,
+            ),
+            packaging_configs=_packaging_configs_for_values(
+                repositories,
+                pallet_weights.values_from_registration(registration),
+                selected_config,
+            ),
+        )
+
+    @app.post("/kippen/pallet-weights/<int:registration_id>/edit")
+    @login_required
+    def pallet_weights_edit_post(registration_id: int):
+        repositories = _repositories()
+        existing_registration = (
+            repositories.pallet_weights.get_pallet_weight_registration_by_id(
+                registration_id,
+            )
+        )
+        if existing_registration is None:
+            abort(404)
+
+        selected_config = _packaging_config_from_form(repositories, request.form)
+        registration, errors, values = (
+            pallet_weights.build_pallet_weight_registration_from_form(
+                request.form,
+                packaging_config=selected_config,
+                created_by=session.get("kippen_username"),
+                existing_registration=existing_registration,
+            )
+        )
+        if errors or registration is None:
+            return _render_pallet_weight_form(
+                repositories,
+                title="Palletgewicht aanpassen",
+                values=values,
+                errors=errors,
+                action_url=url_for(
+                    "pallet_weights_edit_post",
+                    registration_id=registration_id,
+                ),
+                submit_label="Wijzigingen opslaan",
+                selected_config=selected_config,
+                status_code=400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return _render_pallet_weight_form(
+                repositories,
+                title="Palletgewicht aanpassen",
+                values=values,
+                errors=errors,
+                action_url=url_for(
+                    "pallet_weights_edit_post",
+                    registration_id=registration_id,
+                ),
+                submit_label="Wijzigingen opslaan",
+                selected_config=selected_config,
+                status_code=400,
+            )
+
+        registration.flock_id = active_flock.id
+        saved_registration = (
+            repositories.pallet_weights.update_pallet_weight_registration(
+                registration_id,
+                registration,
+            )
+        )
+        if saved_registration is None:
+            abort(404)
+
+        flash("Palletgewicht aangepast.", "success")
+        return redirect(url_for("pallet_weights_list"))
+
+    @app.post("/kippen/pallet-weights/<int:registration_id>/delete")
+    @login_required
+    def pallet_weights_delete(registration_id: int):
+        deleted = _repositories().pallet_weights.delete_pallet_weight_registration(
+            registration_id,
+        )
+        if not deleted:
+            abort(404)
+
+        flash("Palletgewicht verwijderd.", "success")
+        return redirect(url_for("pallet_weights_list"))
+
     @app.get("/kippen/week")
     @login_required
     def week_current():
@@ -1044,6 +1411,77 @@ def create_app(session_factory=None) -> Flask:
                     for item in repositories.outside_nest_rounds.list_all()
                 ],
             )
+        elif record_type == "pallet-weights":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
+                    "registration_date",
+                    "weekday",
+                    "supplier_name",
+                    "pallet_weight_kg",
+                    "empty_packaging_weight_kg",
+                    "egg_count_per_pallet",
+                    "egg_weight_grams",
+                    "notes",
+                    "created_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.registration_date,
+                        ),
+                        item.registration_date,
+                        item.weekday,
+                        item.supplier_name,
+                        item.pallet_weight_kg,
+                        item.empty_packaging_weight_kg,
+                        item.egg_count_per_pallet,
+                        item.egg_weight_grams,
+                        item.notes,
+                        item.created_by,
+                    ]
+                    for item in repositories.pallet_weights.list_all()
+                ],
+            )
+        elif record_type == "packaging-weights":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "supplier_name",
+                    "empty_packaging_weight_kg",
+                    "egg_count_per_pallet",
+                    "start_date",
+                    "end_date",
+                    "is_active",
+                    "archived_at",
+                    "notes",
+                ],
+                [
+                    [
+                        item.id,
+                        item.supplier_name,
+                        item.empty_packaging_weight_kg,
+                        item.egg_count_per_pallet,
+                        item.start_date,
+                        item.end_date,
+                        item.is_active,
+                        item.archived_at,
+                        item.notes,
+                    ]
+                    for item in repositories.packaging_weights.list_packaging_weight_configs()
+                ],
+            )
         else:
             abort(404)
 
@@ -1115,6 +1553,8 @@ class LayingHensRepositories:
         self.feed_water = FeedWaterRegistrationsRepository(session_factory)
         self.dead_hens = DeadHenRegistrationsRepository(session_factory)
         self.outside_nest_rounds = OutsideNestEggRoundsRepository(session_factory)
+        self.packaging_weights = EggPackagingWeightConfigsRepository(session_factory)
+        self.pallet_weights = EggPalletWeightRegistrationsRepository(session_factory)
 
 
 def _repositories() -> LayingHensRepositories:
@@ -1210,6 +1650,116 @@ def _flock_age_for_registration(
     return flock_age.flock_age_context(active_flock, registration.registration_date)
 
 
+def _flock_for_registration_by_id(
+    repository: FlocksRepository,
+    flock_id: Optional[int],
+):
+    if flock_id is None:
+        return None
+
+    return repository.get_flock_by_id(flock_id)
+
+
+def _render_packaging_weight_form(
+    *,
+    title: str,
+    values: dict[str, str],
+    errors: dict[str, str],
+    action_url: str,
+    submit_label: str,
+    status_code: int,
+):
+    return (
+        render_template(
+            "packaging_weight_form.html",
+            title=title,
+            values=values,
+            errors=errors,
+            action_url=action_url,
+            submit_label=submit_label,
+        ),
+        status_code,
+    )
+
+
+def _render_pallet_weight_form(
+    repositories: LayingHensRepositories,
+    *,
+    title: str,
+    values: dict[str, str],
+    errors: dict[str, str],
+    action_url: str,
+    submit_label: str,
+    selected_config,
+    status_code: int,
+):
+    return (
+        render_template(
+            "pallet_weight_form.html",
+            title=title,
+            values=values,
+            errors=errors,
+            action_url=action_url,
+            submit_label=submit_label,
+            active_flock=_active_flock_for_values(repositories.flocks, values),
+            active_flock_age=_active_flock_age_for_values(
+                repositories.flocks,
+                values,
+            ),
+            packaging_configs=_packaging_configs_for_values(
+                repositories,
+                values,
+                selected_config,
+            ),
+        ),
+        status_code,
+    )
+
+
+def _packaging_config_from_form(
+    repositories: LayingHensRepositories,
+    form_data,
+):
+    try:
+        config_id = int(form_data.get("packaging_weight_config_id", ""))
+    except ValueError:
+        return None
+
+    return repositories.packaging_weights.get_packaging_weight_config_by_id(config_id)
+
+
+def _packaging_configs_for_values(
+    repositories: LayingHensRepositories,
+    values: dict[str, str],
+    selected_config,
+):
+    try:
+        registration_date = date.fromisoformat(values.get("registration_date", ""))
+    except ValueError:
+        registration_date = date.today()
+
+    configs = repositories.packaging_weights.list_active_for_date(registration_date)
+    if selected_config is None or selected_config.id is None:
+        return configs
+
+    if any(config.id == selected_config.id for config in configs):
+        return configs
+
+    return [selected_config, *configs]
+
+
+def _packaging_config_is_active_for_registration(
+    repositories: LayingHensRepositories,
+    registration,
+) -> bool:
+    configs = repositories.packaging_weights.list_active_for_date(
+        registration.registration_date,
+    )
+    return any(
+        config.id == registration.packaging_weight_config_id for config in configs
+    )
+
+
 def _missing_active_flock_message(house_id: str) -> str:
     return (
         "Geen actief koppel gevonden voor deze datum in stal "
@@ -1244,6 +1794,10 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         week_days[0],
         week_days[-1],
     )
+    pallet_weight_registrations = repositories.pallet_weights.list_between(
+        week_days[0],
+        week_days[-1],
+    )
     egg_registrations_by_date = {
         registration.registration_date: registration
         for registration in egg_registrations
@@ -1252,11 +1806,18 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         registration.registration_date: registration
         for registration in feed_water_registrations
     }
+    pallet_weight_registrations_by_date = _group_by_registration_date(
+        pallet_weight_registrations,
+    )
     flocks_by_id = _flocks_by_id(repositories.flocks)
     rows = []
     for day in week_days:
         egg_registration = egg_registrations_by_date.get(day)
         feed_water_registration = feed_water_registrations_by_date.get(day)
+        pallet_weight_registrations_for_day = pallet_weight_registrations_by_date.get(
+            day,
+            [],
+        )
         active_flock = _flock_for_week_row(
             repositories.flocks,
             flocks_by_id,
@@ -1271,6 +1832,10 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
                 "registration": egg_registration,
                 "egg_registration": egg_registration,
                 "feed_water_registration": feed_water_registration,
+                "pallet_weight_registrations": pallet_weight_registrations_for_day,
+                "average_egg_weight_grams": _average_egg_weight_grams(
+                    pallet_weight_registrations_for_day,
+                ),
                 "flock": active_flock,
                 "flock_age": flock_age.flock_age_context(active_flock, day),
                 "dead_hens_count": repositories.dead_hens.count_for_date(day),
@@ -1327,7 +1892,30 @@ def _raw_flock_context_values(
     ]
 
 
-def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
+def _group_by_registration_date(registrations) -> dict[date, list[object]]:
+    grouped: dict[date, list[object]] = {}
+    for registration in registrations:
+        grouped.setdefault(registration.registration_date, []).append(registration)
+
+    return grouped
+
+
+def _average_egg_weight_grams(registrations) -> Optional[Decimal]:
+    values = [
+        registration.egg_weight_grams
+        for registration in registrations
+        if registration.egg_weight_grams is not None
+    ]
+    if not values:
+        return None
+
+    return (sum(values) / Decimal(len(values))).quantize(
+        Decimal("0.0001"),
+        rounding=ROUND_HALF_UP,
+    )
+
+
+def _week_totals(rows: list[dict[str, object]]) -> dict[str, object]:
     totals = {
         "first_quality_eggs": 0,
         "second_quality_eggs": 0,
@@ -1336,10 +1924,13 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
         "outside_nest_egg_count": 0,
         "water_ml": 0,
         "feed_grams": 0,
+        "average_egg_weight_grams": None,
     }
+    pallet_weight_registrations = []
     for row in rows:
         egg_registration = row["egg_registration"]
         feed_water_registration = row["feed_water_registration"]
+        pallet_weight_registrations.extend(row["pallet_weight_registrations"])
         totals["dead_hens_count"] += int(row["dead_hens_count"])
         totals["outside_nest_egg_count"] += int(row["outside_nest_egg_count"])
         if egg_registration is not None:
@@ -1351,4 +1942,7 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
             totals["water_ml"] += feed_water_registration.water_ml
             totals["feed_grams"] += feed_water_registration.feed_grams
 
+    totals["average_egg_weight_grams"] = _average_egg_weight_grams(
+        pallet_weight_registrations,
+    )
     return totals

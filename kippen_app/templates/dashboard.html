@@ -65,6 +65,15 @@
       <p class="subtitle is-6">Berekend uit rondes</p>
     </div>
   </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Eigewicht vandaag</p>
+      <p class="title is-4">
+        {% if today_average_egg_weight_grams %}{{ today_average_egg_weight_grams }} g{% else %}-{% endif %}
+      </p>
+      <p class="subtitle is-6">Gemiddelde palletregistraties</p>
+    </div>
+  </div>
 </div>
 
 <div class="buttons">
@@ -72,7 +81,10 @@
   <a class="button is-link is-light" href="{{ url_for('feed_water_registrations_new') }}">Water en voer registreren</a>
   <a class="button is-warning" href="{{ url_for('dead_hens_new') }}">Dode hen registreren</a>
   <a class="button is-info" href="{{ url_for('outside_nest_rounds_new') }}">Buitennest ronde registreren</a>
+  <a class="button is-primary" href="{{ url_for('pallet_weights_new') }}">Palletgewicht registreren</a>
   <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
+  <a class="button is-light" href="{{ url_for('pallet_weights_list') }}">Palletgewichten</a>
+  <a class="button is-light" href="{{ url_for('packaging_weights_list') }}">Leeggoed beheren</a>
   <a class="button is-light" href="{{ url_for('flocks_list') }}">Koppels beheren</a>
 </div>
 
@@ -94,6 +106,8 @@
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='feed-water') }}">Water en voer CSV</a>
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='dead-hens') }}">Dode hennen CSV</a>
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='outside-nest-rounds') }}">Buitennest CSV</a>
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='pallet-weights') }}">Palletgewichten CSV</a>
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='packaging-weights') }}">Leeggoed CSV</a>
 </div>
 
 <div class="columns mt-4">
@@ -235,6 +249,38 @@
     </table>
     {% else %}
     <p>Geen buitennest rondes gevonden.</p>
+    {% endif %}
+  </div>
+  <div class="column">
+    <div class="level mb-2">
+      <div class="level-left">
+        <h2 class="title is-5 mb-0">Laatste palletgewichten</h2>
+      </div>
+      <div class="level-right">
+        <a href="{{ url_for('pallet_weights_list') }}">Alles bekijken</a>
+      </div>
+    </div>
+    {% if recent_pallet_weights %}
+    <table class="table is-fullwidth">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Leverancier</th>
+          <th class="has-text-right">Eigewicht</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for registration in recent_pallet_weights %}
+        <tr>
+          <td>{{ registration.registration_date }}</td>
+          <td>{{ registration.supplier_name }}</td>
+          <td class="has-text-right">{{ registration.egg_weight_grams }} g</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>Geen palletgewichten gevonden.</p>
     {% endif %}
   </div>
 </div>

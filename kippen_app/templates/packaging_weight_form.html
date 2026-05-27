@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">{{ title }}</h1>
+      <p class="subtitle">Leeggoed gewicht en standaard eieren per pallet.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('packaging_weights_list') }}">Leeggoed configuraties</a>
+  </div>
+</div>
+
+{% if errors.form %}
+<div class="notification is-danger">{{ errors.form }}</div>
+{% endif %}
+
+<form method="post" action="{{ action_url }}">
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="supplier_name">Leverancier</label>
+        <div class="control">
+          <input
+            class="input {% if errors.supplier_name %}is-danger{% endif %}"
+            id="supplier_name"
+            name="supplier_name"
+            type="text"
+            value="{{ values.supplier_name }}"
+            required
+          >
+        </div>
+        {% if errors.supplier_name %}
+        <p class="help is-danger">{{ errors.supplier_name }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="empty_packaging_weight_kg">Leeggoed gewicht in kg</label>
+        <div class="control">
+          <input
+            class="input {% if errors.empty_packaging_weight_kg %}is-danger{% endif %}"
+            id="empty_packaging_weight_kg"
+            name="empty_packaging_weight_kg"
+            type="text"
+            inputmode="decimal"
+            value="{{ values.empty_packaging_weight_kg }}"
+            required
+          >
+        </div>
+        {% if errors.empty_packaging_weight_kg %}
+        <p class="help is-danger">{{ errors.empty_packaging_weight_kg }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="egg_count_per_pallet">Eieren per pallet</label>
+        <div class="control">
+          <input
+            class="input {% if errors.egg_count_per_pallet %}is-danger{% endif %}"
+            id="egg_count_per_pallet"
+            name="egg_count_per_pallet"
+            type="number"
+            min="1"
+            step="1"
+            value="{{ values.egg_count_per_pallet }}"
+            required
+          >
+        </div>
+        {% if errors.egg_count_per_pallet %}
+        <p class="help is-danger">{{ errors.egg_count_per_pallet }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="start_date">Begindatum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.start_date %}is-danger{% endif %}"
+            id="start_date"
+            name="start_date"
+            type="date"
+            value="{{ values.start_date }}"
+            required
+          >
+        </div>
+        {% if errors.start_date %}
+        <p class="help is-danger">{{ errors.start_date }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="end_date">Einddatum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.end_date %}is-danger{% endif %}"
+            id="end_date"
+            name="end_date"
+            type="date"
+            value="{{ values.end_date }}"
+          >
+        </div>
+        {% if errors.end_date %}
+        <p class="help is-danger">{{ errors.end_date }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="notes">Opmerkingen</label>
+    <div class="control">
+      <textarea class="textarea" id="notes" name="notes" rows="4">{{ values.notes }}</textarea>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="button is-link" type="submit">{{ submit_label }}</button>
+    <a class="button is-light" href="{{ url_for('packaging_weights_list') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

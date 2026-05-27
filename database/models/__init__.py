@@ -9,6 +9,8 @@ from .behandeling import KlauwBehandeling
 from .koe import Koe, KoeDetail
 from .laying_hens import (
     DeadHenRegistration,
+    EggPackagingWeightConfig,
+    EggPalletWeightRegistration,
     EggRegistration,
     FeedWaterRegistration,
     Flock,
@@ -19,6 +21,8 @@ from .tank_transaction import TankTransaction
 
 __all__ = [
     "DeadHenRegistration",
+    "EggPackagingWeightConfig",
+    "EggPalletWeightRegistration",
     "EggRegistration",
     "FeedWaterRegistration",
     "Flock",

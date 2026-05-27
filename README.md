@@ -502,6 +502,12 @@ Useful routes:
 - `/kippen/eggs/new`: register `1e soort` and `2e soort` eggs.
 - `/kippen/feed-water/new`: register daily water in milliliters and feed in
   grams.
+- `/kippen/packaging-weights`: manage empty-packaging weight configurations per
+  supplier.
+- `/kippen/packaging-weights/new`: create a supplier empty-packaging
+  configuration.
+- `/kippen/pallet-weights/new`: register a weighed egg pallet.
+- `/kippen/pallet-weights`: recent pallet weight registrations.
 - `/kippen/eggs`: recent egg registrations.
 - `/kippen/feed-water`: recent water/feed registrations.
 - `/kippen/dead-hens/new`: dead hen registration.
@@ -519,6 +525,8 @@ Flock workflow:
 5. Leave `Einddatum` empty while the flock is still active.
 6. Enter egg registrations and water/feed registrations separately.
 7. Enter dead-hen registrations and outside-nest rounds as needed.
+8. Add empty-packaging configurations before registering pallet weights.
+9. Enter pallet weights to calculate average egg weight in grams.
 
 Registrations are only accepted when there is an active flock in the same house
 for the registration date. For now the app uses one house, `main`. Future houses
@@ -531,6 +539,32 @@ The dashboard and registration pages show the active flock plus bird age in
 weeks, days, and total days. Weekly overviews and exports include flock context
 and age for each day.
 
+Egg pallet weight workflow:
+
+1. Open **Leeggoed beheren**.
+2. Create a configuration for the eierhandel/leverancier.
+3. Enter the empty-packaging weight in kilograms.
+4. Leave `Eieren per pallet` at `10800` unless that supplier uses a different
+   pallet setup.
+5. Set the active date range for that configuration.
+6. Open **Palletgewicht registreren**.
+7. Select the date and active empty-packaging configuration.
+8. Enter the weighed pallet weight including empty packaging.
+
+The app calculates average egg weight in grams with:
+
+```text
+(palletgewicht kg - leeggoed kg) / eieren per pallet * 1000
+```
+
+Pallet registrations copy the supplier name, empty-packaging weight, and
+egg-count-per-pallet from the selected configuration. This keeps historical
+registrations stable when a supplier's empty-packaging configuration changes
+later. Weekly overviews show the average egg weight per day. When multiple
+pallets are registered on the same day, the day shows the average of those
+pallet egg-weight values. The weekly total row shows the average across all
+pallet registrations in that week.
+
 Weekly exports:
 
 - `/kippen/week/<year>/<week>/export.xlsx`: Excel laying calendar export.
@@ -542,6 +576,10 @@ Raw CSV exports:
 - `/kippen/export/feed-water.csv`: water/feed registrations.
 - `/kippen/export/dead-hens.csv`: dead hen registrations.
 - `/kippen/export/outside-nest-rounds.csv`: outside-nest egg rounds.
+- `/kippen/export/pallet-weights.csv`: pallet weight registrations including
+  calculated egg weight.
+- `/kippen/export/packaging-weights.csv`: supplier empty-packaging
+  configurations.
 
 Raw CSV exports include `flock_id`, `flock_name`, `flock_date_of_birth`,
 `flock_age_weeks`, and `flock_age_days`.
@@ -554,9 +592,10 @@ https://kippen.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
 
 Backups are database-level. The PostgreSQL backup command above includes the
 Kippen tables (`flocks`, `egg_registrations`, `feed_water_registrations`,
-`dead_hen_registrations`, and `outside_nest_egg_rounds`). For operational
-exports that can be opened directly in Excel, use the weekly Excel export and
-raw CSV links in the app.
+`dead_hen_registrations`, `outside_nest_egg_rounds`,
+`egg_packaging_weight_configs`, and `egg_pallet_weight_registrations`). For
+operational exports that can be opened directly in Excel, use the weekly Excel
+export and raw CSV links in the app.
 
 ### Uniform Agri
 

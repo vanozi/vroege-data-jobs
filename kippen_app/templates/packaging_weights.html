@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Leeggoed configuraties | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Leeggoed configuraties</h1>
+      <p class="subtitle">Gewicht en eieraantal per leverancier beheren.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-link" href="{{ url_for('packaging_weights_new') }}">Configuratie toevoegen</a>
+      <a class="button is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
+    </div>
+  </div>
+</div>
+
+{% if configs %}
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Leverancier</th>
+        <th class="has-text-right">Leeggoed kg</th>
+        <th class="has-text-right">Eieren per pallet</th>
+        <th>Begindatum</th>
+        <th>Einddatum</th>
+        <th>Status</th>
+        <th>Opmerkingen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for config in configs %}
+      <tr>
+        <td>{{ config.supplier_name }}</td>
+        <td class="has-text-right">{{ config.empty_packaging_weight_kg }}</td>
+        <td class="has-text-right">{{ config.egg_count_per_pallet }}</td>
+        <td>{{ config.start_date }}</td>
+        <td>{% if config.end_date %}{{ config.end_date }}{% else %}-{% endif %}</td>
+        <td>
+          {% if config.is_active and not config.archived_at %}
+          <span class="tag is-success">Actief</span>
+          {% else %}
+          <span class="tag is-light">Gearchiveerd</span>
+          {% endif %}
+        </td>
+        <td>{{ config.notes or "" }}</td>
+        <td class="has-text-right">
+          <div class="buttons are-small is-justify-content-flex-end">
+            <a class="button is-light" href="{{ url_for('packaging_weights_edit', config_id=config.id) }}">Bewerken</a>
+            {% if config.is_active and not config.archived_at %}
+            <form method="post" action="{{ url_for('packaging_weights_archive', config_id=config.id) }}">
+              <button class="button is-warning is-light" type="submit">Archiveren</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="notification is-light">Er zijn nog geen leeggoed configuraties.</div>
+{% endif %}
+{% endblock %}

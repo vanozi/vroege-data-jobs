@@ -1,11 +1,15 @@
 """Repositories for laying hens registrations."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional, Union
 
 from sqlmodel import select
 
+from database import laying_hens_calculations
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import EggPackagingWeightConfig
+from database.models.laying_hens import EggPalletWeightRegistration
 from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
@@ -232,7 +236,15 @@ class FlocksRepository(BaseRepository[Flock]):
                 .where(OutsideNestEggRound.flock_id == flock_id)
                 .limit(1)
             ).first()
-            return outside_nest_round is not None
+            if outside_nest_round is not None:
+                return True
+
+            pallet_weight_registration = session.exec(
+                select(EggPalletWeightRegistration.id)
+                .where(EggPalletWeightRegistration.flock_id == flock_id)
+                .limit(1)
+            ).first()
+            return pallet_weight_registration is not None
 
     def _active_flocks_statement(self, *, target_date: Optional[date] = None):
         statement = select(Flock).where(
@@ -680,3 +692,345 @@ class OutsideNestEggRoundsRepository(BaseRepository[OutsideNestEggRound]):
             )
             rounds = session.exec(statement).all()
             return sum(egg_round.egg_count for egg_round in rounds)
+
+
+class EggPackagingWeightConfigsRepository(
+    BaseRepository[EggPackagingWeightConfig],
+):
+    """Repository for supplier packaging weight configs."""
+
+    def __init__(self, session_factory):
+        super().__init__(EggPackagingWeightConfig, session_factory)
+
+    def create_packaging_weight_config(
+        self,
+        config_data: Union[dict[str, object], EggPackagingWeightConfig],
+    ) -> EggPackagingWeightConfig:
+        """Create a packaging config after validating supplier date overlap."""
+        if isinstance(config_data, EggPackagingWeightConfig):
+            config_data = config_data.model_dump()
+
+        normalized_data = self._normalize_model_data(config_data)
+        self._validate_config_data(normalized_data)
+        with self.get_session() as session:
+            config = EggPackagingWeightConfig(**normalized_data)
+            session.add(config)
+            session.flush()
+            session.refresh(config)
+            session.expunge(config)
+            return config
+
+    def update_packaging_weight_config(
+        self,
+        config_id: int,
+        config_data: Union[dict[str, object], EggPackagingWeightConfig],
+    ) -> Optional[EggPackagingWeightConfig]:
+        """Update a packaging config after validating supplier date overlap."""
+        if isinstance(config_data, EggPackagingWeightConfig):
+            config_data = config_data.model_dump()
+
+        normalized_data = self._normalize_model_data(config_data)
+        normalized_data.pop("id", None)
+        self._validate_config_data(normalized_data, exclude_config_id=config_id)
+        with self.get_session() as session:
+            config = session.get(EggPackagingWeightConfig, config_id)
+            if config is None:
+                return None
+
+            self._update_instance(config, normalized_data)
+            session.add(config)
+            session.flush()
+            session.refresh(config)
+            session.expunge(config)
+            return config
+
+    def get_packaging_weight_config_by_id(
+        self,
+        config_id: int,
+    ) -> Optional[EggPackagingWeightConfig]:
+        """Return one packaging config by primary key."""
+        with self.get_session() as session:
+            config = session.get(EggPackagingWeightConfig, config_id)
+            if config is None:
+                return None
+
+            session.expunge(config)
+            return config
+
+    def list_packaging_weight_configs(
+        self,
+        *,
+        include_archived: bool = True,
+    ) -> list[EggPackagingWeightConfig]:
+        """Return packaging configs ordered by supplier and start date."""
+        with self.get_session() as session:
+            statement = select(EggPackagingWeightConfig)
+            if not include_archived:
+                statement = statement.where(
+                    EggPackagingWeightConfig.is_active.is_(True),
+                    EggPackagingWeightConfig.archived_at.is_(None),
+                )
+
+            statement = statement.order_by(
+                EggPackagingWeightConfig.supplier_name.asc(),
+                EggPackagingWeightConfig.start_date.desc(),
+            )
+            configs = list(session.exec(statement).all())
+            for config in configs:
+                session.expunge(config)
+            return configs
+
+    def list_active_for_date(
+        self,
+        target_date: date,
+    ) -> list[EggPackagingWeightConfig]:
+        """Return selectable active packaging configs for one date."""
+        with self.get_session() as session:
+            statement = self._active_for_date_statement(target_date).order_by(
+                EggPackagingWeightConfig.supplier_name.asc(),
+                EggPackagingWeightConfig.start_date.desc(),
+            )
+            configs = list(session.exec(statement).all())
+            for config in configs:
+                session.expunge(config)
+            return configs
+
+    def get_active_for_supplier_and_date(
+        self,
+        supplier_name: str,
+        target_date: date,
+    ) -> Optional[EggPackagingWeightConfig]:
+        """Return one active packaging config for a supplier/date."""
+        with self.get_session() as session:
+            statement = (
+                self._active_for_date_statement(target_date)
+                .where(EggPackagingWeightConfig.supplier_name == supplier_name)
+                .order_by(EggPackagingWeightConfig.start_date.desc())
+            )
+            config = session.exec(statement).first()
+            if config is None:
+                return None
+
+            session.expunge(config)
+            return config
+
+    def archive_packaging_weight_config(
+        self,
+        config_id: int,
+    ) -> Optional[EggPackagingWeightConfig]:
+        """Archive a packaging config instead of deleting it."""
+        with self.get_session() as session:
+            config = session.get(EggPackagingWeightConfig, config_id)
+            if config is None:
+                return None
+
+            config.is_active = False
+            config.archived_at = datetime.utcnow()
+            session.add(config)
+            session.flush()
+            session.refresh(config)
+            session.expunge(config)
+            return config
+
+    def _validate_config_data(
+        self,
+        config_data: dict[str, object],
+        *,
+        exclude_config_id: Optional[int] = None,
+    ) -> None:
+        candidate = EggPackagingWeightConfig.model_validate(config_data)
+        if not candidate.supplier_name.strip():
+            raise ValueError("Packaging weight config requires a supplier_name.")
+
+        candidate_end_date = candidate.end_date or date.max
+        if candidate_end_date < candidate.start_date:
+            raise ValueError("Packaging config end date cannot be before start date.")
+
+        if not candidate.is_active or candidate.archived_at is not None:
+            return
+
+        with self.get_session() as session:
+            statement = select(EggPackagingWeightConfig).where(
+                EggPackagingWeightConfig.supplier_name == candidate.supplier_name,
+                EggPackagingWeightConfig.is_active.is_(True),
+                EggPackagingWeightConfig.archived_at.is_(None),
+            )
+            if exclude_config_id is not None:
+                statement = statement.where(
+                    EggPackagingWeightConfig.id != exclude_config_id
+                )
+
+            existing_configs = session.exec(statement).all()
+            for existing_config in existing_configs:
+                existing_end_date = existing_config.end_date or date.max
+                if (
+                    existing_config.start_date <= candidate_end_date
+                    and candidate.start_date <= existing_end_date
+                ):
+                    raise ValueError(
+                        "Packaging weight date range overlaps with another "
+                        f"config for supplier {candidate.supplier_name}."
+                    )
+
+    def _active_for_date_statement(self, target_date: date):
+        return select(EggPackagingWeightConfig).where(
+            EggPackagingWeightConfig.is_active.is_(True),
+            EggPackagingWeightConfig.archived_at.is_(None),
+            EggPackagingWeightConfig.start_date <= target_date,
+            (EggPackagingWeightConfig.end_date.is_(None))
+            | (EggPackagingWeightConfig.end_date >= target_date),
+        )
+
+
+class EggPalletWeightRegistrationsRepository(
+    BaseRepository[EggPalletWeightRegistration],
+):
+    """Repository for pallet weight registrations."""
+
+    def __init__(self, session_factory):
+        super().__init__(EggPalletWeightRegistration, session_factory)
+
+    def create_pallet_weight_registration(
+        self,
+        registration_data: Union[dict[str, object], EggPalletWeightRegistration],
+    ) -> EggPalletWeightRegistration:
+        """Create a pallet weight registration with calculated egg weight."""
+        if isinstance(registration_data, EggPalletWeightRegistration):
+            registration_data = registration_data.model_dump()
+
+        normalized_data = self._normalize_registration_data(registration_data)
+        with self.get_session() as session:
+            registration = EggPalletWeightRegistration(**normalized_data)
+            session.add(registration)
+            session.flush()
+            session.refresh(registration)
+            session.expunge(registration)
+            return registration
+
+    def update_pallet_weight_registration(
+        self,
+        registration_id: int,
+        registration_data: Union[dict[str, object], EggPalletWeightRegistration],
+    ) -> Optional[EggPalletWeightRegistration]:
+        """Update a pallet weight registration and recalculate egg weight."""
+        if isinstance(registration_data, EggPalletWeightRegistration):
+            registration_data = registration_data.model_dump()
+
+        normalized_data = self._normalize_registration_data(registration_data)
+        normalized_data.pop("id", None)
+        with self.get_session() as session:
+            registration = session.get(EggPalletWeightRegistration, registration_id)
+            if registration is None:
+                return None
+
+            self._update_instance(registration, normalized_data)
+            session.add(registration)
+            session.flush()
+            session.refresh(registration)
+            session.expunge(registration)
+            return registration
+
+    def get_pallet_weight_registration_by_id(
+        self,
+        registration_id: int,
+    ) -> Optional[EggPalletWeightRegistration]:
+        """Return one pallet weight registration by primary key."""
+        with self.get_session() as session:
+            registration = session.get(EggPalletWeightRegistration, registration_id)
+            if registration is None:
+                return None
+
+            session.expunge(registration)
+            return registration
+
+    def list_recent(self, *, limit: int = 10) -> list[EggPalletWeightRegistration]:
+        """Return recent pallet weight registrations."""
+        with self.get_session() as session:
+            statement = (
+                select(EggPalletWeightRegistration)
+                .order_by(EggPalletWeightRegistration.registration_date.desc())
+                .limit(limit)
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def list_between(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        house_id: str = "main",
+    ) -> list[EggPalletWeightRegistration]:
+        """Return pallet weight registrations for an inclusive date range."""
+        with self.get_session() as session:
+            statement = (
+                select(EggPalletWeightRegistration)
+                .where(
+                    EggPalletWeightRegistration.house_id == house_id,
+                    EggPalletWeightRegistration.registration_date >= start_date,
+                    EggPalletWeightRegistration.registration_date <= end_date,
+                )
+                .order_by(
+                    EggPalletWeightRegistration.registration_date.asc(),
+                    EggPalletWeightRegistration.id.asc(),
+                )
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def list_all(self) -> list[EggPalletWeightRegistration]:
+        """Return all pallet weight registrations ordered by date."""
+        with self.get_session() as session:
+            statement = select(EggPalletWeightRegistration).order_by(
+                EggPalletWeightRegistration.registration_date.asc(),
+                EggPalletWeightRegistration.id.asc(),
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def delete_pallet_weight_registration(self, registration_id: int) -> bool:
+        """Delete one pallet weight registration by primary key."""
+        return self.delete(registration_id)
+
+    def _normalize_registration_data(
+        self,
+        registration_data: dict[str, object],
+    ) -> dict[str, object]:
+        normalized_data = self._normalize_model_data(registration_data)
+        self._ensure_required_fields(normalized_data)
+        pallet_weight = self._to_decimal(normalized_data["pallet_weight_kg"])
+        empty_weight = self._to_decimal(normalized_data["empty_packaging_weight_kg"])
+        egg_count = int(normalized_data["egg_count_per_pallet"])
+
+        if pallet_weight < empty_weight:
+            raise ValueError(
+                "Pallet weight cannot be lower than empty packaging weight."
+            )
+        if egg_count <= 0:
+            raise ValueError("Egg count per pallet must be greater than zero.")
+
+        normalized_data["egg_weight_grams"] = (
+            laying_hens_calculations.calculate_egg_weight_grams(
+                pallet_weight_kg=pallet_weight,
+                empty_packaging_weight_kg=empty_weight,
+                egg_count_per_pallet=egg_count,
+            )
+        )
+        return normalized_data
+
+    def _ensure_required_fields(self, registration_data: dict[str, object]) -> None:
+        if registration_data.get("flock_id") is None:
+            raise ValueError("Pallet weight registration requires a flock_id.")
+        if registration_data.get("packaging_weight_config_id") is None:
+            raise ValueError(
+                "Pallet weight registration requires a packaging_weight_config_id."
+            )
+
+    def _to_decimal(self, value: object) -> Decimal:
+        return Decimal(str(value))

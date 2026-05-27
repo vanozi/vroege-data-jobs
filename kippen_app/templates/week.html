@@ -54,6 +54,7 @@
         <th class="has-text-right">Dagtotaal</th>
         <th class="has-text-right">Dode hennen</th>
         <th class="has-text-right">Buitennest</th>
+        <th class="has-text-right">Eigewicht (g)</th>
         <th class="has-text-right">Water (ml)</th>
         <th class="has-text-right">Voer (g)</th>
         <th>Opmerkingen</th>
@@ -80,6 +81,9 @@
         {% endif %}
         <td class="has-text-right">{{ row.dead_hens_count }}</td>
         <td class="has-text-right">{{ row.outside_nest_egg_count }}</td>
+        <td class="has-text-right">
+          {% if row.average_egg_weight_grams %}{{ row.average_egg_weight_grams }}{% else %}-{% endif %}
+        </td>
         {% if feed_water_registration %}
         <td class="has-text-right">{{ feed_water_registration.water_ml }}</td>
         <td class="has-text-right">{{ feed_water_registration.feed_grams }}</td>
@@ -121,6 +125,9 @@
         <th class="has-text-right">{{ totals.total_eggs }}</th>
         <th class="has-text-right">{{ totals.dead_hens_count }}</th>
         <th class="has-text-right">{{ totals.outside_nest_egg_count }}</th>
+        <th class="has-text-right">
+          {% if totals.average_egg_weight_grams %}{{ totals.average_egg_weight_grams }}{% else %}-{% endif %}
+        </th>
         <th class="has-text-right">{{ totals.water_ml }}</th>
         <th class="has-text-right">{{ totals.feed_grams }}</th>
         <th colspan="2"></th>
