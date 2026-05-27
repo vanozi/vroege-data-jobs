@@ -7,12 +7,18 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from database.models.laying_hens import DailyLayingRegistration
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import EggRegistration
+from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
 from database.repositories.laying_hens_repository import (
     DailyLayingRegistrationsRepository,
 )
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import EggRegistrationsRepository
+from database.repositories.laying_hens_repository import (
+    FeedWaterRegistrationsRepository,
+)
 from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
 
@@ -194,6 +200,54 @@ def test_flock_repository_delete_rejects_linked_registrations():
         raise AssertionError("Expected linked flock delete to be rejected.")
 
 
+def test_flock_repository_delete_rejects_split_linked_registrations():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    egg_repository = EggRegistrationsRepository(_session_factory(engine))
+    feed_water_repository = FeedWaterRegistrationsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    egg_repository.upsert_egg_registration(
+        EggRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            first_quality_eggs=100,
+        )
+    )
+
+    try:
+        flock_repository.delete_flock(flock.id)
+    except ValueError as exc:
+        assert "linked registrations" in str(exc)
+    else:
+        raise AssertionError("Expected linked flock delete to be rejected.")
+
+    egg_repository.delete_egg_registration(
+        egg_repository.get_by_house_and_date(date(2026, 5, 26)).id
+    )
+    feed_water_repository.upsert_feed_water_registration(
+        FeedWaterRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            water_ml=200000,
+            feed_grams=109000,
+        )
+    )
+
+    try:
+        flock_repository.delete_flock(flock.id)
+    except ValueError as exc:
+        assert "linked registrations" in str(exc)
+    else:
+        raise AssertionError("Expected linked flock delete to be rejected.")
+
+
 def test_upsert_daily_registration_updates_existing_house_date():
     engine = _create_test_engine()
     flock_repository = FlocksRepository(_session_factory(engine))
@@ -338,6 +392,365 @@ def test_update_daily_registration_updates_by_id():
         registrations = session.exec(select(DailyLayingRegistration)).all()
 
     assert len(registrations) == 1
+
+
+def test_upsert_egg_registration_updates_existing_house_date():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = EggRegistrationsRepository(_session_factory(engine))
+    registration_date = date(2026, 5, 26)
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+
+    created = repository.upsert_egg_registration(
+        EggRegistration(
+            flock_id=flock.id,
+            house_id="main",
+            registration_date=registration_date,
+            weekday="Dinsdag",
+            first_quality_eggs=20530,
+            second_quality_eggs=19,
+            total_eggs=20549,
+            notes="Eerste invoer",
+            created_by="admin",
+        )
+    )
+    updated = repository.upsert_egg_registration(
+        {
+            "flock_id": flock.id,
+            "house_id": "main",
+            "registration_date": registration_date,
+            "weekday": "Dinsdag",
+            "first_quality_eggs": 20600,
+            "second_quality_eggs": 20,
+            "total_eggs": 20620,
+            "notes": "Gecorrigeerd",
+            "created_by": "admin",
+        }
+    )
+
+    assert created.id == updated.id
+
+    with Session(engine) as session:
+        registrations = session.exec(select(EggRegistration)).all()
+
+    assert len(registrations) == 1
+    assert registrations[0].first_quality_eggs == 20600
+    assert registrations[0].total_eggs == 20620
+    assert registrations[0].notes == "Gecorrigeerd"
+
+
+def test_egg_registration_unique_key_is_per_house():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = EggRegistrationsRepository(_session_factory(engine))
+    registration_date = date(2026, 5, 26)
+    main_flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Main koppel",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    future_house_flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Future house koppel",
+            house_id="future-house",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+
+    repository.upsert_egg_registration(
+        EggRegistration(
+            flock_id=main_flock.id,
+            house_id="main",
+            registration_date=registration_date,
+            first_quality_eggs=100,
+        )
+    )
+    repository.upsert_egg_registration(
+        EggRegistration(
+            flock_id=future_house_flock.id,
+            house_id="future-house",
+            registration_date=registration_date,
+            first_quality_eggs=200,
+        )
+    )
+
+    with Session(engine) as session:
+        registrations = session.exec(select(EggRegistration)).all()
+
+    assert len(registrations) == 2
+
+
+def test_update_egg_registration_updates_by_id():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = EggRegistrationsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    created = repository.upsert_egg_registration(
+        EggRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            first_quality_eggs=100,
+            second_quality_eggs=5,
+            total_eggs=105,
+        )
+    )
+
+    updated = repository.update_egg_registration(
+        created.id,
+        {
+            "flock_id": flock.id,
+            "registration_date": date(2026, 5, 27),
+            "weekday": "Woensdag",
+            "first_quality_eggs": 120,
+            "second_quality_eggs": 6,
+            "total_eggs": 126,
+        },
+    )
+
+    assert updated.id == created.id
+    assert updated.registration_date == date(2026, 5, 27)
+    assert updated.total_eggs == 126
+
+
+def test_delete_egg_registration_deletes_by_id():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = EggRegistrationsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    created = repository.upsert_egg_registration(
+        EggRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            first_quality_eggs=100,
+        )
+    )
+
+    assert repository.delete_egg_registration(created.id)
+    assert repository.get_egg_registration_by_id(created.id) is None
+
+
+def test_egg_registration_requires_flock_id():
+    engine = _create_test_engine()
+    repository = EggRegistrationsRepository(_session_factory(engine))
+
+    try:
+        repository.upsert_egg_registration(
+            EggRegistration(
+                registration_date=date(2026, 5, 26),
+                first_quality_eggs=100,
+            )
+        )
+    except ValueError as exc:
+        assert "requires a flock_id" in str(exc)
+    else:
+        raise AssertionError("Expected egg registration without flock_id to fail.")
+
+
+def test_upsert_feed_water_registration_updates_existing_house_date():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = FeedWaterRegistrationsRepository(_session_factory(engine))
+    registration_date = date(2026, 5, 26)
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+
+    created = repository.upsert_feed_water_registration(
+        FeedWaterRegistration(
+            flock_id=flock.id,
+            house_id="main",
+            registration_date=registration_date,
+            weekday="Dinsdag",
+            water_ml=199000,
+            feed_grams=109000,
+            notes="Eerste invoer",
+            created_by="admin",
+        )
+    )
+    updated = repository.upsert_feed_water_registration(
+        {
+            "flock_id": flock.id,
+            "house_id": "main",
+            "registration_date": registration_date,
+            "weekday": "Dinsdag",
+            "water_ml": 201000,
+            "feed_grams": 110000,
+            "notes": "Gecorrigeerd",
+            "created_by": "admin",
+        }
+    )
+
+    assert created.id == updated.id
+
+    with Session(engine) as session:
+        registrations = session.exec(select(FeedWaterRegistration)).all()
+
+    assert len(registrations) == 1
+    assert registrations[0].water_ml == 201000
+    assert registrations[0].feed_grams == 110000
+    assert registrations[0].notes == "Gecorrigeerd"
+
+
+def test_feed_water_registration_unique_key_is_per_house():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = FeedWaterRegistrationsRepository(_session_factory(engine))
+    registration_date = date(2026, 5, 26)
+    main_flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Main koppel",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    future_house_flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Future house koppel",
+            house_id="future-house",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+
+    repository.upsert_feed_water_registration(
+        FeedWaterRegistration(
+            flock_id=main_flock.id,
+            house_id="main",
+            registration_date=registration_date,
+            water_ml=100000,
+            feed_grams=200000,
+        )
+    )
+    repository.upsert_feed_water_registration(
+        FeedWaterRegistration(
+            flock_id=future_house_flock.id,
+            house_id="future-house",
+            registration_date=registration_date,
+            water_ml=110000,
+            feed_grams=210000,
+        )
+    )
+
+    with Session(engine) as session:
+        registrations = session.exec(select(FeedWaterRegistration)).all()
+
+    assert len(registrations) == 2
+
+
+def test_update_feed_water_registration_updates_by_id():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = FeedWaterRegistrationsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    created = repository.upsert_feed_water_registration(
+        FeedWaterRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            water_ml=100000,
+            feed_grams=200000,
+        )
+    )
+
+    updated = repository.update_feed_water_registration(
+        created.id,
+        {
+            "flock_id": flock.id,
+            "registration_date": date(2026, 5, 27),
+            "weekday": "Woensdag",
+            "water_ml": 120000,
+            "feed_grams": 220000,
+        },
+    )
+
+    assert updated.id == created.id
+    assert updated.registration_date == date(2026, 5, 27)
+    assert updated.water_ml == 120000
+    assert updated.feed_grams == 220000
+
+
+def test_delete_feed_water_registration_deletes_by_id():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    repository = FeedWaterRegistrationsRepository(_session_factory(engine))
+    flock = flock_repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+    created = repository.upsert_feed_water_registration(
+        FeedWaterRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            water_ml=100000,
+            feed_grams=200000,
+        )
+    )
+
+    assert repository.delete_feed_water_registration(created.id)
+    assert repository.get_feed_water_registration_by_id(created.id) is None
+
+
+def test_feed_water_registration_requires_flock_id():
+    engine = _create_test_engine()
+    repository = FeedWaterRegistrationsRepository(_session_factory(engine))
+
+    try:
+        repository.upsert_feed_water_registration(
+            FeedWaterRegistration(
+                registration_date=date(2026, 5, 26),
+                water_ml=100000,
+                feed_grams=200000,
+            )
+        )
+    except ValueError as exc:
+        assert "requires a flock_id" in str(exc)
+    else:
+        raise AssertionError(
+            "Expected feed/water registration without flock_id to fail."
+        )
 
 
 def test_dead_hen_repository_counts_for_date():

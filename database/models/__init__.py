@@ -10,6 +10,8 @@ from .koe import Koe, KoeDetail
 from .laying_hens import (
     DailyLayingRegistration,
     DeadHenRegistration,
+    EggRegistration,
+    FeedWaterRegistration,
     Flock,
     OutsideNestEggRound,
 )
@@ -19,6 +21,8 @@ from .tank_transaction import TankTransaction
 __all__ = [
     "DailyLayingRegistration",
     "DeadHenRegistration",
+    "EggRegistration",
+    "FeedWaterRegistration",
     "Flock",
     "KlauwBehandeling",
     "Koe",

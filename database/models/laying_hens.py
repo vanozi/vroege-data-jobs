@@ -79,6 +79,63 @@ class DailyLayingRegistration(
     created_by: Optional[str] = Field(default=None)
 
 
+class EggRegistration(
+    CreatedTimestampMixin,
+    SQLModel,
+    table=True,
+):
+    """Daily egg count registration for one house/flock."""
+
+    __tablename__ = "egg_registrations"
+    __table_args__ = (
+        UniqueConstraint(
+            "house_id",
+            "registration_date",
+            name="uq_egg_registrations_house_date",
+        ),
+        {"comment": "Daily egg count rows for first and second quality eggs."},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    house_id: str = Field(default="main", index=True)
+    flock_id: Optional[int] = Field(default=None, foreign_key="flocks.id", index=True)
+    registration_date: date = Field(index=True)
+    weekday: Optional[str] = Field(default=None)
+    first_quality_eggs: int = Field(default=0, ge=0)
+    second_quality_eggs: int = Field(default=0, ge=0)
+    total_eggs: int = Field(default=0, ge=0)
+    notes: Optional[str] = Field(default=None)
+    created_by: Optional[str] = Field(default=None)
+
+
+class FeedWaterRegistration(
+    CreatedTimestampMixin,
+    SQLModel,
+    table=True,
+):
+    """Daily feed and water registration for one house/flock."""
+
+    __tablename__ = "feed_water_registrations"
+    __table_args__ = (
+        UniqueConstraint(
+            "house_id",
+            "registration_date",
+            name="uq_feed_water_registrations_house_date",
+        ),
+        {"comment": "Daily feed and water usage rows in grams and milliliters."},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    house_id: str = Field(default="main", index=True)
+    flock_id: Optional[int] = Field(default=None, foreign_key="flocks.id", index=True)
+    registration_date: date = Field(index=True)
+    weekday: Optional[str] = Field(default=None)
+    water_ml: int = Field(default=0, ge=0)
+    feed_grams: int = Field(default=0, ge=0)
+    notes: Optional[str] = Field(default=None)
+    created_by: Optional[str] = Field(default=None)
+
+
 class DeadHenRegistration(
     CreatedTimestampMixin,
     SQLModel,
