@@ -1,16 +1,25 @@
 """Tests for laying hens repositories."""
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import EggPackagingWeightConfig
+from database.models.laying_hens import EggPalletWeightRegistration
 from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import (
+    EggPackagingWeightConfigsRepository,
+)
+from database.repositories.laying_hens_repository import (
+    EggPalletWeightRegistrationsRepository,
+)
 from database.repositories.laying_hens_repository import EggRegistrationsRepository
 from database.repositories.laying_hens_repository import (
     FeedWaterRegistrationsRepository,
@@ -691,6 +700,244 @@ def test_outside_nest_egg_round_repository_counts_for_date():
     assert repository.count_for_date(date(2026, 5, 28)) == 0
 
 
+def test_packaging_weight_config_repository_lists_active_for_date():
+    engine = _create_test_engine()
+    repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+
+    created = repository.create_packaging_weight_config(
+        EggPackagingWeightConfig(
+            supplier_name="Eierhandel A",
+            empty_packaging_weight_kg=Decimal("48.500"),
+            egg_count_per_pallet=10800,
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 12, 31),
+        )
+    )
+
+    active_configs = repository.list_active_for_date(date(2026, 5, 26))
+    inactive_configs = repository.list_active_for_date(date(2027, 1, 1))
+    fetched = repository.get_active_for_supplier_and_date(
+        "Eierhandel A",
+        date(2026, 5, 26),
+    )
+
+    assert created.id is not None
+    assert len(active_configs) == 1
+    assert not inactive_configs
+    assert fetched.id == created.id
+    assert fetched.egg_count_per_pallet == 10800
+
+
+def test_packaging_weight_config_repository_rejects_invalid_date_range():
+    engine = _create_test_engine()
+    repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+
+    try:
+        repository.create_packaging_weight_config(
+            EggPackagingWeightConfig(
+                supplier_name="Eierhandel A",
+                empty_packaging_weight_kg=Decimal("48.500"),
+                start_date=date(2026, 6, 1),
+                end_date=date(2026, 5, 1),
+            )
+        )
+    except ValueError as exc:
+        assert "end date" in str(exc)
+    else:
+        raise AssertionError("Expected invalid config date range to be rejected.")
+
+
+def test_packaging_weight_config_repository_rejects_overlapping_supplier_range():
+    engine = _create_test_engine()
+    repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    repository.create_packaging_weight_config(
+        EggPackagingWeightConfig(
+            supplier_name="Eierhandel A",
+            empty_packaging_weight_kg=Decimal("48.500"),
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 12, 31),
+        )
+    )
+
+    try:
+        repository.create_packaging_weight_config(
+            EggPackagingWeightConfig(
+                supplier_name="Eierhandel A",
+                empty_packaging_weight_kg=Decimal("50.000"),
+                start_date=date(2026, 6, 1),
+                end_date=date(2027, 1, 31),
+            )
+        )
+    except ValueError as exc:
+        assert "overlaps" in str(exc)
+    else:
+        raise AssertionError("Expected overlapping supplier config to be rejected.")
+
+
+def test_packaging_weight_config_repository_allows_overlapping_other_supplier():
+    engine = _create_test_engine()
+    repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    repository.create_packaging_weight_config(
+        EggPackagingWeightConfig(
+            supplier_name="Eierhandel A",
+            empty_packaging_weight_kg=Decimal("48.500"),
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 12, 31),
+        )
+    )
+
+    created = repository.create_packaging_weight_config(
+        EggPackagingWeightConfig(
+            supplier_name="Eierhandel B",
+            empty_packaging_weight_kg=Decimal("50.000"),
+            start_date=date(2026, 6, 1),
+            end_date=date(2027, 1, 31),
+        )
+    )
+
+    assert created.id is not None
+    assert len(repository.list_packaging_weight_configs()) == 2
+
+
+def test_packaging_weight_config_repository_archive_hides_from_active_list():
+    engine = _create_test_engine()
+    repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    created = repository.create_packaging_weight_config(
+        EggPackagingWeightConfig(
+            supplier_name="Eierhandel A",
+            empty_packaging_weight_kg=Decimal("48.500"),
+            start_date=date(2026, 5, 1),
+        )
+    )
+
+    archived = repository.archive_packaging_weight_config(created.id)
+
+    assert archived.archived_at is not None
+    assert not archived.is_active
+    assert not repository.list_active_for_date(date(2026, 5, 26))
+
+
+def test_pallet_weight_registration_repository_calculates_egg_weight():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    config_repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    repository = EggPalletWeightRegistrationsRepository(_session_factory(engine))
+    flock = _create_flock(flock_repository)
+    config = _create_packaging_config(config_repository)
+
+    created = repository.create_pallet_weight_registration(
+        EggPalletWeightRegistration(
+            flock_id=flock.id,
+            registration_date=date(2026, 5, 26),
+            weekday="Dinsdag",
+            packaging_weight_config_id=config.id,
+            supplier_name=config.supplier_name,
+            pallet_weight_kg=Decimal("700.000"),
+            empty_packaging_weight_kg=config.empty_packaging_weight_kg,
+            egg_count_per_pallet=config.egg_count_per_pallet,
+            created_by="admin",
+        )
+    )
+
+    assert created.id is not None
+    assert Decimal(str(created.egg_weight_grams)) == Decimal("60.3241")
+
+
+def test_pallet_weight_registration_repository_update_recalculates_egg_weight():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    config_repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    repository = EggPalletWeightRegistrationsRepository(_session_factory(engine))
+    flock = _create_flock(flock_repository)
+    config = _create_packaging_config(config_repository)
+    created = repository.create_pallet_weight_registration(
+        _pallet_registration(flock.id, config)
+    )
+
+    updated = repository.update_pallet_weight_registration(
+        created.id,
+        {
+            "flock_id": flock.id,
+            "registration_date": date(2026, 5, 27),
+            "packaging_weight_config_id": config.id,
+            "supplier_name": config.supplier_name,
+            "pallet_weight_kg": Decimal("710.000"),
+            "empty_packaging_weight_kg": config.empty_packaging_weight_kg,
+            "egg_count_per_pallet": config.egg_count_per_pallet,
+        },
+    )
+
+    assert updated.registration_date == date(2026, 5, 27)
+    assert Decimal(str(updated.egg_weight_grams)) == Decimal("61.2500")
+
+
+def test_pallet_weight_registration_repository_requires_required_links():
+    engine = _create_test_engine()
+    repository = EggPalletWeightRegistrationsRepository(_session_factory(engine))
+
+    try:
+        repository.create_pallet_weight_registration(
+            EggPalletWeightRegistration(
+                registration_date=date(2026, 5, 26),
+                supplier_name="Eierhandel A",
+                pallet_weight_kg=Decimal("700.000"),
+                empty_packaging_weight_kg=Decimal("48.500"),
+            )
+        )
+    except ValueError as exc:
+        assert "flock_id" in str(exc)
+    else:
+        raise AssertionError("Expected missing flock_id to be rejected.")
+
+
+def test_pallet_weight_registration_repository_rejects_pallet_below_empty_weight():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    config_repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    repository = EggPalletWeightRegistrationsRepository(_session_factory(engine))
+    flock = _create_flock(flock_repository)
+    config = _create_packaging_config(config_repository)
+
+    try:
+        repository.create_pallet_weight_registration(
+            EggPalletWeightRegistration(
+                flock_id=flock.id,
+                registration_date=date(2026, 5, 26),
+                packaging_weight_config_id=config.id,
+                supplier_name=config.supplier_name,
+                pallet_weight_kg=Decimal("40.000"),
+                empty_packaging_weight_kg=config.empty_packaging_weight_kg,
+                egg_count_per_pallet=config.egg_count_per_pallet,
+            )
+        )
+    except ValueError as exc:
+        assert "Pallet weight" in str(exc)
+    else:
+        raise AssertionError("Expected pallet below empty weight to be rejected.")
+
+
+def test_pallet_weight_registration_repository_lists_and_deletes():
+    engine = _create_test_engine()
+    flock_repository = FlocksRepository(_session_factory(engine))
+    config_repository = EggPackagingWeightConfigsRepository(_session_factory(engine))
+    repository = EggPalletWeightRegistrationsRepository(_session_factory(engine))
+    flock = _create_flock(flock_repository)
+    config = _create_packaging_config(config_repository)
+    created = repository.create_pallet_weight_registration(
+        _pallet_registration(flock.id, config)
+    )
+    repository.create_pallet_weight_registration(
+        _pallet_registration(flock.id, config, registration_date=date(2026, 6, 2))
+    )
+
+    registrations = repository.list_between(date(2026, 5, 1), date(2026, 5, 31))
+
+    assert len(registrations) == 1
+    assert registrations[0].id == created.id
+    assert repository.delete_pallet_weight_registration(created.id)
+    assert repository.get_pallet_weight_registration_by_id(created.id) is None
+
+
 def _create_test_engine():
     engine = create_engine(
         "sqlite://",
@@ -703,3 +950,45 @@ def _create_test_engine():
 
 def _session_factory(engine):
     return lambda: Session(engine, expire_on_commit=False)
+
+
+def _create_flock(repository: FlocksRepository) -> Flock:
+    return repository.create_flock(
+        Flock(
+            flock_name="Koppel 2026",
+            date_of_birth=date(2026, 1, 1),
+            placement_date=date(2026, 5, 1),
+            bird_count=24000,
+        )
+    )
+
+
+def _create_packaging_config(
+    repository: EggPackagingWeightConfigsRepository,
+) -> EggPackagingWeightConfig:
+    return repository.create_packaging_weight_config(
+        EggPackagingWeightConfig(
+            supplier_name="Eierhandel A",
+            empty_packaging_weight_kg=Decimal("48.500"),
+            egg_count_per_pallet=10800,
+            start_date=date(2026, 5, 1),
+        )
+    )
+
+
+def _pallet_registration(
+    flock_id: int,
+    config: EggPackagingWeightConfig,
+    *,
+    registration_date: date = date(2026, 5, 26),
+) -> EggPalletWeightRegistration:
+    return EggPalletWeightRegistration(
+        flock_id=flock_id,
+        registration_date=registration_date,
+        packaging_weight_config_id=config.id,
+        supplier_name=config.supplier_name,
+        pallet_weight_kg=Decimal("700.000"),
+        empty_packaging_weight_kg=config.empty_packaging_weight_kg,
+        egg_count_per_pallet=config.egg_count_per_pallet,
+        created_by="admin",
+    )
