@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">{{ title }}</h1>
+      <p class="subtitle">Palletgewicht invoeren en eigewicht berekenen.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('pallet_weights_list') }}">Palletgewichten</a>
+  </div>
+</div>
+
+{% if errors.form %}
+<div class="notification is-danger">{{ errors.form }}</div>
+{% endif %}
+
+<div class="notification is-light">
+  <strong>Actief koppel:</strong>
+  {% if active_flock %}
+  {{ active_flock.flock_name }} sinds {{ active_flock.placement_date }}
+  {% if active_flock_age %}
+  &middot; leeftijd {{ active_flock_age.label }} &middot; dag {{ active_flock_age.total_days }}
+  {% endif %}
+  {% else %}
+  geen actief koppel voor deze datum.
+  {% endif %}
+</div>
+
+<form method="post" action="{{ action_url }}">
+  <input type="hidden" name="house_id" value="{{ values.house_id }}">
+
+  <div class="columns">
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="registration_date">Datum</label>
+        <div class="control">
+          <input
+            class="input {% if errors.registration_date %}is-danger{% endif %}"
+            id="registration_date"
+            name="registration_date"
+            type="date"
+            value="{{ values.registration_date }}"
+            required
+          >
+        </div>
+        {% if errors.registration_date %}
+        <p class="help is-danger">{{ errors.registration_date }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column is-one-third">
+      <div class="field">
+        <label class="label" for="weekday">Weekdag</label>
+        <div class="control">
+          <input class="input" id="weekday" name="weekday" type="text" value="{{ values.weekday }}" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="packaging_weight_config_id">Leeggoed configuratie</label>
+        <div class="control">
+          <div class="select is-fullwidth {% if errors.packaging_weight_config_id %}is-danger{% endif %}">
+            <select id="packaging_weight_config_id" name="packaging_weight_config_id" required>
+              <option value="">Kies leverancier</option>
+              {% for config in packaging_configs %}
+              <option
+                value="{{ config.id }}"
+                {% if values.packaging_weight_config_id == config.id|string %}selected{% endif %}
+              >
+                {{ config.supplier_name }} - {{ config.empty_packaging_weight_kg }} kg leeggoed - {{ config.egg_count_per_pallet }} eieren
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% if errors.packaging_weight_config_id %}
+        <p class="help is-danger">{{ errors.packaging_weight_config_id }}</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="pallet_weight_kg">Palletgewicht in kg</label>
+        <div class="control">
+          <input
+            class="input {% if errors.pallet_weight_kg %}is-danger{% endif %}"
+            id="pallet_weight_kg"
+            name="pallet_weight_kg"
+            type="text"
+            inputmode="decimal"
+            value="{{ values.pallet_weight_kg }}"
+            required
+          >
+        </div>
+        {% if errors.pallet_weight_kg %}
+        <p class="help is-danger">{{ errors.pallet_weight_kg }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="supplier_name">Leverancier</label>
+        <div class="control">
+          <input class="input" id="supplier_name" name="supplier_name" type="text" value="{{ values.supplier_name }}" readonly>
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="empty_packaging_weight_kg">Leeggoed kg</label>
+        <div class="control">
+          <input class="input" id="empty_packaging_weight_kg" name="empty_packaging_weight_kg" type="text" value="{{ values.empty_packaging_weight_kg }}" readonly>
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="egg_count_per_pallet">Eieren per pallet</label>
+        <div class="control">
+          <input class="input" id="egg_count_per_pallet" name="egg_count_per_pallet" type="text" value="{{ values.egg_count_per_pallet }}" readonly>
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="egg_weight_grams">Eigewicht gram</label>
+        <div class="control">
+          <input class="input" id="egg_weight_grams" name="egg_weight_grams" type="text" value="{{ values.egg_weight_grams }}" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="label" for="notes">Opmerkingen</label>
+    <div class="control">
+      <textarea class="textarea" id="notes" name="notes" rows="4">{{ values.notes }}</textarea>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="button is-link" type="submit">{{ submit_label }}</button>
+    <a class="button is-light" href="{{ url_for('pallet_weights_list') }}">Annuleren</a>
+  </div>
+</form>
+{% endblock %}

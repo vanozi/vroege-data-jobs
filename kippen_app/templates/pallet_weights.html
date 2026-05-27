@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Palletgewichten | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Palletgewichten</h1>
+      <p class="subtitle">Registraties voor gemiddeld eigewicht per pallet.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <div class="buttons">
+      <a class="button is-link" href="{{ url_for('pallet_weights_new') }}">Palletgewicht registreren</a>
+      <a class="button is-light" href="{{ url_for('packaging_weights_list') }}">Leeggoed configuraties</a>
+      <a class="button is-light" href="{{ url_for('dashboard') }}">Overzicht</a>
+    </div>
+  </div>
+</div>
+
+{% if registrations %}
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Weekdag</th>
+        <th>Leverancier</th>
+        <th class="has-text-right">Pallet kg</th>
+        <th class="has-text-right">Leeggoed kg</th>
+        <th class="has-text-right">Eieren</th>
+        <th class="has-text-right">Eigewicht gram</th>
+        <th>Opmerkingen</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for registration in registrations %}
+      <tr>
+        <td>{{ registration.registration_date }}</td>
+        <td>{{ registration.weekday or "" }}</td>
+        <td>{{ registration.supplier_name }}</td>
+        <td class="has-text-right">{{ registration.pallet_weight_kg }}</td>
+        <td class="has-text-right">{{ registration.empty_packaging_weight_kg }}</td>
+        <td class="has-text-right">{{ registration.egg_count_per_pallet }}</td>
+        <td class="has-text-right">{{ registration.egg_weight_grams }}</td>
+        <td>{{ registration.notes or "" }}</td>
+        <td class="has-text-right">
+          <div class="buttons are-small is-justify-content-flex-end">
+            <a class="button is-light" href="{{ url_for('pallet_weights_edit', registration_id=registration.id) }}">Bewerken</a>
+            <form method="post" action="{{ url_for('pallet_weights_delete', registration_id=registration.id) }}">
+              <button class="button is-danger is-light" type="submit">Verwijderen</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="notification is-light">Er zijn nog geen palletgewichten geregistreerd.</div>
+{% endif %}
+{% endblock %}

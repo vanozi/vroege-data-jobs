@@ -9,6 +9,8 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from werkzeug import security
 
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import EggPackagingWeightConfig
+from database.models.laying_hens import EggPalletWeightRegistration
 from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
@@ -57,6 +59,24 @@ def _create_active_flock(
             "placement_date": placement_date,
             "end_date": end_date,
             "bird_count": "24000",
+        },
+    )
+
+
+def _create_packaging_weight_config(
+    client,
+    *,
+    start_date: str = "2026-05-01",
+    end_date: str = "",
+):
+    return client.post(
+        "/kippen/packaging-weights/new",
+        data={
+            "supplier_name": "Eierhandel A",
+            "empty_packaging_weight_kg": "48.5",
+            "egg_count_per_pallet": "10800",
+            "start_date": start_date,
+            "end_date": end_date,
         },
     )
 
@@ -1027,6 +1047,282 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
     assert week_response.status_code == 200
     assert "Buitennest" in week_response.text
     assert ">20<" in week_response.text
+
+
+def test_packaging_weights_list_requires_login(monkeypatch):
+    client, _ = _client(monkeypatch)
+
+    response = client.get("/kippen/packaging-weights")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/login"
+
+
+def test_packaging_weight_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/packaging-weights/new")
+
+    assert response.status_code == 200
+    assert "Leeggoed configuratie toevoegen" in response.text
+    assert 'name="supplier_name"' in response.text
+    assert 'name="egg_count_per_pallet"' in response.text
+    assert "10800" in response.text
+
+
+def test_packaging_weight_new_post_saves_config(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/packaging-weights/new",
+        data={
+            "supplier_name": "Eierhandel A",
+            "empty_packaging_weight_kg": "48,5",
+            "egg_count_per_pallet": "10800",
+            "start_date": "2026-05-01",
+            "notes": "Standaard leeggoed",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/packaging-weights"
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+
+    assert config.supplier_name == "Eierhandel A"
+    assert str(config.empty_packaging_weight_kg) == "48.500"
+    assert config.egg_count_per_pallet == 10800
+    assert config.notes == "Standaard leeggoed"
+
+
+def test_packaging_weight_new_post_validates_overlap(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    data = {
+        "supplier_name": "Eierhandel A",
+        "empty_packaging_weight_kg": "48.5",
+        "egg_count_per_pallet": "10800",
+        "start_date": "2026-05-01",
+        "end_date": "2026-12-31",
+    }
+    client.post("/kippen/packaging-weights/new", data=data)
+
+    response = client.post(
+        "/kippen/packaging-weights/new",
+        data={
+            **data,
+            "empty_packaging_weight_kg": "50",
+            "start_date": "2026-06-01",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "overlaps" in response.text
+
+
+def test_packaging_weight_edit_and_archive(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    client.post(
+        "/kippen/packaging-weights/new",
+        data={
+            "supplier_name": "Eierhandel A",
+            "empty_packaging_weight_kg": "48.5",
+            "egg_count_per_pallet": "10800",
+            "start_date": "2026-05-01",
+        },
+    )
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+
+    edit_response = client.post(
+        f"/kippen/packaging-weights/{config.id}/edit",
+        data={
+            "supplier_name": "Eierhandel B",
+            "empty_packaging_weight_kg": "50",
+            "egg_count_per_pallet": "9000",
+            "start_date": "2026-05-01",
+            "notes": "Aangepast",
+        },
+    )
+    archive_response = client.post(f"/kippen/packaging-weights/{config.id}/archive")
+
+    assert edit_response.status_code == 302
+    assert archive_response.status_code == 302
+    with Session(engine) as session:
+        updated = session.get(EggPackagingWeightConfig, config.id)
+
+    assert updated.supplier_name == "Eierhandel B"
+    assert updated.egg_count_per_pallet == 9000
+    assert updated.is_active is False
+    assert updated.archived_at is not None
+
+
+def test_pallet_weight_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _create_packaging_weight_config(client)
+
+    response = client.get("/kippen/pallet-weights/new?date=2026-05-26")
+
+    assert response.status_code == 200
+    assert "Palletgewicht registreren" in response.text
+    assert "Actief koppel" in response.text
+    assert "Eierhandel A" in response.text
+    assert "Eigewicht gram" in response.text
+
+
+def test_pallet_weight_new_post_saves_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _create_packaging_weight_config(client)
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+
+    response = client.post(
+        "/kippen/pallet-weights/new",
+        data={
+            "registration_date": "2026-05-26",
+            "packaging_weight_config_id": str(config.id),
+            "pallet_weight_kg": "700,000",
+            "notes": "Pallet 1",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/pallet-weights"
+    with Session(engine) as session:
+        registration = session.exec(select(EggPalletWeightRegistration)).one()
+
+    assert registration.registration_date == date(2026, 5, 26)
+    assert registration.weekday == "Dinsdag"
+    assert registration.supplier_name == "Eierhandel A"
+    assert str(registration.pallet_weight_kg) == "700.000"
+    assert str(registration.empty_packaging_weight_kg) == "48.500"
+    assert str(registration.egg_weight_grams) == "60.3241"
+    assert registration.created_by == "admin"
+    assert registration.flock_id is not None
+
+
+def test_pallet_weight_new_post_requires_active_flock(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_packaging_weight_config(client)
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+
+    response = client.post(
+        "/kippen/pallet-weights/new",
+        data={
+            "registration_date": "2026-05-26",
+            "packaging_weight_config_id": str(config.id),
+            "pallet_weight_kg": "700",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Geen actief koppel gevonden" in response.text
+
+
+def test_pallet_weight_new_post_requires_active_packaging_config(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _create_packaging_weight_config(
+        client,
+        start_date="2026-01-01",
+        end_date="2026-04-30",
+    )
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+
+    response = client.post(
+        "/kippen/pallet-weights/new",
+        data={
+            "registration_date": "2026-05-26",
+            "packaging_weight_config_id": str(config.id),
+            "pallet_weight_kg": "700",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "niet actief op deze datum" in response.text
+
+
+def test_pallet_weight_edit_updates_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _create_packaging_weight_config(client)
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+    client.post(
+        "/kippen/pallet-weights/new",
+        data={
+            "registration_date": "2026-05-26",
+            "packaging_weight_config_id": str(config.id),
+            "pallet_weight_kg": "700",
+        },
+    )
+    with Session(engine) as session:
+        registration = session.exec(select(EggPalletWeightRegistration)).one()
+
+    response = client.post(
+        f"/kippen/pallet-weights/{registration.id}/edit",
+        data={
+            "registration_date": "2026-05-27",
+            "packaging_weight_config_id": str(config.id),
+            "pallet_weight_kg": "710",
+            "notes": "Aangepast",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/pallet-weights"
+    with Session(engine) as session:
+        updated = session.get(EggPalletWeightRegistration, registration.id)
+
+    assert updated.registration_date == date(2026, 5, 27)
+    assert str(updated.egg_weight_grams) == "61.2500"
+    assert updated.notes == "Aangepast"
+
+
+def test_pallet_weights_list_and_delete(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _create_packaging_weight_config(client)
+    with Session(engine) as session:
+        config = session.exec(select(EggPackagingWeightConfig)).one()
+    client.post(
+        "/kippen/pallet-weights/new",
+        data={
+            "registration_date": "2026-05-26",
+            "packaging_weight_config_id": str(config.id),
+            "pallet_weight_kg": "700",
+            "notes": "Pallet 1",
+        },
+    )
+    with Session(engine) as session:
+        registration = session.exec(select(EggPalletWeightRegistration)).one()
+
+    list_response = client.get("/kippen/pallet-weights")
+    delete_response = client.post(f"/kippen/pallet-weights/{registration.id}/delete")
+
+    assert list_response.status_code == 200
+    assert "Palletgewichten" in list_response.text
+    assert "Eierhandel A" in list_response.text
+    assert "60.3241" in list_response.text
+    assert delete_response.status_code == 302
+    assert delete_response.headers["Location"] == "/kippen/pallet-weights"
+    with Session(engine) as session:
+        registrations = session.exec(select(EggPalletWeightRegistration)).all()
+
+    assert registrations == []
 
 
 def test_week_excel_export_downloads_xlsx(monkeypatch):
