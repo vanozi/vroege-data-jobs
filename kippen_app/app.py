@@ -9,9 +9,6 @@ from flask import request, session, url_for
 from flask import send_file
 
 from database import database
-from database.repositories.laying_hens_repository import (
-    DailyLayingRegistrationsRepository,
-)
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
 from database.repositories.laying_hens_repository import EggRegistrationsRepository
 from database.repositories.laying_hens_repository import (
@@ -21,7 +18,6 @@ from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
 from kippen_app import auth
 from kippen_app import config
-from kippen_app import daily
 from kippen_app import dead_hens
 from kippen_app import eggs
 from kippen_app import exports
@@ -29,6 +25,7 @@ from kippen_app import feed_water
 from kippen_app import flock_age
 from kippen_app import flocks
 from kippen_app import outside_nest
+from kippen_app import weekdays
 
 
 def create_app(session_factory=None) -> Flask:
@@ -261,193 +258,6 @@ def create_app(session_factory=None) -> Flask:
 
         flash("Einddatum opgeslagen.", "success")
         return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
-
-    @app.get("/kippen/daily/new")
-    @login_required
-    def daily_new():
-        repositories = _repositories()
-        registration_date = _get_requested_date()
-        active_flock = repositories.flocks.get_active_flock_for_date(registration_date)
-        return render_template(
-            "daily_form.html",
-            title="Dagregistratie invullen",
-            values=daily.default_values(registration_date),
-            errors={},
-            action_url=url_for("daily_new_post"),
-            submit_label="Opslaan",
-            dead_hens_count=repositories.dead_hens.count_for_date(registration_date),
-            active_flock=active_flock,
-            active_flock_age=flock_age.flock_age_context(
-                active_flock,
-                registration_date,
-            ),
-        )
-
-    @app.post("/kippen/daily/new")
-    @login_required
-    def daily_new_post():
-        repositories = _repositories()
-        registration, errors, values = daily.build_daily_registration_from_form(
-            request.form,
-            created_by=session.get("kippen_username"),
-        )
-        if errors or registration is None:
-            return (
-                render_template(
-                    "daily_form.html",
-                    title="Dagregistratie invullen",
-                    values=values,
-                    errors=errors,
-                    action_url=url_for("daily_new_post"),
-                    submit_label="Opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
-                    active_flock=_active_flock_for_values(repositories.flocks, values),
-                    active_flock_age=_active_flock_age_for_values(
-                        repositories.flocks,
-                        values,
-                    ),
-                ),
-                400,
-            )
-
-        active_flock = repositories.flocks.get_active_flock_for_date(
-            registration.registration_date,
-            house_id=registration.house_id,
-        )
-        if active_flock is None:
-            errors["form"] = _missing_active_flock_message(registration.house_id)
-            return (
-                render_template(
-                    "daily_form.html",
-                    title="Dagregistratie invullen",
-                    values=values,
-                    errors=errors,
-                    action_url=url_for("daily_new_post"),
-                    submit_label="Opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
-                    active_flock=None,
-                    active_flock_age=None,
-                ),
-                400,
-            )
-
-        registration.flock_id = active_flock.id
-        repositories.daily.upsert_daily_registration(registration)
-        flash("Dagregistratie opgeslagen.", "success")
-        return redirect(url_for("dashboard"))
-
-    @app.get("/kippen/daily/<int:registration_id>/edit")
-    @login_required
-    def daily_edit(registration_id: int):
-        repositories = _repositories()
-        registration = repositories.daily.get_daily_registration_by_id(registration_id)
-        if registration is None:
-            abort(404)
-
-        return render_template(
-            "daily_form.html",
-            title="Dagregistratie aanpassen",
-            values=daily.values_from_registration(registration),
-            errors={},
-            action_url=url_for("daily_edit_post", registration_id=registration.id),
-            submit_label="Wijzigingen opslaan",
-            dead_hens_count=repositories.dead_hens.count_for_date(
-                registration.registration_date,
-                house_id=registration.house_id,
-            ),
-            active_flock=repositories.flocks.get_active_flock_for_date(
-                registration.registration_date,
-                house_id=registration.house_id,
-            ),
-            active_flock_age=_flock_age_for_registration(
-                repositories.flocks,
-                registration,
-            ),
-        )
-
-    @app.post("/kippen/daily/<int:registration_id>/edit")
-    @login_required
-    def daily_edit_post(registration_id: int):
-        repositories = _repositories()
-        existing_registration = repositories.daily.get_daily_registration_by_id(
-            registration_id,
-        )
-        if existing_registration is None:
-            abort(404)
-
-        registration, errors, values = daily.build_daily_registration_from_form(
-            request.form,
-            created_by=session.get("kippen_username"),
-            existing_registration=existing_registration,
-        )
-        if errors or registration is None:
-            return (
-                render_template(
-                    "daily_form.html",
-                    title="Dagregistratie aanpassen",
-                    values=values,
-                    errors=errors,
-                    action_url=url_for(
-                        "daily_edit_post",
-                        registration_id=registration_id,
-                    ),
-                    submit_label="Wijzigingen opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
-                    active_flock=_active_flock_for_values(repositories.flocks, values),
-                    active_flock_age=_active_flock_age_for_values(
-                        repositories.flocks,
-                        values,
-                    ),
-                ),
-                400,
-            )
-
-        active_flock = repositories.flocks.get_active_flock_for_date(
-            registration.registration_date,
-            house_id=registration.house_id,
-        )
-        if active_flock is None:
-            errors["form"] = _missing_active_flock_message(registration.house_id)
-            return (
-                render_template(
-                    "daily_form.html",
-                    title="Dagregistratie aanpassen",
-                    values=values,
-                    errors=errors,
-                    action_url=url_for(
-                        "daily_edit_post",
-                        registration_id=registration_id,
-                    ),
-                    submit_label="Wijzigingen opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
-                    active_flock=None,
-                    active_flock_age=None,
-                ),
-                400,
-            )
-
-        registration.flock_id = active_flock.id
-        saved_registration = repositories.daily.update_daily_registration(
-            registration_id,
-            registration,
-        )
-        if saved_registration is None:
-            abort(404)
-
-        flash("Dagregistratie aangepast.", "success")
-        return redirect(url_for("dashboard"))
 
     @app.get("/kippen/eggs")
     @login_required
@@ -1301,7 +1111,6 @@ class LayingHensRepositories:
 
     def __init__(self, session_factory):
         self.flocks = FlocksRepository(session_factory)
-        self.daily = DailyLayingRegistrationsRepository(session_factory)
         self.eggs = EggRegistrationsRepository(session_factory)
         self.feed_water = FeedWaterRegistrationsRepository(session_factory)
         self.dead_hens = DeadHenRegistrationsRepository(session_factory)
@@ -1321,21 +1130,6 @@ def _get_requested_date() -> date:
         return date.fromisoformat(raw_date)
     except ValueError:
         return date.today()
-
-
-def _dead_hens_count_for_values(
-    repository: DeadHenRegistrationsRepository,
-    values: dict[str, str],
-) -> int:
-    try:
-        registration_date = date.fromisoformat(values.get("registration_date", ""))
-    except ValueError:
-        return 0
-
-    return repository.count_for_date(
-        registration_date,
-        house_id=values.get("house_id", "main") or "main",
-    )
 
 
 def _active_flock_for_values(
@@ -1473,7 +1267,7 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         rows.append(
             {
                 "date": day,
-                "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
+                "weekday": weekdays.DUTCH_WEEKDAYS[day.weekday()],
                 "registration": egg_registration,
                 "egg_registration": egg_registration,
                 "feed_water_registration": feed_water_registration,

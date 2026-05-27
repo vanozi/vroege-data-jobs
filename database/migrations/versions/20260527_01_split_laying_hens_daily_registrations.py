@@ -132,6 +132,7 @@ def upgrade() -> None:
             notes,
             created_by
         FROM daily_laying_registrations
+        WHERE flock_id IS NOT NULL
         """
     )
     op.execute(
@@ -160,6 +161,7 @@ def upgrade() -> None:
             notes,
             created_by
         FROM daily_laying_registrations
+        WHERE flock_id IS NOT NULL
         """
     )
     op.drop_table("daily_laying_registrations")

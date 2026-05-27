@@ -5,15 +5,11 @@ from datetime import date, datetime
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from database.models.laying_hens import DailyLayingRegistration
 from database.models.laying_hens import DeadHenRegistration
 from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
-from database.repositories.laying_hens_repository import (
-    DailyLayingRegistrationsRepository,
-)
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
 from database.repositories.laying_hens_repository import EggRegistrationsRepository
 from database.repositories.laying_hens_repository import (
@@ -172,34 +168,6 @@ def test_flock_repository_archives_and_ends_flock():
     assert repository.get_active_flock_for_date(date(2026, 5, 26)) is None
 
 
-def test_flock_repository_delete_rejects_linked_registrations():
-    engine = _create_test_engine()
-    flock_repository = FlocksRepository(_session_factory(engine))
-    daily_repository = DailyLayingRegistrationsRepository(_session_factory(engine))
-    flock = flock_repository.create_flock(
-        Flock(
-            flock_name="Koppel 2026",
-            date_of_birth=date(2026, 1, 1),
-            placement_date=date(2026, 5, 1),
-            bird_count=24000,
-        )
-    )
-    daily_repository.upsert_daily_registration(
-        DailyLayingRegistration(
-            flock_id=flock.id,
-            registration_date=date(2026, 5, 26),
-            first_quality_eggs=100,
-        )
-    )
-
-    try:
-        flock_repository.delete_flock(flock.id)
-    except ValueError as exc:
-        assert "linked registrations" in str(exc)
-    else:
-        raise AssertionError("Expected linked flock delete to be rejected.")
-
-
 def test_flock_repository_delete_rejects_split_linked_registrations():
     engine = _create_test_engine()
     flock_repository = FlocksRepository(_session_factory(engine))
@@ -246,152 +214,6 @@ def test_flock_repository_delete_rejects_split_linked_registrations():
         assert "linked registrations" in str(exc)
     else:
         raise AssertionError("Expected linked flock delete to be rejected.")
-
-
-def test_upsert_daily_registration_updates_existing_house_date():
-    engine = _create_test_engine()
-    flock_repository = FlocksRepository(_session_factory(engine))
-    repository = DailyLayingRegistrationsRepository(_session_factory(engine))
-    registration_date = date(2026, 5, 26)
-    flock = flock_repository.create_flock(
-        Flock(
-            flock_name="Koppel 2026",
-            date_of_birth=date(2026, 1, 1),
-            placement_date=date(2026, 5, 1),
-            bird_count=24000,
-        )
-    )
-
-    created = repository.upsert_daily_registration(
-        DailyLayingRegistration(
-            flock_id=flock.id,
-            house_id="main",
-            registration_date=registration_date,
-            weekday="Dinsdag",
-            first_quality_eggs=20530,
-            second_quality_eggs=19,
-            total_eggs=20549,
-            water_ml=199000,
-            feed_grams=109000,
-            notes="Eerste invoer",
-            created_by="admin",
-        )
-    )
-    updated = repository.upsert_daily_registration(
-        {
-            "flock_id": flock.id,
-            "house_id": "main",
-            "registration_date": registration_date,
-            "weekday": "Dinsdag",
-            "first_quality_eggs": 20600,
-            "second_quality_eggs": 20,
-            "total_eggs": 20620,
-            "water_ml": 201000,
-            "feed_grams": 110000,
-            "notes": "Gecorrigeerd",
-            "created_by": "admin",
-        }
-    )
-
-    assert created.id == updated.id
-
-    with Session(engine) as session:
-        registrations = session.exec(select(DailyLayingRegistration)).all()
-
-    assert len(registrations) == 1
-    assert registrations[0].first_quality_eggs == 20600
-    assert registrations[0].total_eggs == 20620
-    assert registrations[0].notes == "Gecorrigeerd"
-
-
-def test_daily_registration_unique_key_is_per_house():
-    engine = _create_test_engine()
-    flock_repository = FlocksRepository(_session_factory(engine))
-    repository = DailyLayingRegistrationsRepository(_session_factory(engine))
-    registration_date = date(2026, 5, 26)
-    main_flock = flock_repository.create_flock(
-        Flock(
-            flock_name="Main koppel",
-            date_of_birth=date(2026, 1, 1),
-            placement_date=date(2026, 5, 1),
-            bird_count=24000,
-        )
-    )
-    future_house_flock = flock_repository.create_flock(
-        Flock(
-            flock_name="Future house koppel",
-            house_id="future-house",
-            date_of_birth=date(2026, 1, 1),
-            placement_date=date(2026, 5, 1),
-            bird_count=24000,
-        )
-    )
-
-    repository.upsert_daily_registration(
-        DailyLayingRegistration(
-            flock_id=main_flock.id,
-            house_id="main",
-            registration_date=registration_date,
-            first_quality_eggs=100,
-        )
-    )
-    repository.upsert_daily_registration(
-        DailyLayingRegistration(
-            flock_id=future_house_flock.id,
-            house_id="future-house",
-            registration_date=registration_date,
-            first_quality_eggs=200,
-        )
-    )
-
-    with Session(engine) as session:
-        registrations = session.exec(select(DailyLayingRegistration)).all()
-
-    assert len(registrations) == 2
-
-
-def test_update_daily_registration_updates_by_id():
-    engine = _create_test_engine()
-    flock_repository = FlocksRepository(_session_factory(engine))
-    repository = DailyLayingRegistrationsRepository(_session_factory(engine))
-    flock = flock_repository.create_flock(
-        Flock(
-            flock_name="Koppel 2026",
-            date_of_birth=date(2026, 1, 1),
-            placement_date=date(2026, 5, 1),
-            bird_count=24000,
-        )
-    )
-    created = repository.upsert_daily_registration(
-        DailyLayingRegistration(
-            flock_id=flock.id,
-            registration_date=date(2026, 5, 26),
-            first_quality_eggs=100,
-            second_quality_eggs=5,
-            total_eggs=105,
-        )
-    )
-
-    updated = repository.update_daily_registration(
-        created.id,
-        {
-            "flock_id": flock.id,
-            "registration_date": date(2026, 5, 27),
-            "weekday": "Woensdag",
-            "first_quality_eggs": 120,
-            "second_quality_eggs": 6,
-            "total_eggs": 126,
-        },
-    )
-
-    assert updated.id == created.id
-    assert updated.registration_date == date(2026, 5, 27)
-    assert updated.total_eggs == 126
-
-    with Session(engine) as session:
-        registrations = session.exec(select(DailyLayingRegistration)).all()
-
-    assert len(registrations) == 1
 
 
 def test_upsert_egg_registration_updates_existing_house_date():

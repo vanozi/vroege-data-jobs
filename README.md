@@ -253,10 +253,10 @@ Run database migrations:
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
 ```
 
-The flock-management migration creates the `flocks` table and makes
-`flock_id` required for Kippen daily, dead-hen, and outside-nest registrations.
-It intentionally deletes existing rows in those three registration tables,
-because new registrations must belong to the active flock for their date.
+The Kippen migrations create the `flocks` table, require `flock_id` on new
+registrations, and split the old combined daily table into
+`egg_registrations` and `feed_water_registrations`. Run migrations before
+opening the Kippen app after pulling changes.
 
 Run dry runs before writing data:
 
@@ -499,7 +499,11 @@ Useful routes:
 - `/kippen/dashboard`: overview after login.
 - `/kippen/flocks`: flock management.
 - `/kippen/flocks/new`: create a flock.
-- `/kippen/daily/new`: daily laying calendar entry.
+- `/kippen/eggs/new`: register `1e soort` and `2e soort` eggs.
+- `/kippen/feed-water/new`: register daily water in milliliters and feed in
+  grams.
+- `/kippen/eggs`: recent egg registrations.
+- `/kippen/feed-water`: recent water/feed registrations.
 - `/kippen/dead-hens/new`: dead hen registration.
 - `/kippen/outside-nest-rounds/new`: outside-nest egg round.
 - `/kippen/week`: current week overview.
@@ -513,7 +517,8 @@ Flock workflow:
 4. Create the active flock with a name, date of birth, placement date, and bird
    count.
 5. Leave `Einddatum` empty while the flock is still active.
-6. Enter daily registrations, dead-hen registrations, and outside-nest rounds.
+6. Enter egg registrations and water/feed registrations separately.
+7. Enter dead-hen registrations and outside-nest rounds as needed.
 
 Registrations are only accepted when there is an active flock in the same house
 for the registration date. For now the app uses one house, `main`. Future houses
@@ -533,7 +538,8 @@ Weekly exports:
 
 Raw CSV exports:
 
-- `/kippen/export/daily.csv`: daily laying registrations.
+- `/kippen/export/eggs.csv`: egg registrations.
+- `/kippen/export/feed-water.csv`: water/feed registrations.
 - `/kippen/export/dead-hens.csv`: dead hen registrations.
 - `/kippen/export/outside-nest-rounds.csv`: outside-nest egg rounds.
 
@@ -547,7 +553,7 @@ https://kippen.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
 ```
 
 Backups are database-level. The PostgreSQL backup command above includes the
-Kippen tables (`flocks`, `daily_laying_registrations`,
+Kippen tables (`flocks`, `egg_registrations`, `feed_water_registrations`,
 `dead_hen_registrations`, and `outside_nest_egg_rounds`). For operational
 exports that can be opened directly in Excel, use the weekly Excel export and
 raw CSV links in the app.

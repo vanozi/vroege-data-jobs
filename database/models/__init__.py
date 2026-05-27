@@ -8,7 +8,6 @@ SQLModel metadata from a single module import.
 from .behandeling import KlauwBehandeling
 from .koe import Koe, KoeDetail
 from .laying_hens import (
-    DailyLayingRegistration,
     DeadHenRegistration,
     EggRegistration,
     FeedWaterRegistration,
@@ -19,7 +18,6 @@ from .melking import Melking
 from .tank_transaction import TankTransaction
 
 __all__ = [
-    "DailyLayingRegistration",
     "DeadHenRegistration",
     "EggRegistration",
     "FeedWaterRegistration",

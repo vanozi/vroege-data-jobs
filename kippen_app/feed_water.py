@@ -4,7 +4,7 @@ from datetime import date
 from typing import Mapping, Optional
 
 from database.models.laying_hens import FeedWaterRegistration
-from kippen_app import daily
+from kippen_app import weekdays
 
 
 def build_feed_water_registration_from_form(
@@ -28,7 +28,7 @@ def build_feed_water_registration_from_form(
         id=existing_registration.id if existing_registration else None,
         house_id=values["house_id"] or "main",
         registration_date=registration_date,
-        weekday=daily.DUTCH_WEEKDAYS[registration_date.weekday()],
+        weekday=weekdays.DUTCH_WEEKDAYS[registration_date.weekday()],
         water_ml=water_ml,
         feed_grams=feed_grams,
         notes=values["notes"] or None,
@@ -55,7 +55,7 @@ def default_values(registration_date: date) -> dict[str, str]:
     return {
         "house_id": "main",
         "registration_date": registration_date.isoformat(),
-        "weekday": daily.DUTCH_WEEKDAYS[registration_date.weekday()],
+        "weekday": weekdays.DUTCH_WEEKDAYS[registration_date.weekday()],
         "water_ml": "0",
         "feed_grams": "0",
         "notes": "",
