@@ -851,13 +851,21 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
+            "notes": "Eieren",
+        },
+    )
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
             "water_ml": "10123",
             "feed_grams": "20456",
+            "notes": "Water voer",
         },
     )
 
@@ -869,6 +877,10 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     assert "Actief koppel" in response.text
     assert "33 weken en 5 dagen" in response.text
     assert "105" in response.text
+    assert "10123" in response.text
+    assert "20456" in response.text
+    assert "Eieren" in response.text
+    assert "Water voer" in response.text
 
 
 def test_dead_hen_new_form_renders_for_logged_in_user(monkeypatch):
@@ -1163,13 +1175,21 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
+            "notes": "Eieren",
+        },
+    )
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
             "water_ml": "10123",
             "feed_grams": "20456",
+            "notes": "Water voer",
         },
     )
 
@@ -1189,8 +1209,10 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     assert "Leeftijd" in headers
     assert "Actief koppel" in row
     assert "33 weken en 5 dagen" in row
-    assert "10123" in row
-    assert "20456" in row
+    assert 105 in row
+    assert 10123 in row
+    assert 20456 in row
+    assert "Eieren | Water voer" in row
 
 
 def test_week_pdf_export_downloads_pdf(monkeypatch):
@@ -1205,31 +1227,76 @@ def test_week_pdf_export_downloads_pdf(monkeypatch):
     assert response.data.startswith(b"%PDF")
 
 
-def test_raw_daily_csv_export_downloads_csv(monkeypatch):
+def test_raw_eggs_csv_export_downloads_csv(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
+            "notes": "Eieren",
         },
     )
 
-    response = client.get("/kippen/export/daily.csv")
+    response = client.get("/kippen/export/eggs.csv")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("text/csv")
-    assert "kippen-daily.csv" in response.headers["Content-Disposition"]
+    assert "kippen-eggs.csv" in response.headers["Content-Disposition"]
     csv_text = response.data.decode("utf-8-sig")
     assert "registration_date" in csv_text
     assert "flock_name" in csv_text
     assert "flock_age_weeks" in csv_text
     assert "flock_age_days" in csv_text
+    assert "first_quality_eggs" in csv_text
     assert "Actief koppel" in csv_text
     assert "2026-05-26" in csv_text
+    assert "Eieren" in csv_text
+
+
+def test_raw_feed_water_csv_export_downloads_csv(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "10123",
+            "feed_grams": "20456",
+            "notes": "Water voer",
+        },
+    )
+
+    response = client.get("/kippen/export/feed-water.csv")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert "kippen-feed-water.csv" in response.headers["Content-Disposition"]
+    csv_text = response.data.decode("utf-8-sig")
+    assert "registration_date" in csv_text
+    assert "flock_name" in csv_text
+    assert "flock_age_weeks" in csv_text
+    assert "flock_age_days" in csv_text
+    assert "water_ml" in csv_text
+    assert "feed_grams" in csv_text
+    assert "Actief koppel" in csv_text
+    assert "2026-05-26" in csv_text
+    assert "10123" in csv_text
+    assert "20456" in csv_text
+    assert "Water voer" in csv_text
+
+
+def test_raw_daily_csv_export_is_removed(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/export/daily.csv")
+
+    assert response.status_code == 404
 
 
 def test_raw_dead_hens_csv_export_includes_flock_context(monkeypatch):

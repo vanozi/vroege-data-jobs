@@ -1082,7 +1082,7 @@ def create_app(session_factory=None) -> Flask:
     def raw_records_csv(record_type: str):
         repositories = _repositories()
         flocks_by_id = _flocks_by_id(repositories.flocks)
-        if record_type == "daily":
+        if record_type == "eggs":
             output = exports.records_csv(
                 [
                     "id",
@@ -1097,8 +1097,6 @@ def create_app(session_factory=None) -> Flask:
                     "first_quality_eggs",
                     "second_quality_eggs",
                     "total_eggs",
-                    "water_ml",
-                    "feed_grams",
                     "notes",
                     "created_by",
                 ],
@@ -1117,12 +1115,47 @@ def create_app(session_factory=None) -> Flask:
                         item.first_quality_eggs,
                         item.second_quality_eggs,
                         item.total_eggs,
+                        item.notes,
+                        item.created_by,
+                    ]
+                    for item in repositories.eggs.list_all()
+                ],
+            )
+        elif record_type == "feed-water":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
+                    "registration_date",
+                    "weekday",
+                    "water_ml",
+                    "feed_grams",
+                    "notes",
+                    "created_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.registration_date,
+                        ),
+                        item.registration_date,
+                        item.weekday,
                         item.water_ml,
                         item.feed_grams,
                         item.notes,
                         item.created_by,
                     ]
-                    for item in repositories.daily.list_all()
+                    for item in repositories.feed_water.list_all()
                 ],
             )
         elif record_type == "dead-hens":
@@ -1412,25 +1445,38 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         abort(404)
 
     repositories = _repositories()
-    registrations = repositories.daily.list_between(week_days[0], week_days[-1])
-    registrations_by_date = {
-        registration.registration_date: registration for registration in registrations
+    egg_registrations = repositories.eggs.list_between(week_days[0], week_days[-1])
+    feed_water_registrations = repositories.feed_water.list_between(
+        week_days[0],
+        week_days[-1],
+    )
+    egg_registrations_by_date = {
+        registration.registration_date: registration
+        for registration in egg_registrations
+    }
+    feed_water_registrations_by_date = {
+        registration.registration_date: registration
+        for registration in feed_water_registrations
     }
     flocks_by_id = _flocks_by_id(repositories.flocks)
     rows = []
     for day in week_days:
-        registration = registrations_by_date.get(day)
+        egg_registration = egg_registrations_by_date.get(day)
+        feed_water_registration = feed_water_registrations_by_date.get(day)
         active_flock = _flock_for_week_row(
             repositories.flocks,
             flocks_by_id,
             day,
-            registration,
+            egg_registration,
+            feed_water_registration,
         )
         rows.append(
             {
                 "date": day,
                 "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
-                "registration": registration,
+                "registration": egg_registration,
+                "egg_registration": egg_registration,
+                "feed_water_registration": feed_water_registration,
                 "flock": active_flock,
                 "flock_age": flock_age.flock_age_context(active_flock, day),
                 "dead_hens_count": repositories.dead_hens.count_for_date(day),
@@ -1453,10 +1499,12 @@ def _flock_for_week_row(
     repository: FlocksRepository,
     flocks_by_id: dict[int, object],
     target_date: date,
-    registration,
+    egg_registration,
+    feed_water_registration=None,
 ):
-    if registration is not None and registration.flock_id is not None:
-        return flocks_by_id.get(registration.flock_id)
+    for registration in (egg_registration, feed_water_registration):
+        if registration is not None and registration.flock_id is not None:
+            return flocks_by_id.get(registration.flock_id)
 
     return repository.get_active_flock_for_date(target_date)
 
@@ -1496,16 +1544,17 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
         "feed_grams": 0,
     }
     for row in rows:
-        registration = row["registration"]
+        egg_registration = row["egg_registration"]
+        feed_water_registration = row["feed_water_registration"]
         totals["dead_hens_count"] += int(row["dead_hens_count"])
         totals["outside_nest_egg_count"] += int(row["outside_nest_egg_count"])
-        if registration is None:
-            continue
+        if egg_registration is not None:
+            totals["first_quality_eggs"] += egg_registration.first_quality_eggs
+            totals["second_quality_eggs"] += egg_registration.second_quality_eggs
+            totals["total_eggs"] += egg_registration.total_eggs
 
-        totals["first_quality_eggs"] += registration.first_quality_eggs
-        totals["second_quality_eggs"] += registration.second_quality_eggs
-        totals["total_eggs"] += registration.total_eggs
-        totals["water_ml"] += registration.water_ml or 0
-        totals["feed_grams"] += registration.feed_grams or 0
+        if feed_water_registration is not None:
+            totals["water_ml"] += feed_water_registration.water_ml
+            totals["feed_grams"] += feed_water_registration.feed_grams
 
     return totals

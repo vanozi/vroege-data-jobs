@@ -62,41 +62,54 @@
     </thead>
     <tbody>
       {% for row in rows %}
-      {% set registration = row.registration %}
+      {% set egg_registration = row.egg_registration %}
+      {% set feed_water_registration = row.feed_water_registration %}
       <tr>
         <td>{{ row.weekday }}</td>
         <td>{{ row.date }}</td>
         <td>{% if row.flock %}{{ row.flock.flock_name }}{% else %}-{% endif %}</td>
         <td>{% if row.flock_age %}{{ row.flock_age.label }}{% else %}-{% endif %}</td>
-        {% if registration %}
-        <td class="has-text-right">{{ registration.first_quality_eggs }}</td>
-        <td class="has-text-right">{{ registration.second_quality_eggs }}</td>
-        <td class="has-text-right">{{ registration.total_eggs }}</td>
-        <td class="has-text-right">{{ row.dead_hens_count }}</td>
-        <td class="has-text-right">{{ row.outside_nest_egg_count }}</td>
-        <td class="has-text-right">
-          {% if registration.water_ml is not none %}{{ registration.water_ml }}{% else %}-{% endif %}
-        </td>
-        <td class="has-text-right">
-          {% if registration.feed_grams is not none %}{{ registration.feed_grams }}{% else %}-{% endif %}
-        </td>
-        <td>{{ registration.notes or "" }}</td>
-        <td class="has-text-right">
-          <a href="{{ url_for('daily_edit', registration_id=registration.id) }}">Bewerken</a>
-        </td>
+        {% if egg_registration %}
+        <td class="has-text-right">{{ egg_registration.first_quality_eggs }}</td>
+        <td class="has-text-right">{{ egg_registration.second_quality_eggs }}</td>
+        <td class="has-text-right">{{ egg_registration.total_eggs }}</td>
         {% else %}
         <td class="has-text-right">-</td>
         <td class="has-text-right">-</td>
         <td class="has-text-right">-</td>
+        {% endif %}
         <td class="has-text-right">{{ row.dead_hens_count }}</td>
         <td class="has-text-right">{{ row.outside_nest_egg_count }}</td>
-        <td class="has-text-right">-</td>
-        <td class="has-text-right">-</td>
-        <td></td>
+        {% if feed_water_registration %}
+        <td class="has-text-right">{{ feed_water_registration.water_ml }}</td>
+        <td class="has-text-right">{{ feed_water_registration.feed_grams }}</td>
+        {% else %}
         <td class="has-text-right">
-          <a href="{{ url_for('daily_new', date=row.date.isoformat()) }}">Invullen</a>
+          -
+        </td>
+        <td class="has-text-right">
+          -
         </td>
         {% endif %}
+        <td>
+          {% if egg_registration and egg_registration.notes %}{{ egg_registration.notes }}{% endif %}
+          {% if egg_registration and egg_registration.notes and feed_water_registration and feed_water_registration.notes %} | {% endif %}
+          {% if feed_water_registration and feed_water_registration.notes %}{{ feed_water_registration.notes }}{% endif %}
+        </td>
+        <td class="has-text-right">
+          <div class="buttons are-small is-justify-content-flex-end">
+            {% if egg_registration %}
+            <a class="button is-light" href="{{ url_for('egg_registrations_edit', registration_id=egg_registration.id) }}">Eieren</a>
+            {% else %}
+            <a class="button is-light" href="{{ url_for('egg_registrations_new', date=row.date.isoformat()) }}">Eieren</a>
+            {% endif %}
+            {% if feed_water_registration %}
+            <a class="button is-light" href="{{ url_for('feed_water_registrations_edit', registration_id=feed_water_registration.id) }}">Water/voer</a>
+            {% else %}
+            <a class="button is-light" href="{{ url_for('feed_water_registrations_new', date=row.date.isoformat()) }}">Water/voer</a>
+            {% endif %}
+          </div>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
