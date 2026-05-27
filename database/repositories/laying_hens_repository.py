@@ -1,11 +1,12 @@
 """Repositories for laying hens registrations."""
 
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Optional, Union
 
 from sqlmodel import select
 
+from database import laying_hens_calculations
 from database.models.laying_hens import DeadHenRegistration
 from database.models.laying_hens import EggPackagingWeightConfig
 from database.models.laying_hens import EggPalletWeightRegistration
@@ -1015,8 +1016,12 @@ class EggPalletWeightRegistrationsRepository(
             raise ValueError("Egg count per pallet must be greater than zero.")
 
         normalized_data["egg_weight_grams"] = (
-            (pallet_weight - empty_weight) / Decimal(egg_count) * Decimal("1000")
-        ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+            laying_hens_calculations.calculate_egg_weight_grams(
+                pallet_weight_kg=pallet_weight,
+                empty_packaging_weight_kg=empty_weight,
+                egg_count_per_pallet=egg_count,
+            )
+        )
         return normalized_data
 
     def _ensure_required_fields(self, registration_data: dict[str, object]) -> None:
