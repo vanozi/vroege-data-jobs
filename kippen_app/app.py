@@ -1,6 +1,7 @@
 """Flask app factory for the kippen registratie app."""
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 from typing import Optional
 
@@ -88,6 +89,10 @@ def create_app(session_factory=None) -> Flask:
             recent_dead_hens=repositories.dead_hens.list_recent(limit=5),
             recent_outside_nest_rounds=repositories.outside_nest_rounds.list_recent(
                 limit=5,
+            ),
+            recent_pallet_weights=repositories.pallet_weights.list_recent(limit=5),
+            today_average_egg_weight_grams=_average_egg_weight_grams(
+                repositories.pallet_weights.list_between(today, today),
             ),
         )
 
@@ -1406,6 +1411,77 @@ def create_app(session_factory=None) -> Flask:
                     for item in repositories.outside_nest_rounds.list_all()
                 ],
             )
+        elif record_type == "pallet-weights":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
+                    "registration_date",
+                    "weekday",
+                    "supplier_name",
+                    "pallet_weight_kg",
+                    "empty_packaging_weight_kg",
+                    "egg_count_per_pallet",
+                    "egg_weight_grams",
+                    "notes",
+                    "created_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.registration_date,
+                        ),
+                        item.registration_date,
+                        item.weekday,
+                        item.supplier_name,
+                        item.pallet_weight_kg,
+                        item.empty_packaging_weight_kg,
+                        item.egg_count_per_pallet,
+                        item.egg_weight_grams,
+                        item.notes,
+                        item.created_by,
+                    ]
+                    for item in repositories.pallet_weights.list_all()
+                ],
+            )
+        elif record_type == "packaging-weights":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "supplier_name",
+                    "empty_packaging_weight_kg",
+                    "egg_count_per_pallet",
+                    "start_date",
+                    "end_date",
+                    "is_active",
+                    "archived_at",
+                    "notes",
+                ],
+                [
+                    [
+                        item.id,
+                        item.supplier_name,
+                        item.empty_packaging_weight_kg,
+                        item.egg_count_per_pallet,
+                        item.start_date,
+                        item.end_date,
+                        item.is_active,
+                        item.archived_at,
+                        item.notes,
+                    ]
+                    for item in repositories.packaging_weights.list_packaging_weight_configs()
+                ],
+            )
         else:
             abort(404)
 
@@ -1718,6 +1794,10 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         week_days[0],
         week_days[-1],
     )
+    pallet_weight_registrations = repositories.pallet_weights.list_between(
+        week_days[0],
+        week_days[-1],
+    )
     egg_registrations_by_date = {
         registration.registration_date: registration
         for registration in egg_registrations
@@ -1726,11 +1806,18 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         registration.registration_date: registration
         for registration in feed_water_registrations
     }
+    pallet_weight_registrations_by_date = _group_by_registration_date(
+        pallet_weight_registrations,
+    )
     flocks_by_id = _flocks_by_id(repositories.flocks)
     rows = []
     for day in week_days:
         egg_registration = egg_registrations_by_date.get(day)
         feed_water_registration = feed_water_registrations_by_date.get(day)
+        pallet_weight_registrations_for_day = pallet_weight_registrations_by_date.get(
+            day,
+            [],
+        )
         active_flock = _flock_for_week_row(
             repositories.flocks,
             flocks_by_id,
@@ -1745,6 +1832,10 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
                 "registration": egg_registration,
                 "egg_registration": egg_registration,
                 "feed_water_registration": feed_water_registration,
+                "pallet_weight_registrations": pallet_weight_registrations_for_day,
+                "average_egg_weight_grams": _average_egg_weight_grams(
+                    pallet_weight_registrations_for_day,
+                ),
                 "flock": active_flock,
                 "flock_age": flock_age.flock_age_context(active_flock, day),
                 "dead_hens_count": repositories.dead_hens.count_for_date(day),
@@ -1801,7 +1892,30 @@ def _raw_flock_context_values(
     ]
 
 
-def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
+def _group_by_registration_date(registrations) -> dict[date, list[object]]:
+    grouped: dict[date, list[object]] = {}
+    for registration in registrations:
+        grouped.setdefault(registration.registration_date, []).append(registration)
+
+    return grouped
+
+
+def _average_egg_weight_grams(registrations) -> Optional[Decimal]:
+    values = [
+        registration.egg_weight_grams
+        for registration in registrations
+        if registration.egg_weight_grams is not None
+    ]
+    if not values:
+        return None
+
+    return (sum(values) / Decimal(len(values))).quantize(
+        Decimal("0.0001"),
+        rounding=ROUND_HALF_UP,
+    )
+
+
+def _week_totals(rows: list[dict[str, object]]) -> dict[str, object]:
     totals = {
         "first_quality_eggs": 0,
         "second_quality_eggs": 0,
@@ -1810,10 +1924,13 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
         "outside_nest_egg_count": 0,
         "water_ml": 0,
         "feed_grams": 0,
+        "average_egg_weight_grams": None,
     }
+    pallet_weight_registrations = []
     for row in rows:
         egg_registration = row["egg_registration"]
         feed_water_registration = row["feed_water_registration"]
+        pallet_weight_registrations.extend(row["pallet_weight_registrations"])
         totals["dead_hens_count"] += int(row["dead_hens_count"])
         totals["outside_nest_egg_count"] += int(row["outside_nest_egg_count"])
         if egg_registration is not None:
@@ -1825,4 +1942,7 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
             totals["water_ml"] += feed_water_registration.water_ml
             totals["feed_grams"] += feed_water_registration.feed_grams
 
+    totals["average_egg_weight_grams"] = _average_egg_weight_grams(
+        pallet_weight_registrations,
+    )
     return totals

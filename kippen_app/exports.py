@@ -22,6 +22,7 @@ WEEK_HEADERS = [
     "Dagtotaal",
     "Dode hennen",
     "Buitennest",
+    "Eigewicht (g)",
     "Water (ml)",
     "Voer (g)",
     "Opmerkingen",
@@ -57,6 +58,7 @@ def weekly_calendar_xlsx(
             totals["total_eggs"],
             totals["dead_hens_count"],
             totals["outside_nest_egg_count"],
+            _optional_decimal(totals["average_egg_weight_grams"]),
             totals["water_ml"],
             totals["feed_grams"],
             "",
@@ -114,6 +116,7 @@ def weekly_calendar_pdf(
             totals["total_eggs"],
             totals["dead_hens_count"],
             totals["outside_nest_egg_count"],
+            _optional_decimal(totals["average_egg_weight_grams"]),
             totals["water_ml"],
             totals["feed_grams"],
             "",
@@ -127,7 +130,7 @@ def weekly_calendar_pdf(
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("ALIGN", (4, 1), (10, -1), "RIGHT"),
+                ("ALIGN", (4, 1), (11, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
             ]
@@ -167,6 +170,7 @@ def _week_export_row(row: dict[str, object]) -> list[object]:
         _egg_value(egg_registration, "total_eggs"),
         row["dead_hens_count"],
         row["outside_nest_egg_count"],
+        _optional_decimal(row["average_egg_weight_grams"]),
         _feed_water_value(feed_water_registration, "water_ml"),
         _feed_water_value(feed_water_registration, "feed_grams"),
         _week_notes(egg_registration, feed_water_registration),
@@ -185,6 +189,13 @@ def _feed_water_value(registration, field_name: str) -> object:
         return ""
 
     return getattr(registration, field_name)
+
+
+def _optional_decimal(value) -> object:
+    if value is None:
+        return ""
+
+    return value
 
 
 def _week_notes(egg_registration, feed_water_registration) -> str:

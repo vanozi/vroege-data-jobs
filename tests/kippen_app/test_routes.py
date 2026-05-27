@@ -81,6 +81,22 @@ def _create_packaging_weight_config(
     )
 
 
+def _create_pallet_weight_registration(
+    client,
+    *,
+    registration_date: str = "2026-05-26",
+    pallet_weight_kg: str = "700",
+):
+    return client.post(
+        "/kippen/pallet-weights/new",
+        data={
+            "registration_date": registration_date,
+            "packaging_weight_config_id": "1",
+            "pallet_weight_kg": pallet_weight_kg,
+        },
+    )
+
+
 def test_index_redirects_to_dashboard(monkeypatch):
     client, _ = _client(monkeypatch)
 
@@ -144,6 +160,7 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
+    _create_packaging_weight_config(client, start_date=date.today().isoformat())
     today = date.today().isoformat()
     client.post(
         "/kippen/eggs/new",
@@ -161,6 +178,11 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
             "feed_grams": "109255",
         },
     )
+    _create_pallet_weight_registration(
+        client,
+        registration_date=today,
+        pallet_weight_kg="700",
+    )
 
     response = client.get("/kippen/dashboard")
 
@@ -172,6 +194,12 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
     assert "109255 gram voer" in response.text
     assert "Laatste eiregistraties" in response.text
     assert "Laatste water en voer" in response.text
+    assert "Eigewicht vandaag" in response.text
+    assert "Palletgewicht registreren" in response.text
+    assert "Leeggoed beheren" in response.text
+    assert "Palletgewichten CSV" in response.text
+    assert "Leeggoed CSV" in response.text
+    assert "Laatste palletgewichten" in response.text
 
 
 def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
@@ -733,6 +761,7 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
+    _create_packaging_weight_config(client)
     client.post(
         "/kippen/eggs/new",
         data={
@@ -751,6 +780,8 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
             "notes": "Water voer",
         },
     )
+    _create_pallet_weight_registration(client, pallet_weight_kg="700")
+    _create_pallet_weight_registration(client, pallet_weight_kg="710")
 
     response = client.get("/kippen/week/2026/22")
 
@@ -762,6 +793,8 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     assert "105" in response.text
     assert "10123" in response.text
     assert "20456" in response.text
+    assert "Eigewicht" in response.text
+    assert "60.7871" in response.text
     assert "Eieren" in response.text
     assert "Water voer" in response.text
 
@@ -1329,6 +1362,7 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
+    _create_packaging_weight_config(client)
     client.post(
         "/kippen/eggs/new",
         data={
@@ -1347,6 +1381,8 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
             "notes": "Water voer",
         },
     )
+    _create_pallet_weight_registration(client, pallet_weight_kg="700")
+    _create_pallet_weight_registration(client, pallet_weight_kg="710")
 
     response = client.get("/kippen/week/2026/22/export.xlsx")
 
@@ -1362,11 +1398,13 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     row = [cell.value for cell in worksheet[5]]
     assert "Koppel" in headers
     assert "Leeftijd" in headers
+    assert "Eigewicht (g)" in headers
     assert "Actief koppel" in row
     assert "33 weken en 5 dagen" in row
     assert 105 in row
     assert 10123 in row
     assert 20456 in row
+    assert any(str(value) == "60.7871" for value in row)
     assert "Eieren | Water voer" in row
 
 
@@ -1443,6 +1481,50 @@ def test_raw_feed_water_csv_export_downloads_csv(monkeypatch):
     assert "10123" in csv_text
     assert "20456" in csv_text
     assert "Water voer" in csv_text
+
+
+def test_raw_pallet_weights_csv_export_downloads_csv(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _create_packaging_weight_config(client)
+    _create_pallet_weight_registration(client, pallet_weight_kg="700")
+
+    response = client.get("/kippen/export/pallet-weights.csv")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert "kippen-pallet-weights.csv" in response.headers["Content-Disposition"]
+    csv_text = response.data.decode("utf-8-sig")
+    assert "registration_date" in csv_text
+    assert "flock_name" in csv_text
+    assert "supplier_name" in csv_text
+    assert "pallet_weight_kg" in csv_text
+    assert "empty_packaging_weight_kg" in csv_text
+    assert "egg_count_per_pallet" in csv_text
+    assert "egg_weight_grams" in csv_text
+    assert "Actief koppel" in csv_text
+    assert "Eierhandel A" in csv_text
+    assert "60.3241" in csv_text
+
+
+def test_raw_packaging_weights_csv_export_downloads_csv(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_packaging_weight_config(client)
+
+    response = client.get("/kippen/export/packaging-weights.csv")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert "kippen-packaging-weights.csv" in response.headers["Content-Disposition"]
+    csv_text = response.data.decode("utf-8-sig")
+    assert "supplier_name" in csv_text
+    assert "empty_packaging_weight_kg" in csv_text
+    assert "egg_count_per_pallet" in csv_text
+    assert "start_date" in csv_text
+    assert "Eierhandel A" in csv_text
+    assert "10800" in csv_text
 
 
 def test_raw_daily_csv_export_is_removed(monkeypatch):
