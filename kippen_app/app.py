@@ -60,19 +60,26 @@ def create_app(session_factory=None) -> Flask:
     def dashboard():
         repositories = _repositories()
         today = date.today()
-        today_registration = repositories.daily.get_by_house_and_date(today)
+        today_egg_registration = repositories.eggs.get_by_house_and_date(today)
+        today_feed_water_registration = repositories.feed_water.get_by_house_and_date(
+            today,
+        )
         active_flock = repositories.flocks.get_current_active_flock()
         return render_template(
             "dashboard.html",
             today=today,
-            today_registration=today_registration,
+            today_egg_registration=today_egg_registration,
+            today_feed_water_registration=today_feed_water_registration,
             active_flock=active_flock,
             active_flock_age=flock_age.flock_age_context(active_flock, today),
             dead_hens_today=repositories.dead_hens.count_for_date(today),
             outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
                 today,
             ),
-            recent_daily_registrations=repositories.daily.list_recent(limit=7),
+            recent_egg_registrations=repositories.eggs.list_recent(limit=5),
+            recent_feed_water_registrations=repositories.feed_water.list_recent(
+                limit=5,
+            ),
             recent_dead_hens=repositories.dead_hens.list_recent(limit=5),
             recent_outside_nest_rounds=repositories.outside_nest_rounds.list_recent(
                 limit=5,

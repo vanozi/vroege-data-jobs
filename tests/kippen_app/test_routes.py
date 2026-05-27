@@ -114,10 +114,45 @@ def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
     dashboard_response = client.get("/kippen/dashboard")
     assert dashboard_response.status_code == 200
     assert "Kippen Registratie" in dashboard_response.text
-    assert "Dagregistratie invullen" in dashboard_response.text
+    assert "Eieren registreren" in dashboard_response.text
+    assert "Water en voer registreren" in dashboard_response.text
     assert "Dode hen registreren" in dashboard_response.text
     assert "Buitennest ronde registreren" in dashboard_response.text
     assert "Koppels beheren" in dashboard_response.text
+
+
+def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    today = date.today().isoformat()
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": today,
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": today,
+            "water_ml": "199555",
+            "feed_grams": "109255",
+        },
+    )
+
+    response = client.get("/kippen/dashboard")
+
+    assert response.status_code == 200
+    assert "Eieren vandaag" in response.text
+    assert "105" in response.text
+    assert "Water en voer vandaag" in response.text
+    assert "199555 ml" in response.text
+    assert "109255 gram voer" in response.text
+    assert "Laatste eiregistraties" in response.text
+    assert "Laatste water en voer" in response.text
 
 
 def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
@@ -530,6 +565,7 @@ def test_egg_registration_new_form_renders_for_logged_in_user(monkeypatch):
     assert "2026-05-26" in response.text
     assert "Dinsdag" in response.text
     assert "Actief koppel" in response.text
+    assert "33 weken en 5 dagen" in response.text
     assert "1e soort eieren" in response.text
     assert "2e soort eieren" in response.text
 
@@ -674,6 +710,7 @@ def test_feed_water_registration_new_form_renders_for_logged_in_user(monkeypatch
     assert "2026-05-26" in response.text
     assert "Dinsdag" in response.text
     assert "Actief koppel" in response.text
+    assert "33 weken en 5 dagen" in response.text
     assert "Water in milliliter" in response.text
     assert "Voer in gram" in response.text
 
@@ -1078,20 +1115,37 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
+    today = date.today()
+    week_day = date(2026, 5, 26)
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": "2026-05-26T10:30",
+            "round_at": f"{today.isoformat()}T10:30",
             "egg_count": "12",
         },
     )
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": "2026-05-26T15:00",
+            "round_at": f"{today.isoformat()}T15:00",
             "egg_count": "8",
         },
     )
+    if today != week_day:
+        client.post(
+            "/kippen/outside-nest-rounds/new",
+            data={
+                "round_at": "2026-05-26T10:30",
+                "egg_count": "12",
+            },
+        )
+        client.post(
+            "/kippen/outside-nest-rounds/new",
+            data={
+                "round_at": "2026-05-26T15:00",
+                "egg_count": "8",
+            },
+        )
 
     dashboard_response = client.get("/kippen/dashboard")
     week_response = client.get("/kippen/week/2026/22")
