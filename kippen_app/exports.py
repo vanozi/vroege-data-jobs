@@ -2,7 +2,6 @@
 
 from csv import writer
 from io import BytesIO, StringIO
-from typing import Optional
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -155,44 +154,47 @@ def records_csv(headers: list[str], rows: list[list[object]]) -> BytesIO:
 
 
 def _week_export_row(row: dict[str, object]) -> list[object]:
-    registration = row["registration"]
-    if registration is None:
-        return [
-            row["weekday"],
-            row["date"].isoformat(),
-            _flock_name(row),
-            _flock_age_label(row),
-            "",
-            "",
-            "",
-            row["dead_hens_count"],
-            row["outside_nest_egg_count"],
-            "",
-            "",
-            "",
-        ]
+    egg_registration = row["egg_registration"]
+    feed_water_registration = row["feed_water_registration"]
 
     return [
         row["weekday"],
         row["date"].isoformat(),
         _flock_name(row),
         _flock_age_label(row),
-        registration.first_quality_eggs,
-        registration.second_quality_eggs,
-        registration.total_eggs,
+        _egg_value(egg_registration, "first_quality_eggs"),
+        _egg_value(egg_registration, "second_quality_eggs"),
+        _egg_value(egg_registration, "total_eggs"),
         row["dead_hens_count"],
         row["outside_nest_egg_count"],
-        _format_optional_int(registration.water_ml),
-        _format_optional_int(registration.feed_grams),
-        registration.notes or "",
+        _feed_water_value(feed_water_registration, "water_ml"),
+        _feed_water_value(feed_water_registration, "feed_grams"),
+        _week_notes(egg_registration, feed_water_registration),
     ]
 
 
-def _format_optional_int(value: Optional[int]) -> str:
-    if value is None:
+def _egg_value(registration, field_name: str) -> object:
+    if registration is None:
         return ""
 
-    return str(value)
+    return getattr(registration, field_name)
+
+
+def _feed_water_value(registration, field_name: str) -> object:
+    if registration is None:
+        return ""
+
+    return getattr(registration, field_name)
+
+
+def _week_notes(egg_registration, feed_water_registration) -> str:
+    notes = []
+    if egg_registration is not None and egg_registration.notes:
+        notes.append(egg_registration.notes)
+    if feed_water_registration is not None and feed_water_registration.notes:
+        notes.append(feed_water_registration.notes)
+
+    return " | ".join(notes)
 
 
 def _flock_name(row: dict[str, object]) -> str:

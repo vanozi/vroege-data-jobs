@@ -8,8 +8,9 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 from werkzeug import security
 
-from database.models.laying_hens import DailyLayingRegistration
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import EggRegistration
+from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
 from kippen_app.app import create_app
@@ -112,10 +113,45 @@ def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
     dashboard_response = client.get("/kippen/dashboard")
     assert dashboard_response.status_code == 200
     assert "Kippen Registratie" in dashboard_response.text
-    assert "Dagregistratie invullen" in dashboard_response.text
+    assert "Eieren registreren" in dashboard_response.text
+    assert "Water en voer registreren" in dashboard_response.text
     assert "Dode hen registreren" in dashboard_response.text
     assert "Buitennest ronde registreren" in dashboard_response.text
     assert "Koppels beheren" in dashboard_response.text
+
+
+def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    today = date.today().isoformat()
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": today,
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": today,
+            "water_ml": "199555",
+            "feed_grams": "109255",
+        },
+    )
+
+    response = client.get("/kippen/dashboard")
+
+    assert response.status_code == 200
+    assert "Eieren vandaag" in response.text
+    assert "105" in response.text
+    assert "Water en voer vandaag" in response.text
+    assert "199555 ml" in response.text
+    assert "109255 gram voer" in response.text
+    assert "Laatste eiregistraties" in response.text
+    assert "Laatste water en voer" in response.text
 
 
 def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
@@ -370,58 +406,69 @@ def test_flock_archive_marks_flock_inactive(monkeypatch):
     assert archived_flock.archived_at is not None
 
 
-def test_daily_new_form_renders_for_logged_in_user(monkeypatch):
+def test_obsolete_daily_registration_routes_are_removed(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    assert client.get("/kippen/daily/new").status_code == 404
+    assert client.post("/kippen/daily/new").status_code == 404
+    assert client.get("/kippen/daily/1/edit").status_code == 404
+    assert client.post("/kippen/daily/1/edit").status_code == 404
+
+
+def test_egg_registration_new_form_renders_for_logged_in_user(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
 
-    response = client.get("/kippen/daily/new?date=2026-05-26")
+    response = client.get("/kippen/eggs/new?date=2026-05-26")
 
     assert response.status_code == 200
-    assert "Dagregistratie invullen" in response.text
+    assert "Eieren registreren" in response.text
     assert "2026-05-26" in response.text
     assert "Dinsdag" in response.text
     assert "Actief koppel" in response.text
     assert "33 weken en 5 dagen" in response.text
+    assert "1e soort eieren" in response.text
+    assert "2e soort eieren" in response.text
 
 
-def test_daily_new_post_saves_registration_with_computed_total(monkeypatch):
+def test_egg_registration_new_post_saves_registration_with_computed_total(
+    monkeypatch,
+):
     client, engine = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
 
     response = client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "20530",
             "second_quality_eggs": "19",
-            "water_ml": "199555",
-            "feed_grams": "109255",
             "notes": "Normale dag",
         },
     )
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/dashboard"
+    assert response.headers["Location"] == "/kippen/eggs"
     with Session(engine) as session:
-        registration = session.exec(select(DailyLayingRegistration)).one()
+        registration = session.exec(select(EggRegistration)).one()
 
     assert registration.registration_date == date(2026, 5, 26)
     assert registration.weekday == "Dinsdag"
     assert registration.total_eggs == 20549
-    assert registration.water_ml == 199555
-    assert registration.feed_grams == 109255
+    assert registration.notes == "Normale dag"
     assert registration.created_by == "admin"
     assert registration.flock_id is not None
 
 
-def test_daily_new_post_requires_active_flock_for_date(monkeypatch):
+def test_egg_registration_new_post_requires_active_flock_for_date(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
 
     response = client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "20530",
@@ -433,12 +480,12 @@ def test_daily_new_post_requires_active_flock_for_date(monkeypatch):
     assert "Geen actief koppel gevonden" in response.text
 
 
-def test_daily_new_post_validates_negative_values(monkeypatch):
+def test_egg_registration_new_post_validates_negative_values(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
 
     response = client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "-1",
@@ -450,12 +497,12 @@ def test_daily_new_post_validates_negative_values(monkeypatch):
     assert "mag niet negatief" in response.text
 
 
-def test_daily_edit_updates_existing_registration(monkeypatch):
+def test_egg_registration_edit_updates_existing_registration(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
@@ -463,57 +510,203 @@ def test_daily_edit_updates_existing_registration(monkeypatch):
         },
     )
     with Session(engine) as session:
-        registration = session.exec(select(DailyLayingRegistration)).one()
+        registration = session.exec(select(EggRegistration)).one()
 
     response = client.post(
-        f"/kippen/daily/{registration.id}/edit",
+        f"/kippen/eggs/{registration.id}/edit",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "120",
             "second_quality_eggs": "6",
-            "water_ml": "255",
-            "feed_grams": "805",
             "notes": "Aangepast",
         },
     )
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/dashboard"
+    assert response.headers["Location"] == "/kippen/eggs"
     with Session(engine) as session:
-        registrations = session.exec(select(DailyLayingRegistration)).all()
+        registrations = session.exec(select(EggRegistration)).all()
 
     assert len(registrations) == 1
     assert registrations[0].total_eggs == 126
-    assert registrations[0].water_ml == 255
-    assert registrations[0].feed_grams == 805
     assert registrations[0].notes == "Aangepast"
 
 
-def test_daily_edit_form_formats_water_and_feed_as_whole_units(monkeypatch):
+def test_egg_registrations_list_and_delete(monkeypatch):
     client, engine = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
-            "water_ml": "200",
-            "feed_grams": "800",
         },
     )
     with Session(engine) as session:
-        registration = session.exec(select(DailyLayingRegistration)).one()
+        registration = session.exec(select(EggRegistration)).one()
 
-    response = client.get(f"/kippen/daily/{registration.id}/edit")
+    list_response = client.get("/kippen/eggs")
+    delete_response = client.post(f"/kippen/eggs/{registration.id}/delete")
+
+    assert list_response.status_code == 200
+    assert "Eiregistraties" in list_response.text
+    assert "105" in list_response.text
+    assert delete_response.status_code == 302
+    assert delete_response.headers["Location"] == "/kippen/eggs"
+    with Session(engine) as session:
+        registrations = session.exec(select(EggRegistration)).all()
+
+    assert registrations == []
+
+
+def test_feed_water_registration_new_form_renders_for_logged_in_user(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+
+    response = client.get("/kippen/feed-water/new?date=2026-05-26")
 
     assert response.status_code == 200
-    assert 'name="water_ml"' in response.text
-    assert 'step="1"' in response.text
-    assert 'value="200"' in response.text
-    assert 'name="feed_grams"' in response.text
-    assert 'value="800"' in response.text
+    assert "Water en voer registreren" in response.text
+    assert "2026-05-26" in response.text
+    assert "Dinsdag" in response.text
+    assert "Actief koppel" in response.text
+    assert "33 weken en 5 dagen" in response.text
+    assert "Water in milliliter" in response.text
+    assert "Voer in gram" in response.text
+
+
+def test_feed_water_registration_new_post_saves_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+
+    response = client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "199555",
+            "feed_grams": "109255",
+            "notes": "Normale dag",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/feed-water"
+    with Session(engine) as session:
+        registration = session.exec(select(FeedWaterRegistration)).one()
+
+    assert registration.registration_date == date(2026, 5, 26)
+    assert registration.weekday == "Dinsdag"
+    assert registration.water_ml == 199555
+    assert registration.feed_grams == 109255
+    assert registration.notes == "Normale dag"
+    assert registration.created_by == "admin"
+    assert registration.flock_id is not None
+
+
+def test_feed_water_registration_new_post_requires_active_flock_for_date(
+    monkeypatch,
+):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "199555",
+            "feed_grams": "109255",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Geen actief koppel gevonden" in response.text
+
+
+def test_feed_water_registration_new_post_validates_negative_values(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "-1",
+            "feed_grams": "109255",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "mag niet negatief" in response.text
+
+
+def test_feed_water_registration_edit_updates_existing_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "199555",
+            "feed_grams": "109255",
+        },
+    )
+    with Session(engine) as session:
+        registration = session.exec(select(FeedWaterRegistration)).one()
+
+    response = client.post(
+        f"/kippen/feed-water/{registration.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "201000",
+            "feed_grams": "110000",
+            "notes": "Aangepast",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/kippen/feed-water"
+    with Session(engine) as session:
+        registrations = session.exec(select(FeedWaterRegistration)).all()
+
+    assert len(registrations) == 1
+    assert registrations[0].water_ml == 201000
+    assert registrations[0].feed_grams == 110000
+    assert registrations[0].notes == "Aangepast"
+
+
+def test_feed_water_registrations_list_and_delete(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "199555",
+            "feed_grams": "109255",
+        },
+    )
+    with Session(engine) as session:
+        registration = session.exec(select(FeedWaterRegistration)).one()
+
+    list_response = client.get("/kippen/feed-water")
+    delete_response = client.post(f"/kippen/feed-water/{registration.id}/delete")
+
+    assert list_response.status_code == 200
+    assert "Water en voer registraties" in list_response.text
+    assert "199555" in list_response.text
+    assert "109255" in list_response.text
+    assert delete_response.status_code == 302
+    assert delete_response.headers["Location"] == "/kippen/feed-water"
+    with Session(engine) as session:
+        registrations = session.exec(select(FeedWaterRegistration)).all()
+
+    assert registrations == []
 
 
 def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
@@ -521,13 +714,21 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
+            "notes": "Eieren",
+        },
+    )
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
             "water_ml": "10123",
             "feed_grams": "20456",
+            "notes": "Water voer",
         },
     )
 
@@ -539,6 +740,10 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     assert "Actief koppel" in response.text
     assert "33 weken en 5 dagen" in response.text
     assert "105" in response.text
+    assert "10123" in response.text
+    assert "20456" in response.text
+    assert "Eieren" in response.text
+    assert "Water voer" in response.text
 
 
 def test_dead_hen_new_form_renders_for_logged_in_user(monkeypatch):
@@ -653,7 +858,7 @@ def test_dead_hen_list_shows_recent_registrations(monkeypatch):
     assert "Bij achterste vak" in response.text
 
 
-def test_dead_hen_counts_are_visible_in_daily_dashboard_and_week(monkeypatch):
+def test_dead_hen_counts_are_visible_in_week(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
@@ -680,12 +885,8 @@ def test_dead_hen_counts_are_visible_in_daily_dashboard_and_week(monkeypatch):
         },
     )
 
-    daily_response = client.get("/kippen/daily/new?date=2026-05-26")
     week_response = client.get("/kippen/week/2026/22")
 
-    assert daily_response.status_code == 200
-    assert 'id="dead_hens_count"' in daily_response.text
-    assert 'value="3"' in daily_response.text
     assert week_response.status_code == 200
     assert "Week totaal" in week_response.text
     assert ">3<" in week_response.text
@@ -785,20 +986,37 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
+    today = date.today()
+    week_day = date(2026, 5, 26)
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": "2026-05-26T10:30",
+            "round_at": f"{today.isoformat()}T10:30",
             "egg_count": "12",
         },
     )
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": "2026-05-26T15:00",
+            "round_at": f"{today.isoformat()}T15:00",
             "egg_count": "8",
         },
     )
+    if today != week_day:
+        client.post(
+            "/kippen/outside-nest-rounds/new",
+            data={
+                "round_at": "2026-05-26T10:30",
+                "egg_count": "12",
+            },
+        )
+        client.post(
+            "/kippen/outside-nest-rounds/new",
+            data={
+                "round_at": "2026-05-26T15:00",
+                "egg_count": "8",
+            },
+        )
 
     dashboard_response = client.get("/kippen/dashboard")
     week_response = client.get("/kippen/week/2026/22")
@@ -816,13 +1034,21 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
+            "notes": "Eieren",
+        },
+    )
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
             "water_ml": "10123",
             "feed_grams": "20456",
+            "notes": "Water voer",
         },
     )
 
@@ -842,8 +1068,10 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     assert "Leeftijd" in headers
     assert "Actief koppel" in row
     assert "33 weken en 5 dagen" in row
-    assert "10123" in row
-    assert "20456" in row
+    assert 105 in row
+    assert 10123 in row
+    assert 20456 in row
+    assert "Eieren | Water voer" in row
 
 
 def test_week_pdf_export_downloads_pdf(monkeypatch):
@@ -858,31 +1086,76 @@ def test_week_pdf_export_downloads_pdf(monkeypatch):
     assert response.data.startswith(b"%PDF")
 
 
-def test_raw_daily_csv_export_downloads_csv(monkeypatch):
+def test_raw_eggs_csv_export_downloads_csv(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
     client.post(
-        "/kippen/daily/new",
+        "/kippen/eggs/new",
         data={
             "registration_date": "2026-05-26",
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
+            "notes": "Eieren",
         },
     )
 
-    response = client.get("/kippen/export/daily.csv")
+    response = client.get("/kippen/export/eggs.csv")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("text/csv")
-    assert "kippen-daily.csv" in response.headers["Content-Disposition"]
+    assert "kippen-eggs.csv" in response.headers["Content-Disposition"]
     csv_text = response.data.decode("utf-8-sig")
     assert "registration_date" in csv_text
     assert "flock_name" in csv_text
     assert "flock_age_weeks" in csv_text
     assert "flock_age_days" in csv_text
+    assert "first_quality_eggs" in csv_text
     assert "Actief koppel" in csv_text
     assert "2026-05-26" in csv_text
+    assert "Eieren" in csv_text
+
+
+def test_raw_feed_water_csv_export_downloads_csv(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    client.post(
+        "/kippen/feed-water/new",
+        data={
+            "registration_date": "2026-05-26",
+            "water_ml": "10123",
+            "feed_grams": "20456",
+            "notes": "Water voer",
+        },
+    )
+
+    response = client.get("/kippen/export/feed-water.csv")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/csv")
+    assert "kippen-feed-water.csv" in response.headers["Content-Disposition"]
+    csv_text = response.data.decode("utf-8-sig")
+    assert "registration_date" in csv_text
+    assert "flock_name" in csv_text
+    assert "flock_age_weeks" in csv_text
+    assert "flock_age_days" in csv_text
+    assert "water_ml" in csv_text
+    assert "feed_grams" in csv_text
+    assert "Actief koppel" in csv_text
+    assert "2026-05-26" in csv_text
+    assert "10123" in csv_text
+    assert "20456" in csv_text
+    assert "Water voer" in csv_text
+
+
+def test_raw_daily_csv_export_is_removed(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
+    response = client.get("/kippen/export/daily.csv")
+
+    assert response.status_code == 404
 
 
 def test_raw_dead_hens_csv_export_includes_flock_context(monkeypatch):

@@ -9,20 +9,23 @@ from flask import request, session, url_for
 from flask import send_file
 
 from database import database
-from database.repositories.laying_hens_repository import (
-    DailyLayingRegistrationsRepository,
-)
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
+from database.repositories.laying_hens_repository import EggRegistrationsRepository
+from database.repositories.laying_hens_repository import (
+    FeedWaterRegistrationsRepository,
+)
 from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
 from kippen_app import auth
 from kippen_app import config
-from kippen_app import daily
 from kippen_app import dead_hens
+from kippen_app import eggs
 from kippen_app import exports
+from kippen_app import feed_water
 from kippen_app import flock_age
 from kippen_app import flocks
 from kippen_app import outside_nest
+from kippen_app import weekdays
 
 
 def create_app(session_factory=None) -> Flask:
@@ -54,19 +57,26 @@ def create_app(session_factory=None) -> Flask:
     def dashboard():
         repositories = _repositories()
         today = date.today()
-        today_registration = repositories.daily.get_by_house_and_date(today)
+        today_egg_registration = repositories.eggs.get_by_house_and_date(today)
+        today_feed_water_registration = repositories.feed_water.get_by_house_and_date(
+            today,
+        )
         active_flock = repositories.flocks.get_current_active_flock()
         return render_template(
             "dashboard.html",
             today=today,
-            today_registration=today_registration,
+            today_egg_registration=today_egg_registration,
+            today_feed_water_registration=today_feed_water_registration,
             active_flock=active_flock,
             active_flock_age=flock_age.flock_age_context(active_flock, today),
             dead_hens_today=repositories.dead_hens.count_for_date(today),
             outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
                 today,
             ),
-            recent_daily_registrations=repositories.daily.list_recent(limit=7),
+            recent_egg_registrations=repositories.eggs.list_recent(limit=5),
+            recent_feed_water_registrations=repositories.feed_water.list_recent(
+                limit=5,
+            ),
             recent_dead_hens=repositories.dead_hens.list_recent(limit=5),
             recent_outside_nest_rounds=repositories.outside_nest_rounds.list_recent(
                 limit=5,
@@ -249,20 +259,29 @@ def create_app(session_factory=None) -> Flask:
         flash("Einddatum opgeslagen.", "success")
         return redirect(url_for("flocks_detail", flock_id=saved_flock.id))
 
-    @app.get("/kippen/daily/new")
+    @app.get("/kippen/eggs")
     @login_required
-    def daily_new():
+    def egg_registrations_list():
+        return render_template(
+            "egg_registrations.html",
+            registrations=_repositories().eggs.list_recent(limit=100),
+        )
+
+    @app.get("/kippen/eggs/new")
+    @login_required
+    def egg_registrations_new():
         repositories = _repositories()
         registration_date = _get_requested_date()
-        active_flock = repositories.flocks.get_active_flock_for_date(registration_date)
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration_date,
+        )
         return render_template(
-            "daily_form.html",
-            title="Dagregistratie invullen",
-            values=daily.default_values(registration_date),
+            "egg_form.html",
+            title="Eieren registreren",
+            values=eggs.default_values(registration_date),
             errors={},
-            action_url=url_for("daily_new_post"),
+            action_url=url_for("egg_registrations_new_post"),
             submit_label="Opslaan",
-            dead_hens_count=repositories.dead_hens.count_for_date(registration_date),
             active_flock=active_flock,
             active_flock_age=flock_age.flock_age_context(
                 active_flock,
@@ -270,27 +289,23 @@ def create_app(session_factory=None) -> Flask:
             ),
         )
 
-    @app.post("/kippen/daily/new")
+    @app.post("/kippen/eggs/new")
     @login_required
-    def daily_new_post():
+    def egg_registrations_new_post():
         repositories = _repositories()
-        registration, errors, values = daily.build_daily_registration_from_form(
+        registration, errors, values = eggs.build_egg_registration_from_form(
             request.form,
             created_by=session.get("kippen_username"),
         )
         if errors or registration is None:
             return (
                 render_template(
-                    "daily_form.html",
-                    title="Dagregistratie invullen",
+                    "egg_form.html",
+                    title="Eieren registreren",
                     values=values,
                     errors=errors,
-                    action_url=url_for("daily_new_post"),
+                    action_url=url_for("egg_registrations_new_post"),
                     submit_label="Opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
                     active_flock=_active_flock_for_values(repositories.flocks, values),
                     active_flock_age=_active_flock_age_for_values(
                         repositories.flocks,
@@ -308,16 +323,12 @@ def create_app(session_factory=None) -> Flask:
             errors["form"] = _missing_active_flock_message(registration.house_id)
             return (
                 render_template(
-                    "daily_form.html",
-                    title="Dagregistratie invullen",
+                    "egg_form.html",
+                    title="Eieren registreren",
                     values=values,
                     errors=errors,
-                    action_url=url_for("daily_new_post"),
+                    action_url=url_for("egg_registrations_new_post"),
                     submit_label="Opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
                     active_flock=None,
                     active_flock_age=None,
                 ),
@@ -325,50 +336,50 @@ def create_app(session_factory=None) -> Flask:
             )
 
         registration.flock_id = active_flock.id
-        repositories.daily.upsert_daily_registration(registration)
-        flash("Dagregistratie opgeslagen.", "success")
-        return redirect(url_for("dashboard"))
+        repositories.eggs.upsert_egg_registration(registration)
+        flash("Eiregistratie opgeslagen.", "success")
+        return redirect(url_for("egg_registrations_list"))
 
-    @app.get("/kippen/daily/<int:registration_id>/edit")
+    @app.get("/kippen/eggs/<int:registration_id>/edit")
     @login_required
-    def daily_edit(registration_id: int):
+    def egg_registrations_edit(registration_id: int):
         repositories = _repositories()
-        registration = repositories.daily.get_daily_registration_by_id(registration_id)
+        registration = repositories.eggs.get_egg_registration_by_id(registration_id)
         if registration is None:
             abort(404)
 
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
         return render_template(
-            "daily_form.html",
-            title="Dagregistratie aanpassen",
-            values=daily.values_from_registration(registration),
+            "egg_form.html",
+            title="Eiregistratie aanpassen",
+            values=eggs.values_from_registration(registration),
             errors={},
-            action_url=url_for("daily_edit_post", registration_id=registration.id),
+            action_url=url_for(
+                "egg_registrations_edit_post",
+                registration_id=registration.id,
+            ),
             submit_label="Wijzigingen opslaan",
-            dead_hens_count=repositories.dead_hens.count_for_date(
-                registration.registration_date,
-                house_id=registration.house_id,
-            ),
-            active_flock=repositories.flocks.get_active_flock_for_date(
-                registration.registration_date,
-                house_id=registration.house_id,
-            ),
+            active_flock=active_flock,
             active_flock_age=_flock_age_for_registration(
                 repositories.flocks,
                 registration,
             ),
         )
 
-    @app.post("/kippen/daily/<int:registration_id>/edit")
+    @app.post("/kippen/eggs/<int:registration_id>/edit")
     @login_required
-    def daily_edit_post(registration_id: int):
+    def egg_registrations_edit_post(registration_id: int):
         repositories = _repositories()
-        existing_registration = repositories.daily.get_daily_registration_by_id(
+        existing_registration = repositories.eggs.get_egg_registration_by_id(
             registration_id,
         )
         if existing_registration is None:
             abort(404)
 
-        registration, errors, values = daily.build_daily_registration_from_form(
+        registration, errors, values = eggs.build_egg_registration_from_form(
             request.form,
             created_by=session.get("kippen_username"),
             existing_registration=existing_registration,
@@ -376,19 +387,15 @@ def create_app(session_factory=None) -> Flask:
         if errors or registration is None:
             return (
                 render_template(
-                    "daily_form.html",
-                    title="Dagregistratie aanpassen",
+                    "egg_form.html",
+                    title="Eiregistratie aanpassen",
                     values=values,
                     errors=errors,
                     action_url=url_for(
-                        "daily_edit_post",
+                        "egg_registrations_edit_post",
                         registration_id=registration_id,
                     ),
                     submit_label="Wijzigingen opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
                     active_flock=_active_flock_for_values(repositories.flocks, values),
                     active_flock_age=_active_flock_age_for_values(
                         repositories.flocks,
@@ -406,19 +413,15 @@ def create_app(session_factory=None) -> Flask:
             errors["form"] = _missing_active_flock_message(registration.house_id)
             return (
                 render_template(
-                    "daily_form.html",
-                    title="Dagregistratie aanpassen",
+                    "egg_form.html",
+                    title="Eiregistratie aanpassen",
                     values=values,
                     errors=errors,
                     action_url=url_for(
-                        "daily_edit_post",
+                        "egg_registrations_edit_post",
                         registration_id=registration_id,
                     ),
                     submit_label="Wijzigingen opslaan",
-                    dead_hens_count=_dead_hens_count_for_values(
-                        repositories.dead_hens,
-                        values,
-                    ),
                     active_flock=None,
                     active_flock_age=None,
                 ),
@@ -426,15 +429,225 @@ def create_app(session_factory=None) -> Flask:
             )
 
         registration.flock_id = active_flock.id
-        saved_registration = repositories.daily.update_daily_registration(
+        saved_registration = repositories.eggs.update_egg_registration(
             registration_id,
             registration,
         )
         if saved_registration is None:
             abort(404)
 
-        flash("Dagregistratie aangepast.", "success")
-        return redirect(url_for("dashboard"))
+        flash("Eiregistratie aangepast.", "success")
+        return redirect(url_for("egg_registrations_list"))
+
+    @app.post("/kippen/eggs/<int:registration_id>/delete")
+    @login_required
+    def egg_registrations_delete(registration_id: int):
+        deleted = _repositories().eggs.delete_egg_registration(registration_id)
+        if not deleted:
+            abort(404)
+
+        flash("Eiregistratie verwijderd.", "success")
+        return redirect(url_for("egg_registrations_list"))
+
+    @app.get("/kippen/feed-water")
+    @login_required
+    def feed_water_registrations_list():
+        return render_template(
+            "feed_water_registrations.html",
+            registrations=_repositories().feed_water.list_recent(limit=100),
+        )
+
+    @app.get("/kippen/feed-water/new")
+    @login_required
+    def feed_water_registrations_new():
+        repositories = _repositories()
+        registration_date = _get_requested_date()
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration_date,
+        )
+        return render_template(
+            "feed_water_form.html",
+            title="Water en voer registreren",
+            values=feed_water.default_values(registration_date),
+            errors={},
+            action_url=url_for("feed_water_registrations_new_post"),
+            submit_label="Opslaan",
+            active_flock=active_flock,
+            active_flock_age=flock_age.flock_age_context(
+                active_flock,
+                registration_date,
+            ),
+        )
+
+    @app.post("/kippen/feed-water/new")
+    @login_required
+    def feed_water_registrations_new_post():
+        repositories = _repositories()
+        registration, errors, values = (
+            feed_water.build_feed_water_registration_from_form(
+                request.form,
+                created_by=session.get("kippen_username"),
+            )
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registreren",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("feed_water_registrations_new_post"),
+                    submit_label="Opslaan",
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
+                ),
+                400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registreren",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for("feed_water_registrations_new_post"),
+                    submit_label="Opslaan",
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
+        repositories.feed_water.upsert_feed_water_registration(registration)
+        flash("Water en voer registratie opgeslagen.", "success")
+        return redirect(url_for("feed_water_registrations_list"))
+
+    @app.get("/kippen/feed-water/<int:registration_id>/edit")
+    @login_required
+    def feed_water_registrations_edit(registration_id: int):
+        repositories = _repositories()
+        registration = repositories.feed_water.get_feed_water_registration_by_id(
+            registration_id,
+        )
+        if registration is None:
+            abort(404)
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        return render_template(
+            "feed_water_form.html",
+            title="Water en voer registratie aanpassen",
+            values=feed_water.values_from_registration(registration),
+            errors={},
+            action_url=url_for(
+                "feed_water_registrations_edit_post",
+                registration_id=registration.id,
+            ),
+            submit_label="Wijzigingen opslaan",
+            active_flock=active_flock,
+            active_flock_age=_flock_age_for_registration(
+                repositories.flocks,
+                registration,
+            ),
+        )
+
+    @app.post("/kippen/feed-water/<int:registration_id>/edit")
+    @login_required
+    def feed_water_registrations_edit_post(registration_id: int):
+        repositories = _repositories()
+        existing_registration = (
+            repositories.feed_water.get_feed_water_registration_by_id(
+                registration_id,
+            )
+        )
+        if existing_registration is None:
+            abort(404)
+
+        registration, errors, values = (
+            feed_water.build_feed_water_registration_from_form(
+                request.form,
+                created_by=session.get("kippen_username"),
+                existing_registration=existing_registration,
+            )
+        )
+        if errors or registration is None:
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "feed_water_registrations_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    active_flock=_active_flock_for_values(repositories.flocks, values),
+                    active_flock_age=_active_flock_age_for_values(
+                        repositories.flocks,
+                        values,
+                    ),
+                ),
+                400,
+            )
+
+        active_flock = repositories.flocks.get_active_flock_for_date(
+            registration.registration_date,
+            house_id=registration.house_id,
+        )
+        if active_flock is None:
+            errors["form"] = _missing_active_flock_message(registration.house_id)
+            return (
+                render_template(
+                    "feed_water_form.html",
+                    title="Water en voer registratie aanpassen",
+                    values=values,
+                    errors=errors,
+                    action_url=url_for(
+                        "feed_water_registrations_edit_post",
+                        registration_id=registration_id,
+                    ),
+                    submit_label="Wijzigingen opslaan",
+                    active_flock=None,
+                    active_flock_age=None,
+                ),
+                400,
+            )
+
+        registration.flock_id = active_flock.id
+        saved_registration = repositories.feed_water.update_feed_water_registration(
+            registration_id,
+            registration,
+        )
+        if saved_registration is None:
+            abort(404)
+
+        flash("Water en voer registratie aangepast.", "success")
+        return redirect(url_for("feed_water_registrations_list"))
+
+    @app.post("/kippen/feed-water/<int:registration_id>/delete")
+    @login_required
+    def feed_water_registrations_delete(registration_id: int):
+        deleted = _repositories().feed_water.delete_feed_water_registration(
+            registration_id,
+        )
+        if not deleted:
+            abort(404)
+
+        flash("Water en voer registratie verwijderd.", "success")
+        return redirect(url_for("feed_water_registrations_list"))
 
     @app.get("/kippen/dead-hens/new")
     @login_required
@@ -679,7 +892,7 @@ def create_app(session_factory=None) -> Flask:
     def raw_records_csv(record_type: str):
         repositories = _repositories()
         flocks_by_id = _flocks_by_id(repositories.flocks)
-        if record_type == "daily":
+        if record_type == "eggs":
             output = exports.records_csv(
                 [
                     "id",
@@ -694,8 +907,6 @@ def create_app(session_factory=None) -> Flask:
                     "first_quality_eggs",
                     "second_quality_eggs",
                     "total_eggs",
-                    "water_ml",
-                    "feed_grams",
                     "notes",
                     "created_by",
                 ],
@@ -714,12 +925,47 @@ def create_app(session_factory=None) -> Flask:
                         item.first_quality_eggs,
                         item.second_quality_eggs,
                         item.total_eggs,
+                        item.notes,
+                        item.created_by,
+                    ]
+                    for item in repositories.eggs.list_all()
+                ],
+            )
+        elif record_type == "feed-water":
+            output = exports.records_csv(
+                [
+                    "id",
+                    "house_id",
+                    "flock_id",
+                    "flock_name",
+                    "flock_date_of_birth",
+                    "flock_age_weeks",
+                    "flock_age_days",
+                    "registration_date",
+                    "weekday",
+                    "water_ml",
+                    "feed_grams",
+                    "notes",
+                    "created_by",
+                ],
+                [
+                    [
+                        item.id,
+                        item.house_id,
+                        item.flock_id,
+                        *_raw_flock_context_values(
+                            flocks_by_id,
+                            item.flock_id,
+                            item.registration_date,
+                        ),
+                        item.registration_date,
+                        item.weekday,
                         item.water_ml,
                         item.feed_grams,
                         item.notes,
                         item.created_by,
                     ]
-                    for item in repositories.daily.list_all()
+                    for item in repositories.feed_water.list_all()
                 ],
             )
         elif record_type == "dead-hens":
@@ -865,7 +1111,8 @@ class LayingHensRepositories:
 
     def __init__(self, session_factory):
         self.flocks = FlocksRepository(session_factory)
-        self.daily = DailyLayingRegistrationsRepository(session_factory)
+        self.eggs = EggRegistrationsRepository(session_factory)
+        self.feed_water = FeedWaterRegistrationsRepository(session_factory)
         self.dead_hens = DeadHenRegistrationsRepository(session_factory)
         self.outside_nest_rounds = OutsideNestEggRoundsRepository(session_factory)
 
@@ -883,21 +1130,6 @@ def _get_requested_date() -> date:
         return date.fromisoformat(raw_date)
     except ValueError:
         return date.today()
-
-
-def _dead_hens_count_for_values(
-    repository: DeadHenRegistrationsRepository,
-    values: dict[str, str],
-) -> int:
-    try:
-        registration_date = date.fromisoformat(values.get("registration_date", ""))
-    except ValueError:
-        return 0
-
-    return repository.count_for_date(
-        registration_date,
-        house_id=values.get("house_id", "main") or "main",
-    )
 
 
 def _active_flock_for_values(
@@ -1007,25 +1239,38 @@ def _week_rows(year: int, week: int) -> list[dict[str, object]]:
         abort(404)
 
     repositories = _repositories()
-    registrations = repositories.daily.list_between(week_days[0], week_days[-1])
-    registrations_by_date = {
-        registration.registration_date: registration for registration in registrations
+    egg_registrations = repositories.eggs.list_between(week_days[0], week_days[-1])
+    feed_water_registrations = repositories.feed_water.list_between(
+        week_days[0],
+        week_days[-1],
+    )
+    egg_registrations_by_date = {
+        registration.registration_date: registration
+        for registration in egg_registrations
+    }
+    feed_water_registrations_by_date = {
+        registration.registration_date: registration
+        for registration in feed_water_registrations
     }
     flocks_by_id = _flocks_by_id(repositories.flocks)
     rows = []
     for day in week_days:
-        registration = registrations_by_date.get(day)
+        egg_registration = egg_registrations_by_date.get(day)
+        feed_water_registration = feed_water_registrations_by_date.get(day)
         active_flock = _flock_for_week_row(
             repositories.flocks,
             flocks_by_id,
             day,
-            registration,
+            egg_registration,
+            feed_water_registration,
         )
         rows.append(
             {
                 "date": day,
-                "weekday": daily.DUTCH_WEEKDAYS[day.weekday()],
-                "registration": registration,
+                "weekday": weekdays.DUTCH_WEEKDAYS[day.weekday()],
+                "registration": egg_registration,
+                "egg_registration": egg_registration,
+                "feed_water_registration": feed_water_registration,
                 "flock": active_flock,
                 "flock_age": flock_age.flock_age_context(active_flock, day),
                 "dead_hens_count": repositories.dead_hens.count_for_date(day),
@@ -1048,10 +1293,12 @@ def _flock_for_week_row(
     repository: FlocksRepository,
     flocks_by_id: dict[int, object],
     target_date: date,
-    registration,
+    egg_registration,
+    feed_water_registration=None,
 ):
-    if registration is not None and registration.flock_id is not None:
-        return flocks_by_id.get(registration.flock_id)
+    for registration in (egg_registration, feed_water_registration):
+        if registration is not None and registration.flock_id is not None:
+            return flocks_by_id.get(registration.flock_id)
 
     return repository.get_active_flock_for_date(target_date)
 
@@ -1091,16 +1338,17 @@ def _week_totals(rows: list[dict[str, object]]) -> dict[str, int]:
         "feed_grams": 0,
     }
     for row in rows:
-        registration = row["registration"]
+        egg_registration = row["egg_registration"]
+        feed_water_registration = row["feed_water_registration"]
         totals["dead_hens_count"] += int(row["dead_hens_count"])
         totals["outside_nest_egg_count"] += int(row["outside_nest_egg_count"])
-        if registration is None:
-            continue
+        if egg_registration is not None:
+            totals["first_quality_eggs"] += egg_registration.first_quality_eggs
+            totals["second_quality_eggs"] += egg_registration.second_quality_eggs
+            totals["total_eggs"] += egg_registration.total_eggs
 
-        totals["first_quality_eggs"] += registration.first_quality_eggs
-        totals["second_quality_eggs"] += registration.second_quality_eggs
-        totals["total_eggs"] += registration.total_eggs
-        totals["water_ml"] += registration.water_ml or 0
-        totals["feed_grams"] += registration.feed_grams or 0
+        if feed_water_registration is not None:
+            totals["water_ml"] += feed_water_registration.water_ml
+            totals["feed_grams"] += feed_water_registration.feed_grams
 
     return totals

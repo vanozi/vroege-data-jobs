@@ -7,11 +7,11 @@
   <div class="level-left">
     <div>
       <h1 class="title">{{ title }}</h1>
-      <p class="subtitle">Legkalender voor de leghennenstal.</p>
+      <p class="subtitle">Water en voer per dag registreren.</p>
     </div>
   </div>
   <div class="level-right">
-    <a class="button is-light" href="{{ url_for('dashboard') }}">Terug naar overzicht</a>
+    <a class="button is-light" href="{{ url_for('feed_water_registrations_list') }}">Water en voer registraties</a>
   </div>
 </div>
 
@@ -57,86 +57,7 @@
       <div class="field">
         <label class="label" for="weekday">Weekdag</label>
         <div class="control">
-          <input
-            class="input"
-            id="weekday"
-            name="weekday"
-            type="text"
-            value="{{ values.weekday }}"
-            readonly
-          >
-        </div>
-      </div>
-    </div>
-    <div class="column is-one-third">
-      <div class="field">
-        <label class="label" for="dead_hens_count">Dode hennen</label>
-        <div class="control">
-          <input
-            class="input"
-            id="dead_hens_count"
-            type="number"
-            value="{{ dead_hens_count }}"
-            readonly
-          >
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="columns">
-    <div class="column">
-      <div class="field">
-        <label class="label" for="first_quality_eggs">1e soort eieren</label>
-        <div class="control">
-          <input
-            class="input {% if errors.first_quality_eggs %}is-danger{% endif %}"
-            id="first_quality_eggs"
-            name="first_quality_eggs"
-            type="number"
-            min="0"
-            step="1"
-            value="{{ values.first_quality_eggs }}"
-            required
-          >
-        </div>
-        {% if errors.first_quality_eggs %}
-        <p class="help is-danger">{{ errors.first_quality_eggs }}</p>
-        {% endif %}
-      </div>
-    </div>
-    <div class="column">
-      <div class="field">
-        <label class="label" for="second_quality_eggs">2e soort eieren</label>
-        <div class="control">
-          <input
-            class="input {% if errors.second_quality_eggs %}is-danger{% endif %}"
-            id="second_quality_eggs"
-            name="second_quality_eggs"
-            type="number"
-            min="0"
-            step="1"
-            value="{{ values.second_quality_eggs }}"
-            required
-          >
-        </div>
-        {% if errors.second_quality_eggs %}
-        <p class="help is-danger">{{ errors.second_quality_eggs }}</p>
-        {% endif %}
-      </div>
-    </div>
-    <div class="column">
-      <div class="field">
-        <label class="label" for="total_eggs">Dagtotaal</label>
-        <div class="control">
-          <input
-            class="input"
-            id="total_eggs"
-            name="total_eggs"
-            type="number"
-            value="{{ values.total_eggs }}"
-            readonly
-          >
+          <input class="input" id="weekday" name="weekday" type="text" value="{{ values.weekday }}" readonly>
         </div>
       </div>
     </div>
@@ -155,6 +76,7 @@
             min="0"
             step="1"
             value="{{ values.water_ml }}"
+            required
           >
         </div>
         {% if errors.water_ml %}
@@ -174,6 +96,7 @@
             min="0"
             step="1"
             value="{{ values.feed_grams }}"
+            required
           >
         </div>
         {% if errors.feed_grams %}

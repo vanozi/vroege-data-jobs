@@ -5,8 +5,9 @@ from typing import Optional, Union
 
 from sqlmodel import select
 
-from database.models.laying_hens import DailyLayingRegistration
 from database.models.laying_hens import DeadHenRegistration
+from database.models.laying_hens import EggRegistration
+from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
 from database.repositories.base_repository import BaseRepository
@@ -202,12 +203,20 @@ class FlocksRepository(BaseRepository[Flock]):
 
     def _has_linked_registrations(self, flock_id: int) -> bool:
         with self.get_session() as session:
-            daily_registration = session.exec(
-                select(DailyLayingRegistration.id)
-                .where(DailyLayingRegistration.flock_id == flock_id)
+            egg_registration = session.exec(
+                select(EggRegistration.id)
+                .where(EggRegistration.flock_id == flock_id)
                 .limit(1)
             ).first()
-            if daily_registration is not None:
+            if egg_registration is not None:
+                return True
+
+            feed_water_registration = session.exec(
+                select(FeedWaterRegistration.id)
+                .where(FeedWaterRegistration.flock_id == flock_id)
+                .limit(1)
+            ).first()
+            if feed_water_registration is not None:
                 return True
 
             dead_hen_registration = session.exec(
@@ -239,18 +248,18 @@ class FlocksRepository(BaseRepository[Flock]):
         )
 
 
-class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]):
-    """Repository for daily laying calendar registrations."""
+class EggRegistrationsRepository(BaseRepository[EggRegistration]):
+    """Repository for egg registrations."""
 
     def __init__(self, session_factory):
-        super().__init__(DailyLayingRegistration, session_factory)
+        super().__init__(EggRegistration, session_factory)
 
-    def upsert_daily_registration(
+    def upsert_egg_registration(
         self,
-        registration_data: Union[dict[str, object], DailyLayingRegistration],
-    ) -> DailyLayingRegistration:
-        """Insert or update a daily registration by house and date."""
-        if isinstance(registration_data, DailyLayingRegistration):
+        registration_data: Union[dict[str, object], EggRegistration],
+    ) -> EggRegistration:
+        """Insert or update an egg registration by house and date."""
+        if isinstance(registration_data, EggRegistration):
             registration_data = registration_data.model_dump()
 
         self._ensure_flock_id(registration_data)
@@ -259,20 +268,20 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
             unique_fields=["house_id", "registration_date"],
         )
 
-    def update_daily_registration(
+    def update_egg_registration(
         self,
         registration_id: int,
-        registration_data: Union[dict[str, object], DailyLayingRegistration],
-    ) -> Optional[DailyLayingRegistration]:
-        """Update a daily registration by primary key."""
-        if isinstance(registration_data, DailyLayingRegistration):
+        registration_data: Union[dict[str, object], EggRegistration],
+    ) -> Optional[EggRegistration]:
+        """Update an egg registration by primary key."""
+        if isinstance(registration_data, EggRegistration):
             registration_data = registration_data.model_dump()
 
         normalized_data = self._normalize_model_data(registration_data)
         self._ensure_flock_id(normalized_data)
         normalized_data.pop("id", None)
         with self.get_session() as session:
-            registration = session.get(DailyLayingRegistration, registration_id)
+            registration = session.get(EggRegistration, registration_id)
             if registration is None:
                 return None
 
@@ -283,41 +292,13 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
             session.expunge(registration)
             return registration
 
-    def list_recent(self, *, limit: int = 7) -> list[DailyLayingRegistration]:
-        """Return recent daily registrations."""
-        with self.get_session() as session:
-            statement = (
-                select(DailyLayingRegistration)
-                .order_by(DailyLayingRegistration.registration_date.desc())
-                .limit(limit)
-            )
-            registrations = list(session.exec(statement).all())
-            for registration in registrations:
-                session.expunge(registration)
-            return registrations
-
-    def _ensure_flock_id(self, registration_data: dict[str, object]) -> None:
-        if registration_data.get("flock_id") is None:
-            raise ValueError("Daily laying registration requires a flock_id.")
-
-    def list_all(self) -> list[DailyLayingRegistration]:
-        """Return all daily registrations ordered by date."""
-        with self.get_session() as session:
-            statement = select(DailyLayingRegistration).order_by(
-                DailyLayingRegistration.registration_date.asc(),
-            )
-            registrations = list(session.exec(statement).all())
-            for registration in registrations:
-                session.expunge(registration)
-            return registrations
-
-    def get_daily_registration_by_id(
+    def get_egg_registration_by_id(
         self,
         registration_id: int,
-    ) -> Optional[DailyLayingRegistration]:
-        """Return one daily registration by primary key."""
+    ) -> Optional[EggRegistration]:
+        """Return one egg registration by primary key."""
         with self.get_session() as session:
-            registration = session.get(DailyLayingRegistration, registration_id)
+            registration = session.get(EggRegistration, registration_id)
             if registration is None:
                 return None
 
@@ -329,12 +310,12 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
         registration_date: date,
         *,
         house_id: str = "main",
-    ) -> Optional[DailyLayingRegistration]:
-        """Return one daily registration by house/date."""
+    ) -> Optional[EggRegistration]:
+        """Return one egg registration by house/date."""
         with self.get_session() as session:
-            statement = select(DailyLayingRegistration).where(
-                DailyLayingRegistration.house_id == house_id,
-                DailyLayingRegistration.registration_date == registration_date,
+            statement = select(EggRegistration).where(
+                EggRegistration.house_id == house_id,
+                EggRegistration.registration_date == registration_date,
             )
             registration = session.exec(statement).first()
             if registration is None:
@@ -343,28 +324,192 @@ class DailyLayingRegistrationsRepository(BaseRepository[DailyLayingRegistration]
             session.expunge(registration)
             return registration
 
+    def list_recent(self, *, limit: int = 7) -> list[EggRegistration]:
+        """Return recent egg registrations."""
+        with self.get_session() as session:
+            statement = (
+                select(EggRegistration)
+                .order_by(EggRegistration.registration_date.desc())
+                .limit(limit)
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
     def list_between(
         self,
         start_date: date,
         end_date: date,
         *,
         house_id: str = "main",
-    ) -> list[DailyLayingRegistration]:
-        """Return daily registrations for an inclusive date range."""
+    ) -> list[EggRegistration]:
+        """Return egg registrations for an inclusive date range."""
         with self.get_session() as session:
             statement = (
-                select(DailyLayingRegistration)
+                select(EggRegistration)
                 .where(
-                    DailyLayingRegistration.house_id == house_id,
-                    DailyLayingRegistration.registration_date >= start_date,
-                    DailyLayingRegistration.registration_date <= end_date,
+                    EggRegistration.house_id == house_id,
+                    EggRegistration.registration_date >= start_date,
+                    EggRegistration.registration_date <= end_date,
                 )
-                .order_by(DailyLayingRegistration.registration_date.asc())
+                .order_by(EggRegistration.registration_date.asc())
             )
             registrations = list(session.exec(statement).all())
             for registration in registrations:
                 session.expunge(registration)
             return registrations
+
+    def list_all(self) -> list[EggRegistration]:
+        """Return all egg registrations ordered by date."""
+        with self.get_session() as session:
+            statement = select(EggRegistration).order_by(
+                EggRegistration.registration_date.asc(),
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def delete_egg_registration(self, registration_id: int) -> bool:
+        """Delete one egg registration by primary key."""
+        return self.delete(registration_id)
+
+    def _ensure_flock_id(self, registration_data: dict[str, object]) -> None:
+        if registration_data.get("flock_id") is None:
+            raise ValueError("Egg registration requires a flock_id.")
+
+
+class FeedWaterRegistrationsRepository(BaseRepository[FeedWaterRegistration]):
+    """Repository for feed and water registrations."""
+
+    def __init__(self, session_factory):
+        super().__init__(FeedWaterRegistration, session_factory)
+
+    def upsert_feed_water_registration(
+        self,
+        registration_data: Union[dict[str, object], FeedWaterRegistration],
+    ) -> FeedWaterRegistration:
+        """Insert or update a feed/water registration by house and date."""
+        if isinstance(registration_data, FeedWaterRegistration):
+            registration_data = registration_data.model_dump()
+
+        self._ensure_flock_id(registration_data)
+        return self.upsert(
+            registration_data,
+            unique_fields=["house_id", "registration_date"],
+        )
+
+    def update_feed_water_registration(
+        self,
+        registration_id: int,
+        registration_data: Union[dict[str, object], FeedWaterRegistration],
+    ) -> Optional[FeedWaterRegistration]:
+        """Update a feed/water registration by primary key."""
+        if isinstance(registration_data, FeedWaterRegistration):
+            registration_data = registration_data.model_dump()
+
+        normalized_data = self._normalize_model_data(registration_data)
+        self._ensure_flock_id(normalized_data)
+        normalized_data.pop("id", None)
+        with self.get_session() as session:
+            registration = session.get(FeedWaterRegistration, registration_id)
+            if registration is None:
+                return None
+
+            self._update_instance(registration, normalized_data)
+            session.add(registration)
+            session.flush()
+            session.refresh(registration)
+            session.expunge(registration)
+            return registration
+
+    def get_feed_water_registration_by_id(
+        self,
+        registration_id: int,
+    ) -> Optional[FeedWaterRegistration]:
+        """Return one feed/water registration by primary key."""
+        with self.get_session() as session:
+            registration = session.get(FeedWaterRegistration, registration_id)
+            if registration is None:
+                return None
+
+            session.expunge(registration)
+            return registration
+
+    def get_by_house_and_date(
+        self,
+        registration_date: date,
+        *,
+        house_id: str = "main",
+    ) -> Optional[FeedWaterRegistration]:
+        """Return one feed/water registration by house/date."""
+        with self.get_session() as session:
+            statement = select(FeedWaterRegistration).where(
+                FeedWaterRegistration.house_id == house_id,
+                FeedWaterRegistration.registration_date == registration_date,
+            )
+            registration = session.exec(statement).first()
+            if registration is None:
+                return None
+
+            session.expunge(registration)
+            return registration
+
+    def list_recent(self, *, limit: int = 7) -> list[FeedWaterRegistration]:
+        """Return recent feed/water registrations."""
+        with self.get_session() as session:
+            statement = (
+                select(FeedWaterRegistration)
+                .order_by(FeedWaterRegistration.registration_date.desc())
+                .limit(limit)
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def list_between(
+        self,
+        start_date: date,
+        end_date: date,
+        *,
+        house_id: str = "main",
+    ) -> list[FeedWaterRegistration]:
+        """Return feed/water registrations for an inclusive date range."""
+        with self.get_session() as session:
+            statement = (
+                select(FeedWaterRegistration)
+                .where(
+                    FeedWaterRegistration.house_id == house_id,
+                    FeedWaterRegistration.registration_date >= start_date,
+                    FeedWaterRegistration.registration_date <= end_date,
+                )
+                .order_by(FeedWaterRegistration.registration_date.asc())
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def list_all(self) -> list[FeedWaterRegistration]:
+        """Return all feed/water registrations ordered by date."""
+        with self.get_session() as session:
+            statement = select(FeedWaterRegistration).order_by(
+                FeedWaterRegistration.registration_date.asc(),
+            )
+            registrations = list(session.exec(statement).all())
+            for registration in registrations:
+                session.expunge(registration)
+            return registrations
+
+    def delete_feed_water_registration(self, registration_id: int) -> bool:
+        """Delete one feed/water registration by primary key."""
+        return self.delete(registration_id)
+
+    def _ensure_flock_id(self, registration_data: dict[str, object]) -> None:
+        if registration_data.get("flock_id") is None:
+            raise ValueError("Feed/water registration requires a flock_id.")
 
 
 class DeadHenRegistrationsRepository(BaseRepository[DeadHenRegistration]):

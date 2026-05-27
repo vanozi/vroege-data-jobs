@@ -22,10 +22,12 @@
     <div class="box">
       <p class="heading">Vandaag</p>
       <p class="title is-4">{{ today }}</p>
-      {% if today_registration %}
-      <p class="subtitle is-6">{{ today_registration.weekday }}</p>
+      {% if today_egg_registration %}
+      <p class="subtitle is-6">{{ today_egg_registration.weekday }}</p>
+      {% elif today_feed_water_registration %}
+      <p class="subtitle is-6">{{ today_feed_water_registration.weekday }}</p>
       {% else %}
-      <p class="subtitle is-6">Nog geen dagregistratie.</p>
+      <p class="subtitle is-6">Nog geen registraties vandaag.</p>
       {% endif %}
     </div>
   </div>
@@ -33,9 +35,20 @@
     <div class="box">
       <p class="heading">Eieren vandaag</p>
       <p class="title is-4">
-        {% if today_registration %}{{ today_registration.total_eggs }}{% else %}-{% endif %}
+        {% if today_egg_registration %}{{ today_egg_registration.total_eggs }}{% else %}-{% endif %}
       </p>
       <p class="subtitle is-6">1e + 2e soort</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="box">
+      <p class="heading">Water en voer vandaag</p>
+      <p class="title is-4">
+        {% if today_feed_water_registration %}{{ today_feed_water_registration.water_ml }} ml{% else %}-{% endif %}
+      </p>
+      <p class="subtitle is-6">
+        {% if today_feed_water_registration %}{{ today_feed_water_registration.feed_grams }} gram voer{% else %}Nog niet ingevoerd{% endif %}
+      </p>
     </div>
   </div>
   <div class="column">
@@ -55,7 +68,8 @@
 </div>
 
 <div class="buttons">
-  <a class="button is-link" href="{{ url_for('daily_new') }}">Dagregistratie invullen</a>
+  <a class="button is-link" href="{{ url_for('egg_registrations_new') }}">Eieren registreren</a>
+  <a class="button is-link is-light" href="{{ url_for('feed_water_registrations_new') }}">Water en voer registreren</a>
   <a class="button is-warning" href="{{ url_for('dead_hens_new') }}">Dode hen registreren</a>
   <a class="button is-info" href="{{ url_for('outside_nest_rounds_new') }}">Buitennest ronde registreren</a>
   <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
@@ -76,37 +90,85 @@
 </div>
 
 <div class="buttons are-small">
-  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='daily') }}">Dagregistraties CSV</a>
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='eggs') }}">Eieren CSV</a>
+  <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='feed-water') }}">Water en voer CSV</a>
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='dead-hens') }}">Dode hennen CSV</a>
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='outside-nest-rounds') }}">Buitennest CSV</a>
 </div>
 
 <div class="columns mt-4">
   <div class="column">
-    <h2 class="title is-5">Laatste dagregistraties</h2>
-    {% if recent_daily_registrations %}
+    <div class="level mb-2">
+      <div class="level-left">
+        <h2 class="title is-5 mb-0">Laatste eiregistraties</h2>
+      </div>
+      <div class="level-right">
+        <a href="{{ url_for('egg_registrations_list') }}">Alles bekijken</a>
+      </div>
+    </div>
+    {% if recent_egg_registrations %}
     <table class="table is-fullwidth">
       <thead>
         <tr>
           <th>Datum</th>
+          <th class="has-text-right">1e</th>
+          <th class="has-text-right">2e</th>
           <th class="has-text-right">Totaal</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        {% for registration in recent_daily_registrations %}
+        {% for registration in recent_egg_registrations %}
         <tr>
           <td>{{ registration.registration_date }}</td>
+          <td class="has-text-right">{{ registration.first_quality_eggs }}</td>
+          <td class="has-text-right">{{ registration.second_quality_eggs }}</td>
           <td class="has-text-right">{{ registration.total_eggs }}</td>
           <td class="has-text-right">
-            <a href="{{ url_for('daily_edit', registration_id=registration.id) }}">Bewerken</a>
+            <a href="{{ url_for('egg_registrations_edit', registration_id=registration.id) }}">Bewerken</a>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <p>Geen dagregistraties gevonden.</p>
+    <p>Geen eiregistraties gevonden.</p>
+    {% endif %}
+  </div>
+  <div class="column">
+    <div class="level mb-2">
+      <div class="level-left">
+        <h2 class="title is-5 mb-0">Laatste water en voer</h2>
+      </div>
+      <div class="level-right">
+        <a href="{{ url_for('feed_water_registrations_list') }}">Alles bekijken</a>
+      </div>
+    </div>
+    {% if recent_feed_water_registrations %}
+    <table class="table is-fullwidth">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th class="has-text-right">Water</th>
+          <th class="has-text-right">Voer</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for registration in recent_feed_water_registrations %}
+        <tr>
+          <td>{{ registration.registration_date }}</td>
+          <td class="has-text-right">{{ registration.water_ml }}</td>
+          <td class="has-text-right">{{ registration.feed_grams }}</td>
+          <td class="has-text-right">
+            <a href="{{ url_for('feed_water_registrations_edit', registration_id=registration.id) }}">Bewerken</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>Geen water en voer registraties gevonden.</p>
     {% endif %}
   </div>
   <div class="column">
