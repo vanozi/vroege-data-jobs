@@ -80,6 +80,26 @@ services:
     networks:
       - dashboards
 
+  auth-bootstrap:
+    build:
+      context: .
+      dockerfile: docker/database/Dockerfile
+    profiles:
+      - tools
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - python
+      - -m
+      - shared_auth.scripts.bootstrap_admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+
   datajob-uniform-agri:
     <<: *datajob-base
     command:

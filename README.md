@@ -213,6 +213,11 @@ Set at least these values in `deploy/dashboard.env`:
 PORTAL_SECRET_KEY=change-me
 PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
+AUTH_BOOTSTRAP_EMAIL=admin@example.nl
+AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
+AUTH_BOOTSTRAP_FIRST_NAME=Admin
+AUTH_BOOTSTRAP_LAST_NAME=
+AUTH_BOOTSTRAP_RESET_PASSWORD=false
 KIPPEN_APP_SECRET_KEY=change-me
 KIPPEN_APP_ADMIN_USERNAME=admin
 KIPPEN_APP_ADMIN_PASSWORD_HASH=...
@@ -252,6 +257,18 @@ Run database migrations:
 ```powershell
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
 ```
+
+Bootstrap the shared auth registry and first admin user:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm auth-bootstrap
+```
+
+The bootstrap command creates the core application keys (`kippen`,
+`dashboard_klauwgezondheid`, `dashboard_tank_terminal`, and
+`user_administration`), the core roles (`admin`, `worker`, `viewer`), and grants
+the bootstrap admin access to those apps. If users already exist and
+`AUTH_BOOTSTRAP_EMAIL` is empty, it only refreshes the core apps and roles.
 
 The Kippen migrations create the `flocks` table, require `flock_id` on new
 registrations, and split the old combined daily table into
@@ -364,6 +381,11 @@ PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=true
+AUTH_BOOTSTRAP_EMAIL=admin@example.nl
+AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
+AUTH_BOOTSTRAP_FIRST_NAME=Admin
+AUTH_BOOTSTRAP_LAST_NAME=
+AUTH_BOOTSTRAP_RESET_PASSWORD=false
 KIPPEN_APP_SECRET_KEY=change-me
 KIPPEN_APP_ADMIN_USERNAME=admin
 KIPPEN_APP_ADMIN_PASSWORD_HASH=...
@@ -403,8 +425,14 @@ Validate, migrate, and start the production stack:
 docker compose config --quiet
 docker compose up -d postgres
 docker compose --profile tools run --rm db-migrate
+docker compose --profile tools run --rm auth-bootstrap
 docker compose up -d --build
 ```
+
+For shared auth bootstrap, `AUTH_BOOTSTRAP_PASSWORD` is only used to create a
+new bootstrap user. It is not logged. If the bootstrap user already exists,
+passwords are not reset unless `AUTH_BOOTSTRAP_RESET_PASSWORD=true` is set
+explicitly for that run.
 
 Run production datajobs manually:
 
