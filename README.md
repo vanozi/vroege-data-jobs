@@ -120,6 +120,8 @@ Current portal routes:
 - `/`: application overview, protected by session.
 - `/login`: login page.
 - `/logout`: logout endpoint.
+- `/admin/users`: user administration for users with the
+  `user_administration` application and `admin` role.
 - `/auth/verify`: Traefik ForwardAuth endpoint with application-aware path
   checks.
 - `/healthz`: healthcheck.
@@ -160,6 +162,24 @@ PORTAL_COOKIE_SECURE=false
 Visible application links now come from `applications`,
 `user_application_access`, and `user_application_roles`. Core applications and
 roles are seeded by the shared auth bootstrap command.
+
+### User administration
+
+The central portal includes a small admin UI for shared users and application
+authorization. Open `/admin/users` after logging in as a user that has access to
+the `user_administration` application with the `admin` role.
+
+From this screen an admin can:
+
+- create users with a default password;
+- edit name, email address, and active status;
+- reset a user's password;
+- grant or revoke access to applications;
+- assign one or more roles per application.
+
+Normal users without the `user_administration` admin role can still log in and
+open the applications they have access to, but they receive `403 Forbidden` on
+`/admin/users`.
 
 ### Docker Compose stack
 
@@ -277,6 +297,7 @@ docker compose --env-file .env.local.example -f docker-compose.yml -f docker-com
 Local routes:
 
 - `http://localhost/`: Flask portal.
+- `http://localhost/admin/users`: user administration for portal admins.
 - `http://localhost/kippen`: Kippen registratie app.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
 - `http://localhost/tank-terminal`: Tanken Marimo dashboard.
@@ -307,6 +328,8 @@ override port mapping. Use `http://localhost` for local testing; do not use
 Production routes:
 
 - `https://app.gebroedersvroege.nl/`: central Flask portal.
+- `https://app.gebroedersvroege.nl/admin/users`: user administration for portal
+  admins.
 - `https://app.gebroedersvroege.nl/kippen`: Kippen registratie app.
 - `https://app.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
 - `https://app.gebroedersvroege.nl/tank-terminal`: Tanken Marimo dashboard.

@@ -9,7 +9,7 @@
 Repository for Koe (Cow) model with specific operations using SQLModel.
 """
 
-from typing import  Union
+from typing import Union
 from .base_repository import BaseRepository
 from database.models import Melking
 
@@ -19,7 +19,6 @@ class MelkingenRepository(BaseRepository[Melking]):
 
     def __init__(self, session_factory):
         super().__init__(Melking, session_factory)
-
 
     def upsert_melking(self, melking_data: Union[dict, Melking]) -> Melking:
         """
@@ -35,4 +34,4 @@ class MelkingenRepository(BaseRepository[Melking]):
         if isinstance(melking_data, Melking):
             melking_data = melking_data.model_dump()
 
-        return self.upsert(melking_data, unique_fields=['id'])
+        return self.upsert(melking_data, unique_fields=["id"])

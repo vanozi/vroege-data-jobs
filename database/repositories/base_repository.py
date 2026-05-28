@@ -16,7 +16,7 @@ from typing import Generator, Generic, TypeVar, Type, List, Optional, Dict, Any
 from sqlmodel import Session, select
 from contextlib import contextmanager
 
-ModelType = TypeVar('ModelType')
+ModelType = TypeVar("ModelType")
 
 
 class BaseRepository(Generic[ModelType]):
@@ -41,7 +41,11 @@ class BaseRepository(Generic[ModelType]):
     @contextmanager
     def get_session(self) -> Generator[Session, None, None]:
         """Context manager for database sessions with automatic commit/rollback"""
-        session = self.session_factory() if callable(self.session_factory) else self.session_factory
+        session = (
+            self.session_factory()
+            if callable(self.session_factory)
+            else self.session_factory
+        )
         try:
             yield session
             session.commit()
@@ -90,7 +94,9 @@ class BaseRepository(Generic[ModelType]):
                 # Use session.get() for primary key
                 return session.get(self.model, id_value)
 
-    def get_all(self, filters: Dict[str, Any] = None, limit: int = None) -> List[ModelType]:
+    def get_all(
+        self, filters: Dict[str, Any] = None, limit: int = None
+    ) -> List[ModelType]:
         """
         Get all records, optionally filtered.
 
@@ -113,7 +119,9 @@ class BaseRepository(Generic[ModelType]):
 
             return session.exec(statement).all()
 
-    def update(self, id_value: Any, data: Dict[str, Any], id_field: str = None) -> Optional[ModelType]:
+    def update(
+        self, id_value: Any, data: Dict[str, Any], id_field: str = None
+    ) -> Optional[ModelType]:
         """
         Update a record by ID.
 
@@ -214,9 +222,7 @@ class BaseRepository(Generic[ModelType]):
     ) -> Dict[str, Any]:
         """Return the unique lookup values required for an upsert."""
         missing_fields = [
-            field
-            for field in unique_fields
-            if field not in data or data[field] is None
+            field for field in unique_fields if field not in data or data[field] is None
         ]
 
         if missing_fields:

@@ -50,10 +50,10 @@ elif DATABASE_URL.startswith("postgresql"):
     engine = create_engine(
         DATABASE_URL,
         echo=os.getenv("DB_ECHO", "false").lower() == "true",
-        pool_size=5,              # Number of connections to keep open
-        max_overflow=10,          # Additional connections when pool is full
-        pool_pre_ping=True,       # Verify connections before using (handles dropped connections)
-        pool_recycle=3600,        # Recycle connections after 1 hour
+        pool_size=5,  # Number of connections to keep open
+        max_overflow=10,  # Additional connections when pool is full
+        pool_pre_ping=True,  # Verify connections before using (handles dropped connections)
+        pool_recycle=3600,  # Recycle connections after 1 hour
     )
 else:
     # Default settings for other databases (MySQL, etc.)
@@ -64,6 +64,7 @@ else:
         max_overflow=10,
         pool_pre_ping=True,
     )
+
 
 def get_session() -> Session:
     """

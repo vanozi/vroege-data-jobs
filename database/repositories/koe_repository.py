@@ -32,7 +32,7 @@ class KoeRepository(BaseRepository[Koe]):
         Returns:
             Koe instance or None
         """
-        return self.get_by_id(dier_id, id_field='dier_id')
+        return self.get_by_id(dier_id, id_field="dier_id")
 
     def get_by_oormerk(self, oormerk: str) -> Optional[Koe]:
         """
@@ -55,7 +55,7 @@ class KoeRepository(BaseRepository[Koe]):
         Returns:
             List of living Koe instances
         """
-        return self.get_all(filters={'is_dood': False})
+        return self.get_all(filters={"is_dood": False})
 
     def get_by_geslacht(self, geslacht: str) -> List[Koe]:
         """
@@ -67,7 +67,7 @@ class KoeRepository(BaseRepository[Koe]):
         Returns:
             List of Koe instances
         """
-        return self.get_all(filters={'geslacht': geslacht})
+        return self.get_all(filters={"geslacht": geslacht})
 
     def upsert_koe(self, koe_data: Union[dict, Koe]) -> Koe:
         """
@@ -84,9 +84,9 @@ class KoeRepository(BaseRepository[Koe]):
             koe_data = koe_data.model_dump()
 
         # Ensure in_current_herd is set to True for animals in the API
-        koe_data['in_current_herd'] = True
+        koe_data["in_current_herd"] = True
 
-        return self.upsert(koe_data, unique_fields=['animal_id'])
+        return self.upsert(koe_data, unique_fields=["animal_id"])
 
     def mark_all_not_in_herd(self, animal_ids: List[UUID]) -> int:
         """
