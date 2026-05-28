@@ -6,6 +6,7 @@ SQLModel metadata from a single module import.
 """
 
 from .behandeling import KlauwBehandeling
+from .auth import Application, Role, User, UserApplicationAccess, UserApplicationRole
 from .koe import Koe, KoeDetail
 from .laying_hens import (
     DeadHenRegistration,
@@ -20,6 +21,7 @@ from .melking import Melking
 from .tank_transaction import TankTransaction
 
 __all__ = [
+    "Application",
     "DeadHenRegistration",
     "EggPackagingWeightConfig",
     "EggPalletWeightRegistration",
@@ -31,5 +33,9 @@ __all__ = [
     "KoeDetail",
     "Melking",
     "OutsideNestEggRound",
+    "Role",
     "TankTransaction",
+    "User",
+    "UserApplicationAccess",
+    "UserApplicationRole",
 ]
