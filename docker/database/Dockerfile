@@ -10,6 +10,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY database ./database
+COPY shared_auth ./shared_auth
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app

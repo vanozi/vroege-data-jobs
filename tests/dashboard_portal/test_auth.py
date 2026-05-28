@@ -12,6 +12,7 @@ def test_verify_credentials_accepts_matching_hash():
         session_hours=12,
         admin_username="admin",
         admin_password_hash=security.generate_password_hash("correct-password"),
+        default_user_password="welkom123",
         cookie_secure=False,
     )
 
@@ -24,6 +25,7 @@ def test_verify_credentials_rejects_wrong_password():
         session_hours=12,
         admin_username="admin",
         admin_password_hash=security.generate_password_hash("correct-password"),
+        default_user_password="welkom123",
         cookie_secure=False,
     )
 
@@ -36,6 +38,7 @@ def test_verify_credentials_rejects_missing_hash():
         session_hours=12,
         admin_username="admin",
         admin_password_hash="",
+        default_user_password="welkom123",
         cookie_secure=False,
     )
 

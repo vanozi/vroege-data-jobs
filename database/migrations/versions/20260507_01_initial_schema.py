@@ -121,9 +121,15 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["animal_id"], ["koeien.animal_id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_melkingen_animal_id"), "melkingen", ["animal_id"], unique=False)
-    op.create_index(op.f("ix_melkingen_date_time"), "melkingen", ["date_time"], unique=False)
-    op.create_index(op.f("ix_melkingen_shift_date"), "melkingen", ["shift_date"], unique=False)
+    op.create_index(
+        op.f("ix_melkingen_animal_id"), "melkingen", ["animal_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_melkingen_date_time"), "melkingen", ["date_time"], unique=False
+    )
+    op.create_index(
+        op.f("ix_melkingen_shift_date"), "melkingen", ["shift_date"], unique=False
+    )
 
 
 def downgrade() -> None:

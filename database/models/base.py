@@ -25,9 +25,9 @@ class TimestampMixin(SQLModel):
 
     Adds laatst_bijgewerkt (last updated) field that auto-updates on changes.
     """
+
     updated_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
-        sa_column_kwargs={"onupdate": datetime.utcnow}
+        default_factory=datetime.utcnow, sa_column_kwargs={"onupdate": datetime.utcnow}
     )
 
 
@@ -37,8 +37,8 @@ class CreatedTimestampMixin(SQLModel):
 
     Adds both aangemaakt_op (created at) and laatst_bijgewerkt (last updated).
     """
+
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
-        sa_column_kwargs={"onupdate": datetime.utcnow}
+        default_factory=datetime.utcnow, sa_column_kwargs={"onupdate": datetime.utcnow}
     )

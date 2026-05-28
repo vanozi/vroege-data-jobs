@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Gebruikersbeheer{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Gebruikersbeheer</h1>
+      <p class="subtitle">Gebruikers en applicatietoegang beheren.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-link" href="{{ url_for('admin_users_new') }}">Gebruiker toevoegen</a>
+  </div>
+</div>
+
+<div class="table-container">
+  <table class="table is-fullwidth is-striped">
+    <thead>
+      <tr>
+        <th>Gebruikersnaam</th>
+        <th>Naam</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ user.username }}</td>
+        <td>{{ [user.first_name, user.last_name] | reject('none') | join(' ') }}</td>
+        <td>
+          {% if user.is_active %}
+          <span class="tag is-success">Actief</span>
+          {% else %}
+          <span class="tag is-light">Inactief</span>
+          {% endif %}
+          {% if user.must_change_password %}
+          <span class="tag is-warning">Wachtwoord wijzigen</span>
+          {% endif %}
+        </td>
+        <td class="has-text-right">
+          <a class="button is-small" href="{{ url_for('admin_user_access', user_id=user.id) }}">Toegang</a>
+          <a class="button is-small" href="{{ url_for('admin_users_edit', user_id=user.id) }}">Aanpassen</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

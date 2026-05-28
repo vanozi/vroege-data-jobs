@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">{{ title }}</h1>
+      <p class="subtitle">Basisgegevens van de gebruiker.</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('admin_users_list') }}">Terug naar gebruikers</a>
+  </div>
+</div>
+
+<form method="post" action="{{ action_url }}">
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="username">Gebruikersnaam</label>
+        <div class="control">
+          <input
+            class="input {% if errors.username %}is-danger{% endif %}"
+            id="username"
+            name="username"
+            value="{{ values.username or '' }}"
+            autocomplete="username"
+          >
+        </div>
+        {% if errors.username %}
+        <p class="help is-danger">{{ errors.username }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="columns">
+    <div class="column">
+      <div class="field">
+        <label class="label" for="first_name">Voornaam</label>
+        <div class="control">
+          <input class="input" id="first_name" name="first_name" value="{{ values.first_name or '' }}">
+        </div>
+      </div>
+    </div>
+    <div class="column">
+      <div class="field">
+        <label class="label" for="last_name">Achternaam</label>
+        <div class="control">
+          <input class="input" id="last_name" name="last_name" value="{{ values.last_name or '' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="checkbox">
+      <input type="checkbox" name="is_active" {% if values.is_active is not false %}checked{% endif %}>
+      Actief
+    </label>
+  </div>
+
+  <div class="field is-grouped">
+    <div class="control">
+      <button class="button is-link" type="submit">{{ submit_label }}</button>
+    </div>
+    <div class="control">
+      <a class="button is-light" href="{{ url_for('admin_users_list') }}">Annuleren</a>
+    </div>
+  </div>
+</form>
+
+{% if can_reset_password %}
+<hr>
+<h2 class="title is-4">Wachtwoord resetten</h2>
+<form method="post" action="{{ url_for('admin_users_reset_password', user_id=request.view_args.user_id) }}">
+  <button class="button is-warning" type="submit">Reset naar standaard wachtwoord</button>
+</form>
+{% endif %}
+{% endblock %}

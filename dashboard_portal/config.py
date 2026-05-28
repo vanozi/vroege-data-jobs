@@ -12,6 +12,7 @@ class DashboardPortalConfig:
     session_hours: int
     admin_username: str
     admin_password_hash: str
+    default_user_password: str
     cookie_secure: bool
 
 
@@ -22,6 +23,7 @@ def load_dashboard_portal_config() -> DashboardPortalConfig:
         session_hours=_get_int_env("PORTAL_SESSION_HOURS", 12),
         admin_username=os.getenv("PORTAL_ADMIN_USERNAME", "admin"),
         admin_password_hash=os.getenv("PORTAL_ADMIN_PASSWORD_HASH", ""),
+        default_user_password=os.getenv("PORTAL_DEFAULT_USER_PASSWORD", "welkom123"),
         cookie_secure=_get_bool_env("PORTAL_COOKIE_SECURE", False),
     )
 

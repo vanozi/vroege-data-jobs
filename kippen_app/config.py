@@ -18,7 +18,10 @@ class KippenAppConfig:
 def load_kippen_app_config() -> KippenAppConfig:
     """Load kippen app configuration from environment variables."""
     return KippenAppConfig(
-        secret_key=os.getenv("KIPPEN_APP_SECRET_KEY", "dev-kippen-app-secret"),
+        secret_key=os.getenv(
+            "PORTAL_SECRET_KEY",
+            os.getenv("KIPPEN_APP_SECRET_KEY", "dev-kippen-app-secret"),
+        ),
         session_hours=_get_int_env("KIPPEN_APP_SESSION_HOURS", 12),
         admin_username=os.getenv("KIPPEN_APP_ADMIN_USERNAME", "admin"),
         admin_password_hash=os.getenv("KIPPEN_APP_ADMIN_PASSWORD_HASH", ""),

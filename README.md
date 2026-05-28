@@ -111,28 +111,27 @@ Recommended commands:
 ## Dashboard portal
 
 The dashboard portal is a small Flask app in [`dashboard_portal/`](dashboard_portal/).
-It is intended as the authenticated homepage for Marimo dashboards. The root
-route `/` shows dashboard links after login; without a session it redirects to
-`/login`.
+It is the central authenticated homepage for applications and dashboards. The
+root route `/` shows application links from the shared auth database after
+login; without a session it redirects to `/login`.
 
 Current portal routes:
 
-- `/`: dashboard overview, protected by session.
+- `/`: application overview, protected by session.
 - `/login`: login page.
 - `/logout`: logout endpoint.
-- `/auth/verify`: Traefik ForwardAuth endpoint.
+- `/admin/users`: user administration for users with the
+  `user_administration` application and `admin` role.
+- `/auth/verify`: Traefik ForwardAuth endpoint with application-aware path
+  checks.
 - `/healthz`: healthcheck.
 
-The first dashboard link is:
+Portal login users are stored in the shared auth tables. Run migrations and the
+`auth-bootstrap` tool before relying on `/login`. The legacy
+`PORTAL_ADMIN_USERNAME` and `PORTAL_ADMIN_PASSWORD_HASH` settings are no longer
+used by the central portal login.
 
-```text
-/klauwgezondheid
-```
-
-That route is intended to be served by the Marimo klauwgezondheid dashboard
-behind Traefik.
-
-Create a password hash for `PORTAL_ADMIN_PASSWORD_HASH`:
+Create a password hash for legacy local checks or the separate Kippen login:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
@@ -160,13 +159,32 @@ PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=false
 ```
 
-Dashboard links come from `dashboard_portal.registry`. By default the portal
-shows `Klauwgezondheid` at `/klauwgezondheid`. You can override the visible
-dashboards with `PORTAL_DASHBOARDS_JSON`:
+Visible application links now come from `applications`,
+`user_application_access`, and `user_application_roles`. Core applications and
+roles are seeded by the shared auth bootstrap command.
 
-```env
-PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en klauwgezondheid van de actieve koppel.","url":"/klauwgezondheid","status":"Productie"},{"name":"Tanken","description":"Dieseltransacties per voertuig, chauffeur en CSV-import.","url":"/tank-terminal","status":"Concept"}]
-```
+### User administration
+
+The central portal includes a small admin UI for shared users and application
+authorization. Open `/admin/users` after logging in as a user that has access to
+the `user_administration` application with the `admin` role.
+
+From this screen an admin can:
+
+- create users with a default password;
+- edit username, name, and active status;
+- reset a user's password;
+- grant or revoke access to applications;
+- assign one or more roles per application.
+
+Users log in with a username without spaces, not with an email address. New
+users receive `PORTAL_DEFAULT_USER_PASSWORD` and must choose their own password
+on first login. Password reset in user administration sets the same default
+password again and forces the user to change it at the next login.
+
+Normal users without the `user_administration` admin role can still log in and
+open the applications they have access to, but they receive `403 Forbidden` on
+`/admin/users`.
 
 ### Docker Compose stack
 
@@ -188,12 +206,12 @@ The services use separate Dockerfiles and dependency files:
 - [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
   datajob runner for Klauwscore and Uniform Agri.
 
-Traefik protects `/klauwgezondheid` with the portal `/auth/verify` ForwardAuth
-endpoint. Direct access to the Marimo route without a valid portal session
-returns unauthorized. The Marimo web app manifest at
-`/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
-may fetch manifests without session cookies; it does not expose dashboard data.
-The Kippen registratie app at `/kippen` has its own Flask login session.
+Traefik protects the Marimo dashboard paths with the portal `/auth/verify`
+ForwardAuth endpoint. Direct access to `/klauwgezondheid`, `/tank-terminal`,
+and their Marimo manifest routes without a valid shared portal session and
+matching application access returns unauthorized.
+The Kippen registratie app at `/kippen` uses the shared portal session and
+requires active `kippen` application access.
 
 ### Local quickstart
 
@@ -213,9 +231,12 @@ Set at least these values in `deploy/dashboard.env`:
 PORTAL_SECRET_KEY=change-me
 PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
-KIPPEN_APP_SECRET_KEY=change-me
-KIPPEN_APP_ADMIN_USERNAME=admin
-KIPPEN_APP_ADMIN_PASSWORD_HASH=...
+PORTAL_DEFAULT_USER_PASSWORD=welkom123
+AUTH_BOOTSTRAP_USERNAME=admin
+AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
+AUTH_BOOTSTRAP_FIRST_NAME=Admin
+AUTH_BOOTSTRAP_LAST_NAME=
+AUTH_BOOTSTRAP_RESET_PASSWORD=false
 DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/gebroeders_vroege
 KLAUWSCORE_USERNAME=...
 KLAUWSCORE_PASSWORD=...
@@ -232,15 +253,6 @@ Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
 with `format: raw`, so quotes would be passed into the containers as literal
 characters.
 
-Create a portal password hash:
-
-```powershell
-.\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
-```
-
-Use the same command for `KIPPEN_APP_ADMIN_PASSWORD_HASH` if the Kippen app
-should use the same password.
-
 Start the local stack:
 
 ```powershell
@@ -252,6 +264,18 @@ Run database migrations:
 ```powershell
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm db-migrate
 ```
+
+Bootstrap the shared auth registry and first admin user:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm auth-bootstrap
+```
+
+The bootstrap command creates the core application keys (`kippen`,
+`dashboard_klauwgezondheid`, `dashboard_tank_terminal`, and
+`user_administration`), the core roles (`admin`, `worker`, `viewer`), and grants
+the bootstrap admin access to those apps. If users already exist and
+`AUTH_BOOTSTRAP_USERNAME` is empty, it only refreshes the core apps and roles.
 
 The Kippen migrations create the `flocks` table, require `flock_id` on new
 registrations, and split the old combined daily table into
@@ -279,20 +303,11 @@ docker compose --env-file .env.local.example -f docker-compose.yml -f docker-com
 Local routes:
 
 - `http://localhost/`: Flask portal.
+- `http://localhost/admin/users`: user administration for portal admins.
 - `http://localhost/kippen`: Kippen registratie app.
-- `http://kippen.localhost/`: alternative local Kippen route if your machine
-  resolves `kippen.localhost`.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
 - `http://localhost/tank-terminal`: Tanken Marimo dashboard.
 - `http://localhost:8080`: Adminer database editor.
-- `http://dashboards.localhost/`: alternative portal route if your machine
-  resolves `dashboards.localhost`.
-- `http://dashboards.localhost/kippen`: alternative Kippen registratie route if
-  your machine resolves `dashboards.localhost`.
-- `http://dashboards.localhost/klauwgezondheid`: alternative dashboard route if
-  your machine resolves `dashboards.localhost`.
-- `http://dashboards.localhost/tank-terminal`: alternative Tanken route if your
-  machine resolves `dashboards.localhost`.
 
 Adminer login for the local stack:
 
@@ -318,11 +333,12 @@ override port mapping. Use `http://localhost` for local testing; do not use
 
 Production routes:
 
-- `https://dashboards.gebroedersvroege.nl/`: Flask portal.
-- `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
-- `https://kippen.gebroedersvroege.nl/`: Kippen registratie app. This host
-  redirects to `/kippen`, while the existing
-  `https://dashboards.gebroedersvroege.nl/kippen` path remains available.
+- `https://app.gebroedersvroege.nl/`: central Flask portal.
+- `https://app.gebroedersvroege.nl/admin/users`: user administration for portal
+  admins.
+- `https://app.gebroedersvroege.nl/kippen`: Kippen registratie app.
+- `https://app.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
+- `https://app.gebroedersvroege.nl/tank-terminal`: Tanken Marimo dashboard.
 
 Clone the repository somewhere owned by the deploy user, for example:
 
@@ -342,8 +358,7 @@ cp .env.example .env
 Set at least these values in `.env`:
 
 ```env
-DASHBOARD_HOST=dashboards.gebroedersvroege.nl
-KIPPEN_APP_HOST=kippen.gebroedersvroege.nl
+APP_HOST=app.gebroedersvroege.nl
 TRAEFIK_ACME_EMAIL=admin@example.nl
 POSTGRES_DB=gebroeders_vroege
 POSTGRES_USER=postgres
@@ -364,9 +379,12 @@ PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=true
-KIPPEN_APP_SECRET_KEY=change-me
-KIPPEN_APP_ADMIN_USERNAME=admin
-KIPPEN_APP_ADMIN_PASSWORD_HASH=...
+PORTAL_DEFAULT_USER_PASSWORD=welkom123
+AUTH_BOOTSTRAP_USERNAME=admin
+AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
+AUTH_BOOTSTRAP_FIRST_NAME=Admin
+AUTH_BOOTSTRAP_LAST_NAME=
+AUTH_BOOTSTRAP_RESET_PASSWORD=false
 KIPPEN_APP_SESSION_HOURS=12
 KIPPEN_APP_COOKIE_SECURE=true
 DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
@@ -385,11 +403,11 @@ Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
 with `format: raw`, so quotes would be passed into the containers as literal
 characters.
 
-Keep `PORTAL_ADMIN_PASSWORD_HASH` in `deploy/dashboard.env`, not in the Compose
-`.env` file. Werkzeug hashes can contain `$`, and Compose treats `$...` as
-variable interpolation in `.env`. The Compose services read
-`deploy/dashboard.env` with `env_file` format `raw` so password hashes are
-passed to the containers unchanged.
+Keep Werkzeug password hashes in `deploy/dashboard.env`, not in the Compose
+`.env` file. Hashes can contain `$`, and Compose treats `$...` as variable
+interpolation in `.env`. The Compose services read `deploy/dashboard.env` with
+`env_file` format `raw` so password hashes are passed to the containers
+unchanged.
 
 Create a portal password hash from a machine with Werkzeug installed:
 
@@ -403,8 +421,14 @@ Validate, migrate, and start the production stack:
 docker compose config --quiet
 docker compose up -d postgres
 docker compose --profile tools run --rm db-migrate
+docker compose --profile tools run --rm auth-bootstrap
 docker compose up -d --build
 ```
+
+For shared auth bootstrap, `AUTH_BOOTSTRAP_PASSWORD` is only used to create a
+new bootstrap user. It is not logged. If the bootstrap user already exists,
+passwords are not reset unless `AUTH_BOOTSTRAP_RESET_PASSWORD=true` is set
+explicitly for that run.
 
 Run production datajobs manually:
 
@@ -491,8 +515,8 @@ gunzip -c /opt/backups/vroege-datajobs-YYYY-MM-DD.sql.gz | docker compose exec -
 ### Kippen registratie app
 
 The Kippen registratie app is served by the `kippen-app` service. Production
-uses `KIPPEN_APP_HOST=kippen.gebroedersvroege.nl`; Traefik routes that host
-directly to the app, and the Flask root route redirects to `/kippen`.
+uses `APP_HOST=app.gebroedersvroege.nl`; Traefik routes `/kippen` on that host
+to the app.
 
 Useful routes:
 
@@ -587,7 +611,7 @@ Raw CSV exports include `flock_id`, `flock_name`, `flock_date_of_birth`,
 Example:
 
 ```text
-https://kippen.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
+https://app.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
 ```
 
 Backups are database-level. The PostgreSQL backup command above includes the

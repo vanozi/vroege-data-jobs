@@ -17,8 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from database.database import DATABASE_URL
-import database.models  # noqa: F401
+from database.database import DATABASE_URL  # noqa: E402
+import database.models  # noqa: E402, F401
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
