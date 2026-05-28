@@ -6,8 +6,8 @@ from io import BytesIO
 from openpyxl import load_workbook
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
-from werkzeug import security
 
+from database.models.auth import Application, Role, User
 from database.models.laying_hens import DeadHenRegistration
 from database.models.laying_hens import EggPackagingWeightConfig
 from database.models.laying_hens import EggPalletWeightRegistration
@@ -15,32 +15,37 @@ from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import OutsideNestEggRound
+from database.repositories.auth_repository import ApplicationsRepository
+from database.repositories.auth_repository import RolesRepository
+from database.repositories.auth_repository import UserApplicationAccessRepository
+from database.repositories.auth_repository import UsersRepository
 from kippen_app.app import create_app
+from shared_auth import service
 
 
 def _client(monkeypatch):
-    monkeypatch.setenv("KIPPEN_APP_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("KIPPEN_APP_ADMIN_USERNAME", "admin")
-    monkeypatch.setenv(
-        "KIPPEN_APP_ADMIN_PASSWORD_HASH",
-        security.generate_password_hash("correct-password"),
-    )
+    monkeypatch.setenv("PORTAL_SECRET_KEY", "test-secret")
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
-    app = create_app(lambda: Session(engine, expire_on_commit=False))
+
+    def session_factory():
+        return Session(engine, expire_on_commit=False)
+
+    _seed_auth(session_factory)
+    app = create_app(session_factory)
     app.config.update(TESTING=True)
     return app.test_client(), engine
 
 
-def _login(client):
-    return client.post(
-        "/kippen/login",
-        data={"username": "admin", "password": "correct-password"},
-    )
+def _login(client, *, user_id: int = 1, display_name: str = "admin"):
+    with client.session_transaction() as shared_session:
+        shared_session["user_id"] = user_id
+        shared_session["email_address"] = "admin@example.com"
+        shared_session["display_name"] = display_name
 
 
 def _create_active_flock(
@@ -97,8 +102,80 @@ def _create_pallet_weight_registration(
     )
 
 
-def test_index_redirects_to_dashboard(monkeypatch):
+def _seed_auth(session_factory):
+    users = UsersRepository(session_factory)
+    applications = ApplicationsRepository(session_factory)
+    roles = RolesRepository(session_factory)
+    access_repository = UserApplicationAccessRepository(session_factory)
+    admin = users.create_user(
+        User(
+            email_address="admin@example.com",
+            first_name="admin",
+            password_hash=service.hash_password("correct-password"),
+        )
+    )
+    worker = users.create_user(
+        User(
+            email_address="worker@example.com",
+            first_name="worker",
+            password_hash=service.hash_password("correct-password"),
+        )
+    )
+    viewer = users.create_user(
+        User(
+            email_address="viewer@example.com",
+            first_name="viewer",
+            password_hash=service.hash_password("correct-password"),
+        )
+    )
+    unauthorized = users.create_user(
+        User(
+            email_address="unauthorized@example.com",
+            first_name="unauthorized",
+            password_hash=service.hash_password("correct-password"),
+        )
+    )
+    kippen = applications.create_application(
+        Application(key="kippen", name="Kippen", url="/kippen")
+    )
+    admin_role = roles.create_role(Role(key="admin", name="Admin"))
+    worker_role = roles.create_role(Role(key="worker", name="Worker"))
+    viewer_role = roles.create_role(Role(key="viewer", name="Viewer"))
+    for user, role_list in (
+        (admin, [admin_role, worker_role]),
+        (worker, [worker_role]),
+        (viewer, [viewer_role]),
+    ):
+        access = access_repository.grant_application_access(
+            user_id=user.id,
+            application_id=kippen.id,
+        )
+        for role in role_list:
+            access_repository.grant_application_role(
+                access_id=access.id,
+                role_id=role.id,
+            )
+
+    return {
+        "admin": admin,
+        "worker": worker,
+        "viewer": viewer,
+        "unauthorized": unauthorized,
+    }
+
+
+def test_index_redirects_to_login_without_session(monkeypatch):
     client, _ = _client(monkeypatch)
+
+    response = client.get("/kippen")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+
+
+def test_index_redirects_to_dashboard_with_shared_session(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
 
     response = client.get("/kippen")
 
@@ -121,22 +198,19 @@ def test_dashboard_redirects_to_login_without_session(monkeypatch):
     response = client.get("/kippen/dashboard")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/login"
+    assert response.headers["Location"] == "/login"
 
 
-def test_login_with_wrong_credentials_fails(monkeypatch):
+def test_kippen_login_redirects_to_central_login(monkeypatch):
     client, _ = _client(monkeypatch)
 
-    response = client.post(
-        "/kippen/login",
-        data={"username": "admin", "password": "wrong-password"},
-    )
+    response = client.get("/kippen/login")
 
-    assert response.status_code == 401
-    assert "onjuist" in response.text
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
 
 
-def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
+def test_kippen_login_post_redirects_to_central_login(monkeypatch):
     client, _ = _client(monkeypatch)
 
     response = client.post(
@@ -144,8 +218,14 @@ def test_login_with_correct_credentials_allows_dashboard(monkeypatch):
         data={"username": "admin", "password": "correct-password"},
     )
 
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/dashboard"
+    assert response.status_code == 303
+    assert response.headers["Location"] == "/login"
+
+
+def test_shared_session_with_kippen_access_allows_dashboard(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+
     dashboard_response = client.get("/kippen/dashboard")
     assert dashboard_response.status_code == 200
     assert "Kippen Registratie" in dashboard_response.text
@@ -209,7 +289,7 @@ def test_login_page_redirects_to_dashboard_when_already_logged_in(monkeypatch):
     response = client.get("/kippen/login")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/dashboard"
+    assert response.headers["Location"] == "/login"
 
 
 def test_logout_clears_session(monkeypatch):
@@ -218,9 +298,8 @@ def test_logout_clears_session(monkeypatch):
 
     response = client.post("/kippen/logout")
 
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/login"
-    assert client.get("/kippen/dashboard").status_code == 302
+    assert response.status_code == 303
+    assert response.headers["Location"] == "/logout"
 
 
 def test_healthz(monkeypatch):
@@ -238,7 +317,46 @@ def test_flocks_list_requires_login(monkeypatch):
     response = client.get("/kippen/flocks")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/login"
+    assert response.headers["Location"] == "/login"
+
+
+def test_kippen_requires_application_access(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=4, display_name="unauthorized")
+
+    response = client.get("/kippen/dashboard")
+
+    assert response.status_code == 403
+
+
+def test_worker_role_is_denied_for_admin_routes(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/flocks")
+
+    assert response.status_code == 403
+
+
+def test_worker_role_can_open_daily_registration_routes(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client)
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/eggs/new?date=2026-05-26")
+
+    assert response.status_code == 200
+    assert "Eieren registreren" in response.text
+
+
+def test_viewer_role_is_denied_for_daily_registration_routes(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=3, display_name="viewer")
+
+    response = client.get("/kippen/eggs/new?date=2026-05-26")
+
+    assert response.status_code == 403
 
 
 def test_flock_new_form_renders_for_logged_in_user(monkeypatch):
@@ -1088,7 +1206,7 @@ def test_packaging_weights_list_requires_login(monkeypatch):
     response = client.get("/kippen/packaging-weights")
 
     assert response.status_code == 302
-    assert response.headers["Location"] == "/kippen/login"
+    assert response.headers["Location"] == "/login"
 
 
 def test_packaging_weight_new_form_renders_for_logged_in_user(monkeypatch):

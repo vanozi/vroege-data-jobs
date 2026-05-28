@@ -10,6 +10,10 @@ from flask import request, session, url_for
 from flask import send_file
 
 from database import database
+from database.repositories.auth_repository import ApplicationsRepository
+from database.repositories.auth_repository import RolesRepository
+from database.repositories.auth_repository import UserApplicationAccessRepository
+from database.repositories.auth_repository import UsersRepository
 from database.repositories.laying_hens_repository import DeadHenRegistrationsRepository
 from database.repositories.laying_hens_repository import (
     EggPackagingWeightConfigsRepository,
@@ -23,7 +27,6 @@ from database.repositories.laying_hens_repository import (
 )
 from database.repositories.laying_hens_repository import FlocksRepository
 from database.repositories.laying_hens_repository import OutsideNestEggRoundsRepository
-from kippen_app import auth
 from kippen_app import config
 from kippen_app import dead_hens
 from kippen_app import eggs
@@ -35,6 +38,23 @@ from kippen_app import outside_nest
 from kippen_app import packaging_weights
 from kippen_app import pallet_weights
 from kippen_app import weekdays
+from shared_auth.service import SharedAuthService
+
+
+KIPPEN_APPLICATION_KEY = "kippen"
+KIPPEN_ADMIN_PREFIXES = (
+    "/kippen/flocks",
+    "/kippen/packaging-weights",
+    "/kippen/week",
+    "/kippen/export",
+)
+KIPPEN_WORKER_PREFIXES = (
+    "/kippen/eggs",
+    "/kippen/feed-water",
+    "/kippen/dead-hens",
+    "/kippen/outside-nest-rounds",
+    "/kippen/pallet-weights",
+)
 
 
 def create_app(session_factory=None) -> Flask:
@@ -47,11 +67,52 @@ def create_app(session_factory=None) -> Flask:
     app.config.update(
         SECRET_KEY=app_config.secret_key,
         KIPPEN_SESSION_FACTORY=session_factory,
+        KIPPEN_AUTH_SERVICE=_create_auth_service(session_factory),
         PERMANENT_SESSION_LIFETIME=timedelta(hours=app_config.session_hours),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=app_config.cookie_secure,
     )
+
+    @app.before_request
+    def require_shared_kippen_access():
+        if not request.path.startswith("/kippen"):
+            return None
+        if request.path in {"/kippen/healthz", "/kippen/login"}:
+            return None
+        if request.path == "/kippen/logout":
+            return None
+
+        user = _current_user()
+        if user is None:
+            return redirect("/login")
+
+        auth_service = _auth_service()
+        if not auth_service.user_can_access_application(
+            user.id,
+            KIPPEN_APPLICATION_KEY,
+        ):
+            abort(403)
+
+        if _path_has_prefix(request.path, KIPPEN_ADMIN_PREFIXES):
+            if not auth_service.user_has_application_role(
+                user.id,
+                KIPPEN_APPLICATION_KEY,
+                "admin",
+            ):
+                abort(403)
+            return None
+
+        if _path_has_prefix(request.path, KIPPEN_WORKER_PREFIXES):
+            if not auth_service.user_has_any_application_role(
+                user.id,
+                KIPPEN_APPLICATION_KEY,
+                ["admin", "worker"],
+            ):
+                abort(403)
+            return None
+
+        return None
 
     @app.get("/kippen")
     def index():
@@ -308,7 +369,7 @@ def create_app(session_factory=None) -> Flask:
         repositories = _repositories()
         registration, errors, values = eggs.build_egg_registration_from_form(
             request.form,
-            created_by=session.get("kippen_username"),
+            created_by=_current_username(),
         )
         if errors or registration is None:
             return (
@@ -394,7 +455,7 @@ def create_app(session_factory=None) -> Flask:
 
         registration, errors, values = eggs.build_egg_registration_from_form(
             request.form,
-            created_by=session.get("kippen_username"),
+            created_by=_current_username(),
             existing_registration=existing_registration,
         )
         if errors or registration is None:
@@ -499,7 +560,7 @@ def create_app(session_factory=None) -> Flask:
         registration, errors, values = (
             feed_water.build_feed_water_registration_from_form(
                 request.form,
-                created_by=session.get("kippen_username"),
+                created_by=_current_username(),
             )
         )
         if errors or registration is None:
@@ -591,7 +652,7 @@ def create_app(session_factory=None) -> Flask:
         registration, errors, values = (
             feed_water.build_feed_water_registration_from_form(
                 request.form,
-                created_by=session.get("kippen_username"),
+                created_by=_current_username(),
                 existing_registration=existing_registration,
             )
         )
@@ -685,7 +746,7 @@ def create_app(session_factory=None) -> Flask:
         repositories = _repositories()
         registration, errors, values = dead_hens.build_dead_hen_registration_from_form(
             request.form,
-            registered_by=session.get("kippen_username"),
+            registered_by=_current_username(),
         )
         if errors or registration is None:
             return (
@@ -777,7 +838,7 @@ def create_app(session_factory=None) -> Flask:
         repositories = _repositories()
         egg_round, errors, values = outside_nest.build_outside_nest_round_from_form(
             request.form,
-            registered_by=session.get("kippen_username"),
+            registered_by=_current_username(),
         )
         if errors or egg_round is None:
             return (
@@ -1021,7 +1082,7 @@ def create_app(session_factory=None) -> Flask:
             pallet_weights.build_pallet_weight_registration_from_form(
                 request.form,
                 packaging_config=selected_config,
-                created_by=session.get("kippen_username"),
+                created_by=_current_username(),
             )
         )
         if errors or registration is None:
@@ -1133,7 +1194,7 @@ def create_app(session_factory=None) -> Flask:
             pallet_weights.build_pallet_weight_registration_from_form(
                 request.form,
                 packaging_config=selected_config,
-                created_by=session.get("kippen_username"),
+                created_by=_current_username(),
                 existing_registration=existing_registration,
             )
         )
@@ -1494,35 +1555,15 @@ def create_app(session_factory=None) -> Flask:
 
     @app.get("/kippen/login")
     def login():
-        if session.get("kippen_authenticated"):
-            return redirect(url_for("dashboard"))
-
-        return render_template("login.html", error=None)
+        return redirect("/login")
 
     @app.post("/kippen/login")
     def login_post():
-        username = request.form.get("username", "")
-        password = request.form.get("password", "")
-
-        if not auth.verify_credentials(username, password, app_config):
-            return (
-                render_template(
-                    "login.html",
-                    error="Gebruikersnaam of wachtwoord is onjuist.",
-                ),
-                401,
-            )
-
-        session.clear()
-        session.permanent = True
-        session["kippen_authenticated"] = True
-        session["kippen_username"] = username
-        return redirect(url_for("dashboard"))
+        return redirect("/login", code=303)
 
     @app.post("/kippen/logout")
     def logout():
-        session.clear()
-        return redirect(url_for("login"))
+        return redirect("/logout", code=303)
 
     @app.get("/kippen/healthz")
     def healthz():
@@ -1532,12 +1573,18 @@ def create_app(session_factory=None) -> Flask:
 
 
 def login_required(view_func):
-    """Require a kippen app login session before serving a route."""
+    """Require shared portal access to the Kippen application."""
 
     @wraps(view_func)
     def wrapped_view(*args, **kwargs):
-        if not session.get("kippen_authenticated"):
-            return redirect(url_for("login"))
+        user = _current_user()
+        if user is None:
+            return redirect("/login")
+        if not _auth_service().user_can_access_application(
+            user.id,
+            KIPPEN_APPLICATION_KEY,
+        ):
+            abort(403)
 
         return view_func(*args, **kwargs)
 
@@ -1559,6 +1606,39 @@ class LayingHensRepositories:
 
 def _repositories() -> LayingHensRepositories:
     return LayingHensRepositories(current_app.config["KIPPEN_SESSION_FACTORY"])
+
+
+def _create_auth_service(session_factory) -> SharedAuthService:
+    return SharedAuthService(
+        users_repository=UsersRepository(session_factory),
+        applications_repository=ApplicationsRepository(session_factory),
+        roles_repository=RolesRepository(session_factory),
+        access_repository=UserApplicationAccessRepository(session_factory),
+    )
+
+
+def _auth_service() -> SharedAuthService:
+    return current_app.config["KIPPEN_AUTH_SERVICE"]
+
+
+def _current_user():
+    return _auth_service().get_active_user(session.get("user_id"))
+
+
+def _current_username() -> str:
+    user = _current_user()
+    if user is None:
+        return ""
+
+    display_name = session.get("display_name")
+    if isinstance(display_name, str) and display_name.strip():
+        return display_name.strip()
+
+    return user.email_address
+
+
+def _path_has_prefix(path: str, prefixes: tuple[str, ...]) -> bool:
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in prefixes)
 
 
 def _get_requested_date() -> date:

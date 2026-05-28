@@ -186,7 +186,8 @@ endpoint. Direct access to the Marimo route without a valid portal session
 returns unauthorized. The Marimo web app manifest at
 `/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
 may fetch manifests without session cookies; it does not expose dashboard data.
-The Kippen registratie app at `/kippen` has its own Flask login session.
+The Kippen registratie app at `/kippen` uses the shared portal session and
+requires active `kippen` application access.
 
 ### Local quickstart
 
@@ -211,9 +212,6 @@ AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
 AUTH_BOOTSTRAP_FIRST_NAME=Admin
 AUTH_BOOTSTRAP_LAST_NAME=
 AUTH_BOOTSTRAP_RESET_PASSWORD=false
-KIPPEN_APP_SECRET_KEY=change-me
-KIPPEN_APP_ADMIN_USERNAME=admin
-KIPPEN_APP_ADMIN_PASSWORD_HASH=...
 DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/gebroeders_vroege
 KLAUWSCORE_USERNAME=...
 KLAUWSCORE_PASSWORD=...
@@ -229,12 +227,6 @@ TANK_TERMINAL_PASSWORD=...
 Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
 with `format: raw`, so quotes would be passed into the containers as literal
 characters.
-
-Create a Kippen password hash if the Kippen app still uses its separate login:
-
-```powershell
-.\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
-```
 
 Start the local stack:
 
@@ -364,9 +356,6 @@ AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
 AUTH_BOOTSTRAP_FIRST_NAME=Admin
 AUTH_BOOTSTRAP_LAST_NAME=
 AUTH_BOOTSTRAP_RESET_PASSWORD=false
-KIPPEN_APP_SECRET_KEY=change-me
-KIPPEN_APP_ADMIN_USERNAME=admin
-KIPPEN_APP_ADMIN_PASSWORD_HASH=...
 KIPPEN_APP_SESSION_HOURS=12
 KIPPEN_APP_COOKIE_SECURE=true
 DATABASE_URL=postgresql+psycopg://postgres:change-me@postgres:5432/gebroeders_vroege
