@@ -36,7 +36,7 @@ class CoreRole:
 class BootstrapAdminConfig:
     """Optional first-admin bootstrap input."""
 
-    email_address: Optional[str] = None
+    username: Optional[str] = None
     password: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -204,26 +204,27 @@ def _bootstrap_admin_user(
     result: BootstrapResult,
 ) -> None:
     existing_users = users_repository.list_users()
-    if not admin_config.email_address:
+    if not admin_config.username:
         if existing_users:
             result.messages.append(
                 "Core applications and roles were seeded; admin user skipped."
             )
             return
 
-        raise ValueError("AUTH_BOOTSTRAP_EMAIL is required when no users exist.")
+        raise ValueError("AUTH_BOOTSTRAP_USERNAME is required when no users exist.")
 
-    user = users_repository.get_user_by_email(admin_config.email_address)
+    user = users_repository.get_user_by_username(admin_config.username)
     if user is None:
         if not admin_config.password:
             raise ValueError("AUTH_BOOTSTRAP_PASSWORD is required for a new user.")
 
         user = users_repository.create_user(
             User(
-                email_address=admin_config.email_address,
+                username=admin_config.username,
                 first_name=admin_config.first_name,
                 last_name=admin_config.last_name,
                 password_hash=service.hash_password(admin_config.password),
+                must_change_password=False,
                 is_active=True,
             )
         )

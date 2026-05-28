@@ -19,7 +19,7 @@
   <table class="table is-fullwidth is-striped">
     <thead>
       <tr>
-        <th>E-mailadres</th>
+        <th>Gebruikersnaam</th>
         <th>Naam</th>
         <th>Status</th>
         <th></th>
@@ -28,13 +28,16 @@
     <tbody>
       {% for user in users %}
       <tr>
-        <td>{{ user.email_address }}</td>
+        <td>{{ user.username }}</td>
         <td>{{ [user.first_name, user.last_name] | reject('none') | join(' ') }}</td>
         <td>
           {% if user.is_active %}
           <span class="tag is-success">Actief</span>
           {% else %}
           <span class="tag is-light">Inactief</span>
+          {% endif %}
+          {% if user.must_change_password %}
+          <span class="tag is-warning">Wachtwoord wijzigen</span>
           {% endif %}
         </td>
         <td class="has-text-right">

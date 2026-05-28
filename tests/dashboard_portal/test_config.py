@@ -10,6 +10,7 @@ PORTAL_ENV_NAMES = [
     "PORTAL_SESSION_HOURS",
     "PORTAL_ADMIN_USERNAME",
     "PORTAL_ADMIN_PASSWORD_HASH",
+    "PORTAL_DEFAULT_USER_PASSWORD",
     "PORTAL_COOKIE_SECURE",
 ]
 
@@ -27,6 +28,7 @@ def test_load_dashboard_portal_config_uses_defaults():
     assert portal_config.session_hours == 12
     assert portal_config.admin_username == "admin"
     assert portal_config.admin_password_hash == ""
+    assert portal_config.default_user_password == "welkom123"
     assert not portal_config.cookie_secure
 
 
@@ -35,6 +37,7 @@ def test_load_dashboard_portal_config_reads_environment(monkeypatch):
     monkeypatch.setenv("PORTAL_SESSION_HOURS", "4")
     monkeypatch.setenv("PORTAL_ADMIN_USERNAME", "wouter")
     monkeypatch.setenv("PORTAL_ADMIN_PASSWORD_HASH", "hash")
+    monkeypatch.setenv("PORTAL_DEFAULT_USER_PASSWORD", "default")
     monkeypatch.setenv("PORTAL_COOKIE_SECURE", "true")
 
     portal_config = config.load_dashboard_portal_config()
@@ -43,6 +46,7 @@ def test_load_dashboard_portal_config_reads_environment(monkeypatch):
     assert portal_config.session_hours == 4
     assert portal_config.admin_username == "wouter"
     assert portal_config.admin_password_hash == "hash"
+    assert portal_config.default_user_password == "default"
     assert portal_config.cookie_secure
 
 

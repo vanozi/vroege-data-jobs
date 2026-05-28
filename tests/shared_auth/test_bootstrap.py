@@ -11,15 +11,15 @@ from shared_auth import bootstrap
 from shared_auth import service
 
 
-def test_bootstrap_requires_admin_email_when_database_has_no_users():
+def test_bootstrap_requires_admin_username_when_database_has_no_users():
     context = _create_context()
 
     try:
         bootstrap.bootstrap_shared_auth(context.session_factory)
     except ValueError as exc:
-        assert "AUTH_BOOTSTRAP_EMAIL" in str(exc)
+        assert "AUTH_BOOTSTRAP_USERNAME" in str(exc)
     else:
-        raise AssertionError("Expected missing first-admin email to be rejected.")
+        raise AssertionError("Expected missing first-admin username to be rejected.")
 
     assert [application.key for application in context.applications.list_applications()]
     assert [role.key for role in context.roles.list_roles()] == [
@@ -35,13 +35,13 @@ def test_bootstrap_seeds_core_apps_roles_and_first_admin_access():
     result = bootstrap.bootstrap_shared_auth(
         context.session_factory,
         bootstrap.BootstrapAdminConfig(
-            email_address="admin@example.com",
+            username="admin",
             password="correct-password",
             first_name="Admin",
             last_name="User",
         ),
     )
-    user = context.users.get_user_by_email("ADMIN@example.com")
+    user = context.users.get_user_by_username("ADMIN")
     applications = context.applications.list_applications()
 
     assert result.applications_seeded == 4
@@ -50,6 +50,7 @@ def test_bootstrap_seeds_core_apps_roles_and_first_admin_access():
     assert result.admin_access_grants == 4
     assert result.admin_role_grants == 5
     assert user.first_name == "Admin"
+    assert user.must_change_password is False
     assert service.verify_password(user.password_hash, "correct-password")
     assert [application.key for application in applications] == [
         "kippen",
@@ -66,7 +67,7 @@ def test_bootstrap_seeds_core_apps_roles_and_first_admin_access():
 def test_bootstrap_is_idempotent_for_core_records_and_grants():
     context = _create_context()
     config = bootstrap.BootstrapAdminConfig(
-        email_address="admin@example.com",
+        username="admin",
         password="correct-password",
     )
 
@@ -84,7 +85,7 @@ def test_bootstrap_skips_admin_when_users_exist_and_no_admin_config():
     context = _create_context()
     context.users.create_user(
         {
-            "email_address": "existing@example.com",
+            "username": "existing",
             "password_hash": service.hash_password("password"),
         }
     )

@@ -86,6 +86,8 @@ def create_app(session_factory=None) -> Flask:
         user = _current_user()
         if user is None:
             return redirect("/login")
+        if user.must_change_password:
+            return redirect("/change-password")
 
         auth_service = _auth_service()
         if not auth_service.user_can_access_application(
@@ -1634,7 +1636,7 @@ def _current_username() -> str:
     if isinstance(display_name, str) and display_name.strip():
         return display_name.strip()
 
-    return user.email_address
+    return user.username
 
 
 def _path_has_prefix(path: str, prefixes: tuple[str, ...]) -> bool:

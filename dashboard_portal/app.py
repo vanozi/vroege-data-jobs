@@ -51,6 +51,8 @@ def create_app(session_factory=None) -> Flask:
         if user is None:
             session.clear()
             return redirect(url_for("login"))
+        if user.must_change_password:
+            return redirect(url_for("change_password"))
 
         return render_template(
             "dashboards.html",
@@ -64,18 +66,15 @@ def create_app(session_factory=None) -> Flask:
 
     @app.post("/login")
     def login_post():
-        email_address = request.form.get("email_address") or request.form.get(
-            "username",
-            "",
-        )
+        username = request.form.get("username", "")
         password = request.form.get("password", "")
-        user = auth_service.authenticate_user(email_address, password)
+        user = auth_service.authenticate_user(username, password)
 
         if user is None:
             return (
                 render_template(
                     "login.html",
-                    error="E-mailadres of wachtwoord is onjuist.",
+                    error="Gebruikersnaam of wachtwoord is onjuist.",
                 ),
                 401,
             )
@@ -83,8 +82,61 @@ def create_app(session_factory=None) -> Flask:
         session.clear()
         session.permanent = True
         session["user_id"] = user.id
-        session["email_address"] = user.email_address
+        session["username"] = user.username
         session["display_name"] = _display_name(user)
+        if user.must_change_password:
+            return redirect(url_for("change_password"))
+
+        return redirect(url_for("index"))
+
+    @app.get("/change-password")
+    def change_password():
+        user = auth_service.get_active_user(session.get("user_id"))
+        if user is None:
+            session.clear()
+            return redirect(url_for("login"))
+
+        return render_template("change_password.html", error=None, user=user)
+
+    @app.post("/change-password")
+    def change_password_post():
+        user = auth_service.get_active_user(session.get("user_id"))
+        if user is None:
+            session.clear()
+            return redirect(url_for("login"))
+
+        password = request.form.get("password", "")
+        password_confirmation = request.form.get("password_confirmation", "")
+        if password.strip() == "":
+            return (
+                render_template(
+                    "change_password.html",
+                    error="Nieuw wachtwoord is verplicht.",
+                    user=user,
+                ),
+                400,
+            )
+        if password != password_confirmation:
+            return (
+                render_template(
+                    "change_password.html",
+                    error="De wachtwoorden komen niet overeen.",
+                    user=user,
+                ),
+                400,
+            )
+        if service.verify_password(user.password_hash, password):
+            return (
+                render_template(
+                    "change_password.html",
+                    error="Kies een ander wachtwoord dan het standaard wachtwoord.",
+                    user=user,
+                ),
+                400,
+            )
+
+        auth_service.change_user_password(user.id, password)
+        flash("Wachtwoord aangepast.", "success")
         return redirect(url_for("index"))
 
     @app.post("/logout")
@@ -97,6 +149,8 @@ def create_app(session_factory=None) -> Flask:
         user = auth_service.get_active_user(session.get("user_id"))
         if user is None:
             return "", 401
+        if user.must_change_password:
+            return "", 403
 
         application_key = application_key_for_path(_forwarded_path())
         if application_key is None:
@@ -129,16 +183,17 @@ def create_app(session_factory=None) -> Flask:
             errors={},
             action_url=url_for("admin_users_new_post"),
             submit_label="Gebruiker opslaan",
-            show_password=True,
+            show_password=False,
+            can_reset_password=False,
         )
 
     @app.post("/admin/users/new")
     def admin_users_new_post():
         _require_user_administration_admin(auth_service)
         values = _user_form_values(request.form)
-        errors = _validate_user_form(values, require_password=True)
-        if users_repository.get_user_by_email(values["email_address"]) is not None:
-            errors["email_address"] = "Dit e-mailadres bestaat al."
+        errors = _validate_user_form(values)
+        if users_repository.get_user_by_username(values["username"]) is not None:
+            errors["username"] = "Deze gebruikersnaam bestaat al."
 
         if errors:
             return (
@@ -149,17 +204,21 @@ def create_app(session_factory=None) -> Flask:
                     errors=errors,
                     action_url=url_for("admin_users_new_post"),
                     submit_label="Gebruiker opslaan",
-                    show_password=True,
+                    show_password=False,
+                    can_reset_password=False,
                 ),
                 400,
             )
 
         user = users_repository.create_user(
             User(
-                email_address=values["email_address"],
+                username=values["username"],
                 first_name=values["first_name"],
                 last_name=values["last_name"],
-                password_hash=service.hash_password(values["password"]),
+                password_hash=service.hash_password(
+                    portal_config.default_user_password
+                ),
+                must_change_password=True,
                 is_active=values["is_active"],
             )
         )
@@ -181,6 +240,7 @@ def create_app(session_factory=None) -> Flask:
             action_url=url_for("admin_users_edit_post", user_id=user.id),
             submit_label="Wijzigingen opslaan",
             show_password=False,
+            can_reset_password=True,
         )
 
     @app.post("/admin/users/<int:user_id>/edit")
@@ -191,10 +251,10 @@ def create_app(session_factory=None) -> Flask:
             abort(404)
 
         values = _user_form_values(request.form)
-        errors = _validate_user_form(values, require_password=False)
-        existing_user = users_repository.get_user_by_email(values["email_address"])
+        errors = _validate_user_form(values)
+        existing_user = users_repository.get_user_by_username(values["username"])
         if existing_user is not None and existing_user.id != user.id:
-            errors["email_address"] = "Dit e-mailadres bestaat al."
+            errors["username"] = "Deze gebruikersnaam bestaat al."
 
         if errors:
             return (
@@ -206,6 +266,7 @@ def create_app(session_factory=None) -> Flask:
                     action_url=url_for("admin_users_edit_post", user_id=user.id),
                     submit_label="Wijzigingen opslaan",
                     show_password=False,
+                    can_reset_password=True,
                 ),
                 400,
             )
@@ -213,7 +274,7 @@ def create_app(session_factory=None) -> Flask:
         users_repository.update_user(
             user.id,
             {
-                "email_address": values["email_address"],
+                "username": values["username"],
                 "first_name": values["first_name"],
                 "last_name": values["last_name"],
                 "is_active": values["is_active"],
@@ -229,16 +290,12 @@ def create_app(session_factory=None) -> Flask:
         if user is None:
             abort(404)
 
-        password = request.form.get("password", "")
-        if password.strip() == "":
-            flash("Nieuw wachtwoord is verplicht.", "danger")
-            return redirect(url_for("admin_users_edit", user_id=user.id))
-
         users_repository.set_user_password_hash(
             user.id,
-            service.hash_password(password),
+            service.hash_password(portal_config.default_user_password),
+            must_change_password=True,
         )
-        flash("Wachtwoord aangepast.", "success")
+        flash("Wachtwoord naar standaard wachtwoord gereset.", "success")
         return redirect(url_for("admin_users_edit", user_id=user.id))
 
     @app.get("/admin/users/<int:user_id>/access")
@@ -343,38 +400,32 @@ def _display_name(user) -> str:
     if parts:
         return " ".join(parts)
 
-    return user.email_address
+    return user.username
 
 
 def _user_form_values(form_data) -> dict[str, object]:
     return {
-        "email_address": form_data.get("email_address", "").strip(),
+        "username": form_data.get("username", "").strip(),
         "first_name": form_data.get("first_name", "").strip() or None,
         "last_name": form_data.get("last_name", "").strip() or None,
-        "password": form_data.get("password", ""),
         "is_active": form_data.get("is_active") == "on",
     }
 
 
-def _validate_user_form(
-    values: dict[str, object],
-    *,
-    require_password: bool,
-) -> dict[str, str]:
+def _validate_user_form(values: dict[str, object]) -> dict[str, str]:
     errors = {}
-    email_address = str(values.get("email_address") or "").strip()
-    password = str(values.get("password") or "")
-    if email_address == "":
-        errors["email_address"] = "E-mailadres is verplicht."
-    if require_password and password.strip() == "":
-        errors["password"] = "Standaard wachtwoord is verplicht."
+    username = str(values.get("username") or "").strip()
+    if username == "":
+        errors["username"] = "Gebruikersnaam is verplicht."
+    if any(character.isspace() for character in username):
+        errors["username"] = "Gebruikersnaam mag geen spaties bevatten."
 
     return errors
 
 
 def _values_from_user(user: User) -> dict[str, object]:
     return {
-        "email_address": user.email_address,
+        "username": user.username,
         "first_name": user.first_name or "",
         "last_name": user.last_name or "",
         "is_active": user.is_active,

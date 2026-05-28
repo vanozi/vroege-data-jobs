@@ -10,7 +10,7 @@ from shared_auth import bootstrap
 def main() -> int:
     """Run the shared auth bootstrap command."""
     admin_config = bootstrap.BootstrapAdminConfig(
-        email_address=_optional_env("AUTH_BOOTSTRAP_EMAIL"),
+        username=_bootstrap_username(),
         password=_optional_env("AUTH_BOOTSTRAP_PASSWORD"),
         first_name=_optional_env("AUTH_BOOTSTRAP_FIRST_NAME"),
         last_name=_optional_env("AUTH_BOOTSTRAP_LAST_NAME"),
@@ -34,6 +34,18 @@ def _optional_env(name: str) -> Optional[str]:
         return None
 
     return value
+
+
+def _bootstrap_username() -> Optional[str]:
+    username = _optional_env("AUTH_BOOTSTRAP_USERNAME")
+    if username is not None:
+        return username
+
+    legacy_email = _optional_env("AUTH_BOOTSTRAP_EMAIL")
+    if legacy_email is None:
+        return None
+
+    return legacy_email.split("@", maxsplit=1)[0]
 
 
 def _bool_env(name: str) -> bool:

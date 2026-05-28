@@ -17,15 +17,16 @@ class User(
 
     __tablename__ = "users"
     __table_args__ = (
-        UniqueConstraint("email_address", name="uq_users_email_address"),
+        UniqueConstraint("username", name="uq_users_username"),
         {"comment": "Shared users for central app authentication."},
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    email_address: str = Field(index=True)
+    username: str = Field(index=True)
     first_name: Optional[str] = Field(default=None)
     last_name: Optional[str] = Field(default=None)
     password_hash: str
+    must_change_password: bool = Field(default=False, index=True)
     is_active: bool = Field(default=True, index=True)
 
 

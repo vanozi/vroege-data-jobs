@@ -46,9 +46,9 @@ class SharedAuthService:
         self.roles_repository = roles_repository
         self.access_repository = access_repository
 
-    def authenticate_user(self, email_address: str, password: str) -> Optional[User]:
+    def authenticate_user(self, username: str, password: str) -> Optional[User]:
         """Return the active user when credentials are valid."""
-        user = self.users_repository.get_user_by_email(email_address)
+        user = self.users_repository.get_user_by_username(username)
         if user is None:
             return None
         if not user.is_active:
@@ -70,6 +70,22 @@ class SharedAuthService:
             return None
 
         return user
+
+    def user_must_change_password(self, user_id: Optional[int]) -> bool:
+        """Return whether the active user must change their password."""
+        user = self.get_active_user(user_id)
+        if user is None:
+            return False
+
+        return user.must_change_password
+
+    def change_user_password(self, user_id: int, password: str) -> Optional[User]:
+        """Set a new password and clear the forced password-change flag."""
+        return self.users_repository.set_user_password_hash(
+            user_id,
+            hash_password(password),
+            must_change_password=False,
+        )
 
     def user_can_access_application(self, user_id: int, application_key: str) -> bool:
         """Return whether a user has active access to an active application."""

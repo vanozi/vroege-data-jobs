@@ -10,21 +10,21 @@ from database.repositories.auth_repository import UserApplicationAccessRepositor
 from database.repositories.auth_repository import UsersRepository
 
 
-def test_users_repository_creates_and_finds_user_by_normalized_email():
+def test_users_repository_creates_and_finds_user_by_normalized_username():
     engine = _create_test_engine()
     repository = UsersRepository(_session_factory(engine))
 
     created = repository.create_user(
         User(
-            email_address=" ADMIN@GebroedersVroege.nl ",
+            username=" Admin ",
             first_name="Admin",
             password_hash="hashed-password",
         )
     )
-    fetched = repository.get_user_by_email("admin@gebroedersvroege.nl")
+    fetched = repository.get_user_by_username("ADMIN")
 
     assert created.id is not None
-    assert created.email_address == "admin@gebroedersvroege.nl"
+    assert created.username == "admin"
     assert fetched.id == created.id
     assert fetched.first_name == "Admin"
 
@@ -41,6 +41,22 @@ def test_users_repository_updates_status_and_password_hash():
     assert updated.first_name == "Wouter"
     assert inactive.is_active is False
     assert with_new_password.password_hash == "new-hash"
+    assert with_new_password.must_change_password is False
+
+
+def test_users_repository_can_force_password_change_on_reset():
+    engine = _create_test_engine()
+    repository = UsersRepository(_session_factory(engine))
+    created = _create_user(repository)
+
+    updated = repository.set_user_password_hash(
+        created.id,
+        "default-hash",
+        must_change_password=True,
+    )
+
+    assert updated.password_hash == "default-hash"
+    assert updated.must_change_password is True
 
 
 def test_users_repository_rejects_empty_required_values():
@@ -48,16 +64,14 @@ def test_users_repository_rejects_empty_required_values():
     repository = UsersRepository(_session_factory(engine))
 
     try:
-        repository.create_user({"email_address": "", "password_hash": "hash"})
+        repository.create_user({"username": "", "password_hash": "hash"})
     except ValueError as exc:
-        assert "Email address" in str(exc)
+        assert "Username" in str(exc)
     else:
-        raise AssertionError("Expected empty email address to be rejected.")
+        raise AssertionError("Expected empty Username to be rejected.")
 
     try:
-        repository.create_user(
-            {"email_address": "admin@example.com", "password_hash": ""}
-        )
+        repository.create_user({"username": "admin", "password_hash": ""})
     except ValueError as exc:
         assert "Password hash" in str(exc)
     else:
@@ -204,9 +218,7 @@ def _session_factory(engine):
 
 
 def _create_user(repository: UsersRepository) -> User:
-    return repository.create_user(
-        User(email_address="admin@example.com", password_hash="hash")
-    )
+    return repository.create_user(User(username="admin", password_hash="hash"))
 
 
 def _create_application(repository: ApplicationsRepository) -> Application:

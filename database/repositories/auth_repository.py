@@ -16,7 +16,7 @@ class UsersRepository(BaseRepository[User]):
         super().__init__(User, session_factory)
 
     def create_user(self, user_data: Union[dict[str, object], User]) -> User:
-        """Create a user with normalized email address."""
+        """Create a user with normalized username."""
         normalized_data = self._normalized_user_data(
             user_data,
             require_password_hash=True,
@@ -62,11 +62,11 @@ class UsersRepository(BaseRepository[User]):
             session.expunge(user)
             return user
 
-    def get_user_by_email(self, email_address: str) -> Optional[User]:
-        """Return one user by normalized email address."""
-        normalized_email = _normalize_key(email_address)
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        """Return one user by normalized username."""
+        normalized_username = _normalize_username(username)
         with self.get_session() as session:
-            statement = select(User).where(User.email_address == normalized_email)
+            statement = select(User).where(User.username == normalized_username)
             user = session.exec(statement).first()
             if user is None:
                 return None
@@ -75,9 +75,9 @@ class UsersRepository(BaseRepository[User]):
             return user
 
     def list_users(self) -> list[User]:
-        """Return users ordered by email address."""
+        """Return users ordered by username."""
         with self.get_session() as session:
-            users = list(session.exec(select(User).order_by(User.email_address)).all())
+            users = list(session.exec(select(User).order_by(User.username)).all())
             for user in users:
                 session.expunge(user)
             return users
@@ -100,6 +100,8 @@ class UsersRepository(BaseRepository[User]):
         self,
         user_id: int,
         password_hash: str,
+        *,
+        must_change_password: bool = False,
     ) -> Optional[User]:
         """Replace a user's password hash."""
         if password_hash.strip() == "":
@@ -111,6 +113,7 @@ class UsersRepository(BaseRepository[User]):
                 return None
 
             user.password_hash = password_hash
+            user.must_change_password = must_change_password
             session.add(user)
             session.flush()
             session.refresh(user)
@@ -127,12 +130,17 @@ class UsersRepository(BaseRepository[User]):
             user_data = user_data.model_dump()
 
         normalized_data = dict(user_data)
-        if "email_address" in normalized_data:
-            normalized_data["email_address"] = _normalize_key(
-                str(normalized_data.get("email_address", ""))
+        if "username" in normalized_data:
+            normalized_data["username"] = _normalize_username(
+                str(normalized_data.get("username", ""))
             )
-        if normalized_data.get("email_address") == "":
-            raise ValueError("Email address is required.")
+        if normalized_data.get("username") == "":
+            raise ValueError("Username is required.")
+        if any(
+            character.isspace()
+            for character in str(normalized_data.get("username", ""))
+        ):
+            raise ValueError("Username cannot contain spaces.")
         if (
             require_password_hash
             and str(normalized_data.get("password_hash", "")).strip() == ""
@@ -527,3 +535,7 @@ class UserApplicationAccessRepository(BaseRepository[UserApplicationAccess]):
 
 def _normalize_key(value: str) -> str:
     return value.strip().lower()
+
+
+def _normalize_username(value: str) -> str:
+    return _normalize_key(value)

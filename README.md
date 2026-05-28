@@ -172,10 +172,15 @@ the `user_administration` application with the `admin` role.
 From this screen an admin can:
 
 - create users with a default password;
-- edit name, email address, and active status;
+- edit username, name, and active status;
 - reset a user's password;
 - grant or revoke access to applications;
 - assign one or more roles per application.
+
+Users log in with a username without spaces, not with an email address. New
+users receive `PORTAL_DEFAULT_USER_PASSWORD` and must choose their own password
+on first login. Password reset in user administration sets the same default
+password again and forces the user to change it at the next login.
 
 Normal users without the `user_administration` admin role can still log in and
 open the applications they have access to, but they receive `403 Forbidden` on
@@ -226,7 +231,8 @@ Set at least these values in `deploy/dashboard.env`:
 PORTAL_SECRET_KEY=change-me
 PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
-AUTH_BOOTSTRAP_EMAIL=admin@example.nl
+PORTAL_DEFAULT_USER_PASSWORD=welkom123
+AUTH_BOOTSTRAP_USERNAME=admin
 AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
 AUTH_BOOTSTRAP_FIRST_NAME=Admin
 AUTH_BOOTSTRAP_LAST_NAME=
@@ -269,7 +275,7 @@ The bootstrap command creates the core application keys (`kippen`,
 `dashboard_klauwgezondheid`, `dashboard_tank_terminal`, and
 `user_administration`), the core roles (`admin`, `worker`, `viewer`), and grants
 the bootstrap admin access to those apps. If users already exist and
-`AUTH_BOOTSTRAP_EMAIL` is empty, it only refreshes the core apps and roles.
+`AUTH_BOOTSTRAP_USERNAME` is empty, it only refreshes the core apps and roles.
 
 The Kippen migrations create the `flocks` table, require `flock_id` on new
 registrations, and split the old combined daily table into
@@ -373,7 +379,8 @@ PORTAL_ADMIN_USERNAME=admin
 PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=true
-AUTH_BOOTSTRAP_EMAIL=admin@example.nl
+PORTAL_DEFAULT_USER_PASSWORD=welkom123
+AUTH_BOOTSTRAP_USERNAME=admin
 AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
 AUTH_BOOTSTRAP_FIRST_NAME=Admin
 AUTH_BOOTSTRAP_LAST_NAME=

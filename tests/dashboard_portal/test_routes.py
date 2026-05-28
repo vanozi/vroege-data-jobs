@@ -26,7 +26,7 @@ def test_login_with_wrong_credentials_fails(monkeypatch):
 
     response = client.post(
         "/login",
-        data={"email_address": "admin@example.com", "password": "wrong-password"},
+        data={"username": "admin@example.com", "password": "wrong-password"},
     )
 
     assert response.status_code == 401
@@ -59,7 +59,7 @@ def test_login_with_correct_credentials_shows_accessible_applications(monkeypatc
     response = client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -72,6 +72,87 @@ def test_login_with_correct_credentials_shows_accessible_applications(monkeypatc
     assert "Tanken" in index_response.text
     assert "Klauwgezondheid" not in index_response.text
     assert 'href="/tank-terminal"' in index_response.text
+
+
+def test_login_redirects_to_password_change_when_required(monkeypatch):
+    client, context = _client(monkeypatch)
+    _create_user(
+        context,
+        "worker",
+        "default-password",
+        must_change_password=True,
+    )
+
+    response = client.post(
+        "/login",
+        data={
+            "username": "worker",
+            "password": "default-password",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/change-password"
+    assert client.get("/").headers["Location"] == "/change-password"
+
+
+def test_change_password_updates_password_and_opens_portal(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(
+        context,
+        "worker",
+        "default-password",
+        must_change_password=True,
+    )
+    client.post(
+        "/login",
+        data={
+            "username": "worker",
+            "password": "default-password",
+        },
+    )
+
+    response = client.post(
+        "/change-password",
+        data={
+            "password": "new-password",
+            "password_confirmation": "new-password",
+        },
+    )
+    updated = context.users.get_user_by_id(user.id)
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+    assert updated.must_change_password is False
+    assert service.verify_password(updated.password_hash, "new-password")
+
+
+def test_change_password_rejects_default_password(monkeypatch):
+    client, context = _client(monkeypatch)
+    _create_user(
+        context,
+        "worker",
+        "default-password",
+        must_change_password=True,
+    )
+    client.post(
+        "/login",
+        data={
+            "username": "worker",
+            "password": "default-password",
+        },
+    )
+
+    response = client.post(
+        "/change-password",
+        data={
+            "password": "default-password",
+            "password_confirmation": "default-password",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "standaard wachtwoord" in response.text
 
 
 def test_dashboard_tiles_are_filtered_by_active_access(monkeypatch):
@@ -99,7 +180,7 @@ def test_dashboard_tiles_are_filtered_by_active_access(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -129,7 +210,7 @@ def test_user_administration_tile_is_database_backed(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -146,7 +227,7 @@ def test_admin_users_requires_active_admin_role(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -181,14 +262,13 @@ def test_admin_create_user_form_and_post(monkeypatch):
     post_response = client.post(
         "/admin/users/new",
         data={
-            "email_address": "new@example.com",
+            "username": "new@example.com",
             "first_name": "New",
             "last_name": "User",
-            "password": "temporary-password",
             "is_active": "on",
         },
     )
-    created = context.users.get_user_by_email("new@example.com")
+    created = context.users.get_user_by_username("new@example.com")
 
     assert form_response.status_code == 200
     assert "Gebruiker toevoegen" in form_response.text
@@ -197,7 +277,8 @@ def test_admin_create_user_form_and_post(monkeypatch):
     assert created.first_name == "New"
     assert created.last_name == "User"
     assert created.is_active
-    assert service.verify_password(created.password_hash, "temporary-password")
+    assert created.must_change_password is True
+    assert service.verify_password(created.password_hash, "welkom123")
 
 
 def test_admin_create_user_validates_required_fields(monkeypatch):
@@ -208,12 +289,11 @@ def test_admin_create_user_validates_required_fields(monkeypatch):
 
     response = client.post(
         "/admin/users/new",
-        data={"email_address": "", "password": ""},
+        data={"username": ""},
     )
 
     assert response.status_code == 400
-    assert "E-mailadres is verplicht." in response.text
-    assert "Standaard wachtwoord is verplicht." in response.text
+    assert "Gebruikersnaam is verplicht." in response.text
 
 
 def test_admin_edit_user_updates_user(monkeypatch):
@@ -226,7 +306,7 @@ def test_admin_edit_user_updates_user(monkeypatch):
     response = client.post(
         f"/admin/users/{worker.id}/edit",
         data={
-            "email_address": "worker.updated@example.com",
+            "username": "worker.updated@example.com",
             "first_name": "Worker",
             "last_name": "Updated",
         },
@@ -235,7 +315,7 @@ def test_admin_edit_user_updates_user(monkeypatch):
 
     assert response.status_code == 302
     assert response.headers["Location"] == "/admin/users"
-    assert updated.email_address == "worker.updated@example.com"
+    assert updated.username == "worker.updated@example.com"
     assert updated.first_name == "Worker"
     assert updated.last_name == "Updated"
     assert not updated.is_active
@@ -250,13 +330,13 @@ def test_admin_reset_password(monkeypatch):
 
     response = client.post(
         f"/admin/users/{worker.id}/reset-password",
-        data={"password": "new-password"},
     )
     updated = context.users.get_user_by_id(worker.id)
 
     assert response.status_code == 302
     assert response.headers["Location"] == f"/admin/users/{worker.id}/edit"
-    assert service.verify_password(updated.password_hash, "new-password")
+    assert updated.must_change_password is True
+    assert service.verify_password(updated.password_hash, "welkom123")
 
 
 def test_admin_user_access_form_updates_access_and_roles(monkeypatch):
@@ -315,7 +395,7 @@ def test_logout_clears_session(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -341,7 +421,7 @@ def test_auth_verify_allows_authenticated_unmapped_path(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -374,7 +454,7 @@ def test_auth_verify_is_application_aware(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -407,7 +487,7 @@ def test_forward_auth_allows_dashboard_manifest_when_user_has_access(monkeypatch
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -435,7 +515,7 @@ def test_forward_auth_uses_original_uri_fallback(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -463,7 +543,7 @@ def test_forward_auth_uses_path_query_fallback(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -488,7 +568,7 @@ def test_forward_auth_denies_inactive_access(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -517,7 +597,7 @@ def test_auth_verify_rejects_inactive_application(monkeypatch):
     client.post(
         "/login",
         data={
-            "email_address": "admin@example.com",
+            "username": "admin@example.com",
             "password": "correct-password",
         },
     )
@@ -577,11 +657,11 @@ def _client(monkeypatch):
     return app.test_client(), context
 
 
-def _login(client, email_address: str = "admin@example.com"):
+def _login(client, username: str = "admin@example.com"):
     return client.post(
         "/login",
         data={
-            "email_address": email_address,
+            "username": username,
             "password": "correct-password",
         },
     )
@@ -589,13 +669,16 @@ def _login(client, email_address: str = "admin@example.com"):
 
 def _create_user(
     context: _PortalTestContext,
-    email_address: str,
+    username: str,
     password: str,
+    *,
+    must_change_password: bool = False,
 ) -> User:
     return context.users.create_user(
         User(
-            email_address=email_address,
+            username=username,
             password_hash=service.hash_password(password),
+            must_change_password=must_change_password,
         )
     )
 

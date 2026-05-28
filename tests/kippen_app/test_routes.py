@@ -44,7 +44,7 @@ def _client(monkeypatch):
 def _login(client, *, user_id: int = 1, display_name: str = "admin"):
     with client.session_transaction() as shared_session:
         shared_session["user_id"] = user_id
-        shared_session["email_address"] = "admin@example.com"
+        shared_session["username"] = "admin@example.com"
         shared_session["display_name"] = display_name
 
 
@@ -109,28 +109,28 @@ def _seed_auth(session_factory):
     access_repository = UserApplicationAccessRepository(session_factory)
     admin = users.create_user(
         User(
-            email_address="admin@example.com",
+            username="admin@example.com",
             first_name="admin",
             password_hash=service.hash_password("correct-password"),
         )
     )
     worker = users.create_user(
         User(
-            email_address="worker@example.com",
+            username="worker@example.com",
             first_name="worker",
             password_hash=service.hash_password("correct-password"),
         )
     )
     viewer = users.create_user(
         User(
-            email_address="viewer@example.com",
+            username="viewer@example.com",
             first_name="viewer",
             password_hash=service.hash_password("correct-password"),
         )
     )
     unauthorized = users.create_user(
         User(
-            email_address="unauthorized@example.com",
+            username="unauthorized@example.com",
             first_name="unauthorized",
             password_hash=service.hash_password("correct-password"),
         )

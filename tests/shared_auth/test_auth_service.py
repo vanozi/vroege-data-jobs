@@ -37,7 +37,7 @@ def test_authenticate_user_accepts_active_user_with_valid_password():
     context = _create_context()
     user = context.users.create_user(
         User(
-            email_address="admin@example.com",
+            username="admin@example.com",
             password_hash=service.hash_password("correct-password"),
         )
     )
@@ -50,11 +50,27 @@ def test_authenticate_user_accepts_active_user_with_valid_password():
     assert authenticated.id == user.id
 
 
+def test_change_user_password_clears_required_password_change():
+    context = _create_context()
+    user = context.users.create_user(
+        User(
+            username="admin",
+            password_hash=service.hash_password("default-password"),
+            must_change_password=True,
+        )
+    )
+
+    updated = context.service.change_user_password(user.id, "new-password")
+
+    assert service.verify_password(updated.password_hash, "new-password")
+    assert updated.must_change_password is False
+
+
 def test_authenticate_user_rejects_inactive_or_invalid_credentials():
     context = _create_context()
     context.users.create_user(
         User(
-            email_address="admin@example.com",
+            username="admin@example.com",
             password_hash=service.hash_password("correct-password"),
             is_active=False,
         )
@@ -111,7 +127,7 @@ def test_accessible_application_listing_returns_active_user_applications_in_orde
     kippen = _create_application(context, "kippen", display_order=10)
     inactive_user = context.users.create_user(
         User(
-            email_address="inactive@example.com",
+            username="inactive@example.com",
             password_hash=service.hash_password("password"),
             is_active=False,
         )
@@ -243,7 +259,7 @@ def _create_context() -> _AuthTestContext:
 def _create_user(context: _AuthTestContext) -> User:
     return context.users.create_user(
         User(
-            email_address="worker@example.com",
+            username="worker@example.com",
             password_hash=service.hash_password("password"),
         )
     )
