@@ -147,7 +147,7 @@ services:
       - dashboards
     labels:
       - traefik.enable=true
-      - traefik.http.routers.dashboard-portal.rule=Host(`${DASHBOARD_HOST}`)
+      - traefik.http.routers.dashboard-portal.rule=Host(`${APP_HOST}`)
       - traefik.http.routers.dashboard-portal.entrypoints=websecure
       - traefik.http.routers.dashboard-portal.tls.certresolver=letsencrypt
       - traefik.http.routers.dashboard-portal.priority=1
@@ -183,7 +183,7 @@ services:
       - dashboards
     labels:
       - traefik.enable=true
-      - traefik.http.routers.kippen-app.rule=(Host(`${DASHBOARD_HOST}`) && PathPrefix(`/kippen`)) || Host(`${KIPPEN_APP_HOST}`)
+      - traefik.http.routers.kippen-app.rule=Host(`${APP_HOST}`) && PathPrefix(`/kippen`)
       - traefik.http.routers.kippen-app.entrypoints=websecure
       - traefik.http.routers.kippen-app.tls.certresolver=letsencrypt
       - traefik.http.routers.kippen-app.priority=110
@@ -217,7 +217,7 @@ services:
       - --base-url
       - /klauwgezondheid
       - --proxy
-      - https://${DASHBOARD_HOST}
+      - https://${APP_HOST}
       - --no-token
     expose:
       - "2718"
@@ -228,7 +228,7 @@ services:
       - dashboards
     labels:
       - traefik.enable=true
-      - traefik.http.routers.marimo-klauwgezondheid.rule=Host(`${DASHBOARD_HOST}`) && PathPrefix(`/klauwgezondheid`)
+      - traefik.http.routers.marimo-klauwgezondheid.rule=Host(`${APP_HOST}`) && PathPrefix(`/klauwgezondheid`)
       - traefik.http.routers.marimo-klauwgezondheid.entrypoints=websecure
       - traefik.http.routers.marimo-klauwgezondheid.tls.certresolver=letsencrypt
       - traefik.http.routers.marimo-klauwgezondheid.middlewares=portal-auth
@@ -237,7 +237,7 @@ services:
       - traefik.http.services.marimo-klauwgezondheid.loadbalancer.server.port=2718
       - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
-      - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=Host(`${DASHBOARD_HOST}`) && Path(`/klauwgezondheid/manifest.json`)
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=Host(`${APP_HOST}`) && Path(`/klauwgezondheid/manifest.json`)
       - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=websecure
       - traefik.http.routers.marimo-klauwgezondheid-manifest.tls.certresolver=letsencrypt
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
@@ -265,7 +265,7 @@ services:
       - --base-url
       - /tank-terminal
       - --proxy
-      - https://${DASHBOARD_HOST}
+      - https://${APP_HOST}
       - --no-token
     expose:
       - "2719"
@@ -276,7 +276,7 @@ services:
       - dashboards
     labels:
       - traefik.enable=true
-      - traefik.http.routers.marimo-tank-terminal.rule=Host(`${DASHBOARD_HOST}`) && PathPrefix(`/tank-terminal`)
+      - traefik.http.routers.marimo-tank-terminal.rule=Host(`${APP_HOST}`) && PathPrefix(`/tank-terminal`)
       - traefik.http.routers.marimo-tank-terminal.entrypoints=websecure
       - traefik.http.routers.marimo-tank-terminal.tls.certresolver=letsencrypt
       - traefik.http.routers.marimo-tank-terminal.middlewares=portal-auth
@@ -285,7 +285,7 @@ services:
       - traefik.http.services.marimo-tank-terminal.loadbalancer.server.port=2719
       - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
-      - traefik.http.routers.marimo-tank-terminal-manifest.rule=Host(`${DASHBOARD_HOST}`) && Path(`/tank-terminal/manifest.json`)
+      - traefik.http.routers.marimo-tank-terminal-manifest.rule=Host(`${APP_HOST}`) && Path(`/tank-terminal/manifest.json`)
       - traefik.http.routers.marimo-tank-terminal-manifest.entrypoints=websecure
       - traefik.http.routers.marimo-tank-terminal-manifest.tls.certresolver=letsencrypt
       - traefik.http.routers.marimo-tank-terminal-manifest.priority=200

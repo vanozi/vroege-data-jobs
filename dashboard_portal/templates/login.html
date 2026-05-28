@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}Inloggen | Dashboards{% endblock %}
+{% block title %}Inloggen | Applicaties{% endblock %}
 
 {% block content %}
 <div class="columns is-centered">
   <div class="column is-one-third">
     <h1 class="title">Inloggen</h1>
-    <p class="subtitle">Log in om de dashboards te bekijken.</p>
+    <p class="subtitle">Log in om je applicaties te openen.</p>
     {% if error %}
     <div class="notification is-danger">{{ error }}</div>
     {% endif %}
     <form method="post" action="/login">
       <div class="field">
-        <label class="label" for="username">Gebruikersnaam</label>
+        <label class="label" for="email_address">E-mailadres</label>
         <div class="control">
-          <input class="input" id="username" name="username" autocomplete="username">
+          <input class="input" id="email_address" name="email_address" autocomplete="username">
         </div>
       </div>
       <div class="field">

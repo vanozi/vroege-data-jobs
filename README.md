@@ -111,28 +111,25 @@ Recommended commands:
 ## Dashboard portal
 
 The dashboard portal is a small Flask app in [`dashboard_portal/`](dashboard_portal/).
-It is intended as the authenticated homepage for Marimo dashboards. The root
-route `/` shows dashboard links after login; without a session it redirects to
-`/login`.
+It is the central authenticated homepage for applications and dashboards. The
+root route `/` shows application links from the shared auth database after
+login; without a session it redirects to `/login`.
 
 Current portal routes:
 
-- `/`: dashboard overview, protected by session.
+- `/`: application overview, protected by session.
 - `/login`: login page.
 - `/logout`: logout endpoint.
-- `/auth/verify`: Traefik ForwardAuth endpoint.
+- `/auth/verify`: Traefik ForwardAuth endpoint with application-aware path
+  checks.
 - `/healthz`: healthcheck.
 
-The first dashboard link is:
+Portal login users are stored in the shared auth tables. Run migrations and the
+`auth-bootstrap` tool before relying on `/login`. The legacy
+`PORTAL_ADMIN_USERNAME` and `PORTAL_ADMIN_PASSWORD_HASH` settings are no longer
+used by the central portal login.
 
-```text
-/klauwgezondheid
-```
-
-That route is intended to be served by the Marimo klauwgezondheid dashboard
-behind Traefik.
-
-Create a password hash for `PORTAL_ADMIN_PASSWORD_HASH`:
+Create a password hash for legacy local checks or the separate Kippen login:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
@@ -160,13 +157,9 @@ PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=false
 ```
 
-Dashboard links come from `dashboard_portal.registry`. By default the portal
-shows `Klauwgezondheid` at `/klauwgezondheid`. You can override the visible
-dashboards with `PORTAL_DASHBOARDS_JSON`:
-
-```env
-PORTAL_DASHBOARDS_JSON=[{"name":"Klauwgezondheid","description":"Mortellaro en klauwgezondheid van de actieve koppel.","url":"/klauwgezondheid","status":"Productie"},{"name":"Tanken","description":"Dieseltransacties per voertuig, chauffeur en CSV-import.","url":"/tank-terminal","status":"Concept"}]
-```
+Visible application links now come from `applications`,
+`user_application_access`, and `user_application_roles`. Core applications and
+roles are seeded by the shared auth bootstrap command.
 
 ### Docker Compose stack
 
@@ -237,14 +230,11 @@ Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
 with `format: raw`, so quotes would be passed into the containers as literal
 characters.
 
-Create a portal password hash:
+Create a Kippen password hash if the Kippen app still uses its separate login:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
 ```
-
-Use the same command for `KIPPEN_APP_ADMIN_PASSWORD_HASH` if the Kippen app
-should use the same password.
 
 Start the local stack:
 
@@ -297,19 +287,9 @@ Local routes:
 
 - `http://localhost/`: Flask portal.
 - `http://localhost/kippen`: Kippen registratie app.
-- `http://kippen.localhost/`: alternative local Kippen route if your machine
-  resolves `kippen.localhost`.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
 - `http://localhost/tank-terminal`: Tanken Marimo dashboard.
 - `http://localhost:8080`: Adminer database editor.
-- `http://dashboards.localhost/`: alternative portal route if your machine
-  resolves `dashboards.localhost`.
-- `http://dashboards.localhost/kippen`: alternative Kippen registratie route if
-  your machine resolves `dashboards.localhost`.
-- `http://dashboards.localhost/klauwgezondheid`: alternative dashboard route if
-  your machine resolves `dashboards.localhost`.
-- `http://dashboards.localhost/tank-terminal`: alternative Tanken route if your
-  machine resolves `dashboards.localhost`.
 
 Adminer login for the local stack:
 
@@ -335,11 +315,10 @@ override port mapping. Use `http://localhost` for local testing; do not use
 
 Production routes:
 
-- `https://dashboards.gebroedersvroege.nl/`: Flask portal.
-- `https://dashboards.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
-- `https://kippen.gebroedersvroege.nl/`: Kippen registratie app. This host
-  redirects to `/kippen`, while the existing
-  `https://dashboards.gebroedersvroege.nl/kippen` path remains available.
+- `https://app.gebroedersvroege.nl/`: central Flask portal.
+- `https://app.gebroedersvroege.nl/kippen`: Kippen registratie app.
+- `https://app.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
+- `https://app.gebroedersvroege.nl/tank-terminal`: Tanken Marimo dashboard.
 
 Clone the repository somewhere owned by the deploy user, for example:
 
@@ -359,8 +338,7 @@ cp .env.example .env
 Set at least these values in `.env`:
 
 ```env
-DASHBOARD_HOST=dashboards.gebroedersvroege.nl
-KIPPEN_APP_HOST=kippen.gebroedersvroege.nl
+APP_HOST=app.gebroedersvroege.nl
 TRAEFIK_ACME_EMAIL=admin@example.nl
 POSTGRES_DB=gebroeders_vroege
 POSTGRES_USER=postgres
@@ -407,11 +385,11 @@ Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
 with `format: raw`, so quotes would be passed into the containers as literal
 characters.
 
-Keep `PORTAL_ADMIN_PASSWORD_HASH` in `deploy/dashboard.env`, not in the Compose
-`.env` file. Werkzeug hashes can contain `$`, and Compose treats `$...` as
-variable interpolation in `.env`. The Compose services read
-`deploy/dashboard.env` with `env_file` format `raw` so password hashes are
-passed to the containers unchanged.
+Keep Werkzeug password hashes in `deploy/dashboard.env`, not in the Compose
+`.env` file. Hashes can contain `$`, and Compose treats `$...` as variable
+interpolation in `.env`. The Compose services read `deploy/dashboard.env` with
+`env_file` format `raw` so password hashes are passed to the containers
+unchanged.
 
 Create a portal password hash from a machine with Werkzeug installed:
 
@@ -519,8 +497,8 @@ gunzip -c /opt/backups/vroege-datajobs-YYYY-MM-DD.sql.gz | docker compose exec -
 ### Kippen registratie app
 
 The Kippen registratie app is served by the `kippen-app` service. Production
-uses `KIPPEN_APP_HOST=kippen.gebroedersvroege.nl`; Traefik routes that host
-directly to the app, and the Flask root route redirects to `/kippen`.
+uses `APP_HOST=app.gebroedersvroege.nl`; Traefik routes `/kippen` on that host
+to the app.
 
 Useful routes:
 
@@ -615,7 +593,7 @@ Raw CSV exports include `flock_id`, `flock_name`, `flock_date_of_birth`,
 Example:
 
 ```text
-https://kippen.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
+https://app.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
 ```
 
 Backups are database-level. The PostgreSQL backup command above includes the
