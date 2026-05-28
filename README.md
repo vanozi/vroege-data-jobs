@@ -181,11 +181,10 @@ The services use separate Dockerfiles and dependency files:
 - [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
   datajob runner for Klauwscore and Uniform Agri.
 
-Traefik protects `/klauwgezondheid` with the portal `/auth/verify` ForwardAuth
-endpoint. Direct access to the Marimo route without a valid portal session
-returns unauthorized. The Marimo web app manifest at
-`/klauwgezondheid/manifest.json` is routed without ForwardAuth because browsers
-may fetch manifests without session cookies; it does not expose dashboard data.
+Traefik protects the Marimo dashboard paths with the portal `/auth/verify`
+ForwardAuth endpoint. Direct access to `/klauwgezondheid`, `/tank-terminal`,
+and their Marimo manifest routes without a valid shared portal session and
+matching application access returns unauthorized.
 The Kippen registratie app at `/kippen` uses the shared portal session and
 requires active `kippen` application access.
 

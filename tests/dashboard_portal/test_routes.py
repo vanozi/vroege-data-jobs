@@ -74,6 +74,43 @@ def test_login_with_correct_credentials_shows_accessible_applications(monkeypatc
     assert 'href="/tank-terminal"' in index_response.text
 
 
+def test_dashboard_tiles_are_filtered_by_active_access(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    tanken = _create_application(
+        context,
+        "dashboard_tank_terminal",
+        "Tanken",
+        "/tank-terminal",
+        "dashboard",
+        10,
+    )
+    inactive_dashboard = _create_application(
+        context,
+        "dashboard_klauwgezondheid",
+        "Klauwgezondheid",
+        "/klauwgezondheid",
+        "dashboard",
+        20,
+        is_active=False,
+    )
+    _grant_access(context, user.id, tanken.id)
+    _grant_access(context, user.id, inactive_dashboard.id)
+    client.post(
+        "/login",
+        data={
+            "email_address": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Tanken" in response.text
+    assert "Klauwgezondheid" not in response.text
+
+
 def test_user_administration_tile_is_database_backed(monkeypatch):
     client, context = _client(monkeypatch)
     user = _create_user(context, "admin@example.com", "correct-password")
@@ -186,6 +223,115 @@ def test_auth_verify_is_application_aware(monkeypatch):
     assert denied.status_code == 403
 
 
+def test_forward_auth_allows_dashboard_manifest_when_user_has_access(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    klauwgezondheid = _create_application(
+        context,
+        "dashboard_klauwgezondheid",
+        "Klauwgezondheid",
+        "/klauwgezondheid",
+        "dashboard",
+        10,
+    )
+    _grant_access(context, user.id, klauwgezondheid.id)
+    client.post(
+        "/login",
+        data={
+            "email_address": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get(
+        "/auth/verify",
+        headers={"X-Forwarded-Uri": "/klauwgezondheid/manifest.json"},
+    )
+
+    assert response.status_code == 204
+
+
+def test_forward_auth_uses_original_uri_fallback(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    tanken = _create_application(
+        context,
+        "dashboard_tank_terminal",
+        "Tanken",
+        "/tank-terminal",
+        "dashboard",
+        10,
+    )
+    _grant_access(context, user.id, tanken.id)
+    client.post(
+        "/login",
+        data={
+            "email_address": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get(
+        "/auth/verify",
+        headers={"X-Original-Uri": "/tank-terminal/?view=transactions"},
+    )
+
+    assert response.status_code == 204
+
+
+def test_forward_auth_uses_path_query_fallback(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    tanken = _create_application(
+        context,
+        "dashboard_tank_terminal",
+        "Tanken",
+        "/tank-terminal",
+        "dashboard",
+        10,
+    )
+    _grant_access(context, user.id, tanken.id)
+    client.post(
+        "/login",
+        data={
+            "email_address": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get("/auth/verify?path=/tank-terminal")
+
+    assert response.status_code == 204
+
+
+def test_forward_auth_denies_inactive_access(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    tanken = _create_application(
+        context,
+        "dashboard_tank_terminal",
+        "Tanken",
+        "/tank-terminal",
+        "dashboard",
+        10,
+    )
+    _grant_access(context, user.id, tanken.id, is_active=False)
+    client.post(
+        "/login",
+        data={
+            "email_address": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get(
+        "/auth/verify",
+        headers={"X-Forwarded-Uri": "/tank-terminal"},
+    )
+
+    assert response.status_code == 403
+
+
 def test_auth_verify_rejects_inactive_application(monkeypatch):
     client, context = _client(monkeypatch)
     user = _create_user(context, "admin@example.com", "correct-password")
@@ -223,6 +369,12 @@ def test_application_key_for_path_maps_known_prefixes():
     )
     assert (
         portal_app.application_key_for_path("/tank-terminal")
+        == "dashboard_tank_terminal"
+    )
+    assert (
+        portal_app.application_key_for_path(
+            "https://app.gebroedersvroege.nl/tank-terminal/manifest.json"
+        )
         == "dashboard_tank_terminal"
     )
     assert portal_app.application_key_for_path("/admin/users") == "user_administration"
@@ -295,8 +447,11 @@ def _grant_access(
     context: _PortalTestContext,
     user_id: int,
     application_id: int,
+    *,
+    is_active: bool = True,
 ):
     return context.access.grant_application_access(
         user_id=user_id,
         application_id=application_id,
+        is_active=is_active,
     )

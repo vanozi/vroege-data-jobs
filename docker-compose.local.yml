@@ -73,6 +73,7 @@ services:
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
       - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && Path(`/klauwgezondheid/manifest.json`)
       - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=web
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
       - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid
 
@@ -104,5 +105,6 @@ services:
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
       - traefik.http.routers.marimo-tank-terminal-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && Path(`/tank-terminal/manifest.json`)
       - traefik.http.routers.marimo-tank-terminal-manifest.entrypoints=web
+      - traefik.http.routers.marimo-tank-terminal-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-tank-terminal-manifest.priority=200
       - traefik.http.routers.marimo-tank-terminal-manifest.service=marimo-tank-terminal
