@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Applicatietoegang{% endblock %}
+
+{% block content %}
+<div class="level">
+  <div class="level-left">
+    <div>
+      <h1 class="title">Applicatietoegang</h1>
+      <p class="subtitle">{{ user.email_address }}</p>
+    </div>
+  </div>
+  <div class="level-right">
+    <a class="button is-light" href="{{ url_for('admin_users_list') }}">Terug naar gebruikers</a>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('admin_user_access_post', user_id=user.id) }}">
+  <div class="table-container">
+    <table class="table is-fullwidth is-striped">
+      <thead>
+        <tr>
+          <th>Applicatie</th>
+          <th>Toegang</th>
+          <th>Rollen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in application_access %}
+        {% set application = row.application %}
+        {% set access = row.access %}
+        <tr>
+          <td>
+            <strong>{{ application.name }}</strong>
+            <div class="is-size-7 has-text-grey">{{ application.key }} · {{ application.url }}</div>
+          </td>
+          <td>
+            <label class="checkbox">
+              <input
+                type="checkbox"
+                name="application_{{ application.id }}"
+                {% if access and access.is_active %}checked{% endif %}
+              >
+              Actief
+            </label>
+          </td>
+          <td>
+            <div class="field is-grouped is-grouped-multiline">
+              {% for role in row.roles %}
+              <div class="control">
+                <label class="checkbox">
+                  <input
+                    type="checkbox"
+                    name="role_{{ application.id }}_{{ role.id }}"
+                    {% if role.id in row.assigned_role_ids %}checked{% endif %}
+                  >
+                  {{ role.name }}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="field is-grouped">
+    <div class="control">
+      <button class="button is-link" type="submit">Toegang opslaan</button>
+    </div>
+    <div class="control">
+      <a class="button is-light" href="{{ url_for('admin_users_list') }}">Annuleren</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

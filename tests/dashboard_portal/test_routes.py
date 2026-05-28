@@ -140,6 +140,175 @@ def test_user_administration_tile_is_database_backed(monkeypatch):
     assert 'href="/admin/users"' in response.text
 
 
+def test_admin_users_requires_active_admin_role(monkeypatch):
+    client, context = _client(monkeypatch)
+    _create_user(context, "admin@example.com", "correct-password")
+    client.post(
+        "/login",
+        data={
+            "email_address": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get("/admin/users")
+
+    assert response.status_code == 403
+
+
+def test_admin_users_list_shows_users_for_admin(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    _create_user(context, "worker@example.com", "password")
+    _grant_user_administration_admin(context, admin.id)
+    _login(client)
+
+    response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert "Gebruikersbeheer" in response.text
+    assert "admin@example.com" in response.text
+    assert "worker@example.com" in response.text
+
+
+def test_admin_create_user_form_and_post(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    _grant_user_administration_admin(context, admin.id)
+    _login(client)
+
+    form_response = client.get("/admin/users/new")
+    post_response = client.post(
+        "/admin/users/new",
+        data={
+            "email_address": "new@example.com",
+            "first_name": "New",
+            "last_name": "User",
+            "password": "temporary-password",
+            "is_active": "on",
+        },
+    )
+    created = context.users.get_user_by_email("new@example.com")
+
+    assert form_response.status_code == 200
+    assert "Gebruiker toevoegen" in form_response.text
+    assert post_response.status_code == 302
+    assert post_response.headers["Location"] == f"/admin/users/{created.id}/access"
+    assert created.first_name == "New"
+    assert created.last_name == "User"
+    assert created.is_active
+    assert service.verify_password(created.password_hash, "temporary-password")
+
+
+def test_admin_create_user_validates_required_fields(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    _grant_user_administration_admin(context, admin.id)
+    _login(client)
+
+    response = client.post(
+        "/admin/users/new",
+        data={"email_address": "", "password": ""},
+    )
+
+    assert response.status_code == 400
+    assert "E-mailadres is verplicht." in response.text
+    assert "Standaard wachtwoord is verplicht." in response.text
+
+
+def test_admin_edit_user_updates_user(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    worker = _create_user(context, "worker@example.com", "password")
+    _grant_user_administration_admin(context, admin.id)
+    _login(client)
+
+    response = client.post(
+        f"/admin/users/{worker.id}/edit",
+        data={
+            "email_address": "worker.updated@example.com",
+            "first_name": "Worker",
+            "last_name": "Updated",
+        },
+    )
+    updated = context.users.get_user_by_id(worker.id)
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/admin/users"
+    assert updated.email_address == "worker.updated@example.com"
+    assert updated.first_name == "Worker"
+    assert updated.last_name == "Updated"
+    assert not updated.is_active
+
+
+def test_admin_reset_password(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    worker = _create_user(context, "worker@example.com", "old-password")
+    _grant_user_administration_admin(context, admin.id)
+    _login(client)
+
+    response = client.post(
+        f"/admin/users/{worker.id}/reset-password",
+        data={"password": "new-password"},
+    )
+    updated = context.users.get_user_by_id(worker.id)
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == f"/admin/users/{worker.id}/edit"
+    assert service.verify_password(updated.password_hash, "new-password")
+
+
+def test_admin_user_access_form_updates_access_and_roles(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    worker = _create_user(context, "worker@example.com", "password")
+    _grant_user_administration_admin(context, admin.id)
+    kippen = _create_application(context, "kippen", "Kippen", "/kippen", "app", 10)
+    worker_role = context.roles.create_role(Role(key="worker", name="Worker"))
+    _login(client)
+
+    form_response = client.get(f"/admin/users/{worker.id}/access")
+    post_response = client.post(
+        f"/admin/users/{worker.id}/access",
+        data={
+            f"application_{kippen.id}": "on",
+            f"role_{kippen.id}_{worker_role.id}": "on",
+        },
+    )
+    access = context.access.get_user_application_access(
+        user_id=worker.id,
+        application_id=kippen.id,
+    )
+    roles = context.access.list_user_application_roles(access.id)
+
+    assert form_response.status_code == 200
+    assert "Applicatietoegang" in form_response.text
+    assert post_response.status_code == 302
+    assert post_response.headers["Location"] == f"/admin/users/{worker.id}/access"
+    assert access.is_active
+    assert [role.key for role in roles] == ["worker"]
+
+
+def test_admin_user_access_form_revokes_access(monkeypatch):
+    client, context = _client(monkeypatch)
+    admin = _create_user(context, "admin@example.com", "correct-password")
+    worker = _create_user(context, "worker@example.com", "password")
+    _grant_user_administration_admin(context, admin.id)
+    kippen = _create_application(context, "kippen", "Kippen", "/kippen", "app", 10)
+    context.access.grant_application_access(user_id=worker.id, application_id=kippen.id)
+    _login(client)
+
+    response = client.post(f"/admin/users/{worker.id}/access", data={})
+    access = context.access.get_user_application_access(
+        user_id=worker.id,
+        application_id=kippen.id,
+    )
+
+    assert response.status_code == 302
+    assert not access.is_active
+
+
 def test_logout_clears_session(monkeypatch):
     client, context = _client(monkeypatch)
     _create_user(context, "admin@example.com", "correct-password")
@@ -408,6 +577,16 @@ def _client(monkeypatch):
     return app.test_client(), context
 
 
+def _login(client, email_address: str = "admin@example.com"):
+    return client.post(
+        "/login",
+        data={
+            "email_address": email_address,
+            "password": "correct-password",
+        },
+    )
+
+
 def _create_user(
     context: _PortalTestContext,
     email_address: str,
@@ -455,3 +634,23 @@ def _grant_access(
         application_id=application_id,
         is_active=is_active,
     )
+
+
+def _grant_user_administration_admin(
+    context: _PortalTestContext,
+    user_id: int,
+) -> None:
+    application = _create_application(
+        context,
+        "user_administration",
+        "Gebruikersbeheer",
+        "/admin/users",
+        "admin",
+        100,
+    )
+    role = context.roles.get_role_by_key("admin")
+    if role is None:
+        role = context.roles.create_role(Role(key="admin", name="Admin"))
+
+    access = _grant_access(context, user_id, application.id)
+    context.access.grant_application_role(access_id=access.id, role_id=role.id)
