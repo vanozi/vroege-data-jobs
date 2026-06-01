@@ -1,6 +1,6 @@
 """Route tests for the kippen registratie app."""
 
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -240,12 +240,12 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
-    _create_packaging_weight_config(client, start_date=date.today().isoformat())
-    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    _create_packaging_weight_config(client, start_date=yesterday)
     client.post(
         "/kippen/eggs/new",
         data={
-            "registration_date": today,
+            "registration_date": yesterday,
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
         },
@@ -253,28 +253,28 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
     client.post(
         "/kippen/feed-water/new",
         data={
-            "registration_date": today,
+            "registration_date": yesterday,
             "water_ml": "199555",
             "feed_grams": "109255",
         },
     )
     _create_pallet_weight_registration(
         client,
-        registration_date=today,
+        registration_date=yesterday,
         pallet_weight_kg="700",
     )
 
     response = client.get("/kippen/dashboard")
 
     assert response.status_code == 200
-    assert "Eieren vandaag" in response.text
+    assert "Eieren gisteren" in response.text
     assert "105" in response.text
-    assert "Water en voer vandaag" in response.text
+    assert "Water en voer gisteren" in response.text
     assert "199555 ml" in response.text
     assert "109255 gram voer" in response.text
     assert "Laatste eiregistraties" in response.text
     assert "Laatste water en voer" in response.text
-    assert "Eigewicht vandaag" in response.text
+    assert "Eigewicht gisteren" in response.text
     assert "Palletgewicht registreren" in response.text
     assert "Leeggoed beheren" in response.text
     assert "Palletgewichten CSV" in response.text
@@ -1157,23 +1157,23 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
-    today = date.today()
+    yesterday = date.today() - timedelta(days=1)
     week_day = date(2026, 5, 26)
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": f"{today.isoformat()}T10:30",
+            "round_at": f"{yesterday.isoformat()}T10:30",
             "egg_count": "12",
         },
     )
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": f"{today.isoformat()}T15:00",
+            "round_at": f"{yesterday.isoformat()}T15:00",
             "egg_count": "8",
         },
     )
-    if today != week_day:
+    if yesterday != week_day:
         client.post(
             "/kippen/outside-nest-rounds/new",
             data={
@@ -1193,7 +1193,7 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
     week_response = client.get("/kippen/week/2026/22")
 
     assert dashboard_response.status_code == 200
-    assert "Buitennest eieren vandaag" in dashboard_response.text
+    assert "Buitennest eieren gisteren" in dashboard_response.text
     assert ">20<" in dashboard_response.text
     assert week_response.status_code == 200
     assert "Buitennest" in week_response.text

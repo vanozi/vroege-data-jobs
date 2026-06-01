@@ -18,56 +18,56 @@
 <div class="columns">
   <div class="column">
     <div class="box">
-      <p class="heading">Vandaag</p>
-      <p class="title is-4">{{ today }}</p>
-      {% if today_egg_registration %}
-      <p class="subtitle is-6">{{ today_egg_registration.weekday }}</p>
-      {% elif today_feed_water_registration %}
-      <p class="subtitle is-6">{{ today_feed_water_registration.weekday }}</p>
+      <p class="heading">Gisteren</p>
+      <p class="title is-4">{{ yesterday }}</p>
+      {% if yesterday_egg_registration %}
+      <p class="subtitle is-6">{{ yesterday_egg_registration.weekday }}</p>
+      {% elif yesterday_feed_water_registration %}
+      <p class="subtitle is-6">{{ yesterday_feed_water_registration.weekday }}</p>
       {% else %}
-      <p class="subtitle is-6">Nog geen registraties vandaag.</p>
+      <p class="subtitle is-6">Geen registraties gevonden.</p>
       {% endif %}
     </div>
   </div>
   <div class="column">
     <div class="box">
-      <p class="heading">Eieren vandaag</p>
+      <p class="heading">Eieren gisteren</p>
       <p class="title is-4">
-        {% if today_egg_registration %}{{ today_egg_registration.total_eggs }}{% else %}-{% endif %}
+        {% if yesterday_egg_registration %}{{ yesterday_egg_registration.total_eggs }}{% else %}-{% endif %}
       </p>
       <p class="subtitle is-6">1e + 2e soort</p>
     </div>
   </div>
   <div class="column">
     <div class="box">
-      <p class="heading">Water en voer vandaag</p>
+      <p class="heading">Water en voer gisteren</p>
       <p class="title is-4">
-        {% if today_feed_water_registration %}{{ today_feed_water_registration.water_ml }} ml{% else %}-{% endif %}
+        {% if yesterday_feed_water_registration %}{{ yesterday_feed_water_registration.water_ml }} ml{% else %}-{% endif %}
       </p>
       <p class="subtitle is-6">
-        {% if today_feed_water_registration %}{{ today_feed_water_registration.feed_grams }} gram voer{% else %}Nog niet ingevoerd{% endif %}
+        {% if yesterday_feed_water_registration %}{{ yesterday_feed_water_registration.feed_grams }} gram voer{% else %}Niet ingevoerd{% endif %}
       </p>
     </div>
   </div>
   <div class="column">
     <div class="box">
-      <p class="heading">Dode hennen vandaag</p>
-      <p class="title is-4">{{ dead_hens_today }}</p>
+      <p class="heading">Dode hennen gisteren</p>
+      <p class="title is-4">{{ dead_hens_yesterday }}</p>
       <p class="subtitle is-6">Berekend uit meldingen</p>
     </div>
   </div>
   <div class="column">
     <div class="box">
-      <p class="heading">Buitennest eieren vandaag</p>
-      <p class="title is-4">{{ outside_nest_eggs_today }}</p>
+      <p class="heading">Buitennest eieren gisteren</p>
+      <p class="title is-4">{{ outside_nest_eggs_yesterday }}</p>
       <p class="subtitle is-6">Berekend uit rondes</p>
     </div>
   </div>
   <div class="column">
     <div class="box">
-      <p class="heading">Eigewicht vandaag</p>
+      <p class="heading">Eigewicht gisteren</p>
       <p class="title is-4">
-        {% if today_average_egg_weight_grams %}{{ today_average_egg_weight_grams }} g{% else %}-{% endif %}
+        {% if yesterday_average_egg_weight_grams %}{{ yesterday_average_egg_weight_grams }} g{% else %}-{% endif %}
       </p>
       <p class="subtitle is-6">Gemiddelde palletregistraties</p>
     </div>

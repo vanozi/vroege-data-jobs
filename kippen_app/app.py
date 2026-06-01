@@ -161,21 +161,23 @@ def create_app(session_factory=None) -> Flask:
     def dashboard():
         repositories = _repositories()
         today = date.today()
-        today_egg_registration = repositories.eggs.get_by_house_and_date(today)
-        today_feed_water_registration = repositories.feed_water.get_by_house_and_date(
-            today,
+        yesterday = today - timedelta(days=1)
+        yesterday_egg_registration = repositories.eggs.get_by_house_and_date(yesterday)
+        yesterday_feed_water_registration = (
+            repositories.feed_water.get_by_house_and_date(yesterday)
         )
         active_flock = repositories.flocks.get_current_active_flock()
         return render_template(
             "dashboard.html",
             today=today,
-            today_egg_registration=today_egg_registration,
-            today_feed_water_registration=today_feed_water_registration,
+            yesterday=yesterday,
+            yesterday_egg_registration=yesterday_egg_registration,
+            yesterday_feed_water_registration=yesterday_feed_water_registration,
             active_flock=active_flock,
             active_flock_age=flock_age.flock_age_context(active_flock, today),
-            dead_hens_today=repositories.dead_hens.count_for_date(today),
-            outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
-                today,
+            dead_hens_yesterday=repositories.dead_hens.count_for_date(yesterday),
+            outside_nest_eggs_yesterday=repositories.outside_nest_rounds.count_for_date(
+                yesterday,
             ),
             recent_egg_registrations=repositories.eggs.list_recent(limit=5),
             recent_feed_water_registrations=repositories.feed_water.list_recent(
@@ -186,8 +188,8 @@ def create_app(session_factory=None) -> Flask:
                 limit=5,
             ),
             recent_pallet_weights=repositories.pallet_weights.list_recent(limit=5),
-            today_average_egg_weight_grams=_average_egg_weight_grams(
-                repositories.pallet_weights.list_between(today, today),
+            yesterday_average_egg_weight_grams=_average_egg_weight_grams(
+                repositories.pallet_weights.list_between(yesterday, yesterday),
             ),
         )
 
