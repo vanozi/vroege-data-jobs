@@ -31,16 +31,16 @@ WEEK_HEADERS = [
 
 def weekly_calendar_xlsx(
     *,
-    year: int,
-    week: int,
+    flock_week: int,
+    week_start: object,
     rows: list[dict[str, object]],
     totals: dict[str, float],
 ) -> BytesIO:
     """Build an Excel workbook for one weekly laying calendar."""
     workbook = Workbook()
     worksheet = workbook.active
-    worksheet.title = f"Week {week}"
-    worksheet.append([f"Legkalender week {week} {year}"])
+    worksheet.title = f"Leeftijdsweek {flock_week}"
+    worksheet.append([f"Legkalender leeftijdsweek {flock_week} ({week_start})"])
     worksheet.append([])
     worksheet.append(WEEK_HEADERS)
 
@@ -87,8 +87,8 @@ def weekly_calendar_xlsx(
 
 def weekly_calendar_pdf(
     *,
-    year: int,
-    week: int,
+    flock_week: int,
+    week_start: object,
     rows: list[dict[str, object]],
     totals: dict[str, float],
 ) -> BytesIO:
@@ -138,7 +138,10 @@ def weekly_calendar_pdf(
     )
     document.build(
         [
-            Paragraph(f"Legkalender week {week} {year}", styles["Title"]),
+            Paragraph(
+                f"Legkalender leeftijdsweek {flock_week} ({week_start})",
+                styles["Title"],
+            ),
             Spacer(1, 12),
             table,
         ]

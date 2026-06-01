@@ -1,6 +1,7 @@
 """Flask app factory for the kippen registratie app."""
 
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 from typing import Optional
@@ -45,7 +46,6 @@ KIPPEN_APPLICATION_KEY = "kippen"
 KIPPEN_ADMIN_PREFIXES = (
     "/kippen/flocks",
     "/kippen/packaging-weights",
-    "/kippen/week",
     "/kippen/export",
 )
 KIPPEN_WORKER_PREFIXES = (
@@ -54,6 +54,7 @@ KIPPEN_WORKER_PREFIXES = (
     "/kippen/dead-hens",
     "/kippen/outside-nest-rounds",
     "/kippen/pallet-weights",
+    "/kippen/week",
 )
 
 
@@ -73,6 +74,38 @@ def create_app(session_factory=None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=app_config.cookie_secure,
     )
+
+    @app.context_processor
+    def inject_kippen_user():
+        user = _current_user()
+        if user is None:
+            return {}
+
+        auth_service = _auth_service()
+        is_admin = auth_service.user_has_application_role(
+            user.id,
+            KIPPEN_APPLICATION_KEY,
+            "admin",
+        )
+        is_worker = auth_service.user_has_application_role(
+            user.id,
+            KIPPEN_APPLICATION_KEY,
+            "worker",
+        )
+        display_name = _current_username()
+        return {
+            "kippen_user": {
+                "id": user.id,
+                "username": display_name,
+                "display_name": display_name,
+                "is_admin": is_admin,
+                "is_worker": is_worker,
+            },
+        }
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template("403.html"), 403
 
     @app.before_request
     def require_shared_kippen_access():
@@ -129,21 +162,23 @@ def create_app(session_factory=None) -> Flask:
     def dashboard():
         repositories = _repositories()
         today = date.today()
-        today_egg_registration = repositories.eggs.get_by_house_and_date(today)
-        today_feed_water_registration = repositories.feed_water.get_by_house_and_date(
-            today,
+        yesterday = today - timedelta(days=1)
+        yesterday_egg_registration = repositories.eggs.get_by_house_and_date(yesterday)
+        yesterday_feed_water_registration = (
+            repositories.feed_water.get_by_house_and_date(yesterday)
         )
         active_flock = repositories.flocks.get_current_active_flock()
         return render_template(
             "dashboard.html",
             today=today,
-            today_egg_registration=today_egg_registration,
-            today_feed_water_registration=today_feed_water_registration,
+            yesterday=yesterday,
+            yesterday_egg_registration=yesterday_egg_registration,
+            yesterday_feed_water_registration=yesterday_feed_water_registration,
             active_flock=active_flock,
             active_flock_age=flock_age.flock_age_context(active_flock, today),
-            dead_hens_today=repositories.dead_hens.count_for_date(today),
-            outside_nest_eggs_today=repositories.outside_nest_rounds.count_for_date(
-                today,
+            dead_hens_yesterday=repositories.dead_hens.count_for_date(yesterday),
+            outside_nest_eggs_yesterday=repositories.outside_nest_rounds.count_for_date(
+                yesterday,
             ),
             recent_egg_registrations=repositories.eggs.list_recent(limit=5),
             recent_feed_water_registrations=repositories.feed_water.list_recent(
@@ -154,8 +189,8 @@ def create_app(session_factory=None) -> Flask:
                 limit=5,
             ),
             recent_pallet_weights=repositories.pallet_weights.list_recent(limit=5),
-            today_average_egg_weight_grams=_average_egg_weight_grams(
-                repositories.pallet_weights.list_between(today, today),
+            yesterday_average_egg_weight_grams=_average_egg_weight_grams(
+                repositories.pallet_weights.list_between(yesterday, yesterday),
             ),
         )
 
@@ -423,6 +458,7 @@ def create_app(session_factory=None) -> Flask:
         registration = repositories.eggs.get_egg_registration_by_id(registration_id)
         if registration is None:
             abort(404)
+        _require_admin_or_owner(registration)
 
         active_flock = repositories.flocks.get_active_flock_for_date(
             registration.registration_date,
@@ -454,6 +490,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if existing_registration is None:
             abort(404)
+        _require_admin_or_owner(existing_registration)
 
         registration, errors, values = eggs.build_egg_registration_from_form(
             request.form,
@@ -518,10 +555,12 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/eggs/<int:registration_id>/delete")
     @login_required
     def egg_registrations_delete(registration_id: int):
-        deleted = _repositories().eggs.delete_egg_registration(registration_id)
-        if not deleted:
+        repositories = _repositories()
+        registration = repositories.eggs.get_egg_registration_by_id(registration_id)
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.eggs.delete_egg_registration(registration_id)
         flash("Eiregistratie verwijderd.", "success")
         return redirect(url_for("egg_registrations_list"))
 
@@ -617,6 +656,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if registration is None:
             abort(404)
+        _require_admin_or_owner(registration)
 
         active_flock = repositories.flocks.get_active_flock_for_date(
             registration.registration_date,
@@ -650,6 +690,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if existing_registration is None:
             abort(404)
+        _require_admin_or_owner(existing_registration)
 
         registration, errors, values = (
             feed_water.build_feed_water_registration_from_form(
@@ -716,12 +757,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/feed-water/<int:registration_id>/delete")
     @login_required
     def feed_water_registrations_delete(registration_id: int):
-        deleted = _repositories().feed_water.delete_feed_water_registration(
+        repositories = _repositories()
+        registration = repositories.feed_water.get_feed_water_registration_by_id(
             registration_id,
         )
-        if not deleted:
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.feed_water.delete_feed_water_registration(registration_id)
         flash("Water en voer registratie verwijderd.", "success")
         return redirect(url_for("feed_water_registrations_list"))
 
@@ -732,7 +775,9 @@ def create_app(session_factory=None) -> Flask:
         active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "dead_hen_form.html",
-            values=dead_hens.default_values(datetime.now()),
+            values=dead_hens.default_values(
+                datetime.now(tz=ZoneInfo("Europe/Amsterdam"))
+            ),
             errors={},
             stable_sides=dead_hens.STABLE_SIDES,
             walkways=dead_hens.WALKWAYS,
@@ -811,12 +856,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/dead-hens/<int:registration_id>/delete")
     @login_required
     def dead_hens_delete(registration_id: int):
-        deleted = _repositories().dead_hens.delete_dead_hen_registration(
+        repositories = _repositories()
+        registration = repositories.dead_hens.get_dead_hen_registration_by_id(
             registration_id,
         )
-        if not deleted:
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.dead_hens.delete_dead_hen_registration(registration_id)
         flash("Dode hen registratie verwijderd.", "success")
         return redirect(url_for("dead_hens_list"))
 
@@ -827,7 +874,9 @@ def create_app(session_factory=None) -> Flask:
         active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "outside_nest_round_form.html",
-            values=outside_nest.default_values(datetime.now()),
+            values=outside_nest.default_values(
+                datetime.now(tz=ZoneInfo("Europe/Amsterdam"))
+            ),
             errors={},
             action_url=url_for("outside_nest_rounds_new_post"),
             active_flock=active_flock,
@@ -897,12 +946,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/outside-nest-rounds/<int:round_id>/delete")
     @login_required
     def outside_nest_rounds_delete(round_id: int):
-        deleted = _repositories().outside_nest_rounds.delete_outside_nest_egg_round(
+        repositories = _repositories()
+        round_obj = repositories.outside_nest_rounds.get_outside_nest_egg_round_by_id(
             round_id,
         )
-        if not deleted:
+        if round_obj is None:
             abort(404)
-
+        _require_admin_or_owner(round_obj)
+        repositories.outside_nest_rounds.delete_outside_nest_egg_round(round_id)
         flash("Buitennest ronde verwijderd.", "success")
         return redirect(url_for("outside_nest_rounds_list"))
 
@@ -1148,6 +1199,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if registration is None:
             abort(404)
+        _require_admin_or_owner(registration)
 
         selected_config = (
             repositories.packaging_weights.get_packaging_weight_config_by_id(
@@ -1190,6 +1242,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if existing_registration is None:
             abort(404)
+        _require_admin_or_owner(existing_registration)
 
         selected_config = _packaging_config_from_form(repositories, request.form)
         registration, errors, values = (
@@ -1251,69 +1304,89 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/pallet-weights/<int:registration_id>/delete")
     @login_required
     def pallet_weights_delete(registration_id: int):
-        deleted = _repositories().pallet_weights.delete_pallet_weight_registration(
+        repositories = _repositories()
+        registration = repositories.pallet_weights.get_pallet_weight_registration_by_id(
             registration_id,
         )
-        if not deleted:
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.pallet_weights.delete_pallet_weight_registration(registration_id)
         flash("Palletgewicht verwijderd.", "success")
         return redirect(url_for("pallet_weights_list"))
 
     @app.get("/kippen/week")
     @login_required
     def week_current():
-        iso_year, iso_week, _ = date.today().isocalendar()
-        return redirect(url_for("week_overview", year=iso_year, week=iso_week))
+        active_flock = _repositories().flocks.get_current_active_flock()
+        if active_flock is None:
+            return redirect(url_for("dashboard"))
+        elapsed = (date.today() - active_flock.date_of_birth).days
+        curve_day = max(elapsed - 1, 0)
+        return redirect(url_for("week_overview", flock_week=curve_day // 7))
 
-    @app.get("/kippen/week/<int:year>/<int:week>")
+    @app.get("/kippen/week/<int:flock_week>")
     @login_required
-    def week_overview(year: int, week: int):
-        rows = _week_rows(year, week)
-
+    def week_overview(flock_week: int):
+        repositories = _repositories()
+        active_flock = repositories.flocks.get_current_active_flock()
+        if active_flock is None:
+            abort(404)
+        week_days = _flock_week_days(active_flock, flock_week)
+        rows = _week_rows(week_days)
         return render_template(
             "week.html",
-            year=year,
-            week=week,
-            previous_week=_offset_week(year, week, -1),
-            next_week=_offset_week(year, week, 1),
+            flock_week=flock_week,
+            active_flock=active_flock,
+            week_start=week_days[0],
+            week_end=week_days[-1],
+            previous_flock_week=max(0, flock_week - 1),
+            next_flock_week=flock_week + 1,
             rows=rows,
             totals=_week_totals(rows),
         )
 
-    @app.get("/kippen/week/<int:year>/<int:week>/export.xlsx")
+    @app.get("/kippen/week/<int:flock_week>/export.xlsx")
     @login_required
-    def week_export_xlsx(year: int, week: int):
-        rows = _week_rows(year, week)
+    def week_export_xlsx(flock_week: int):
+        active_flock = _repositories().flocks.get_current_active_flock()
+        if active_flock is None:
+            abort(404)
+        week_days = _flock_week_days(active_flock, flock_week)
+        rows = _week_rows(week_days)
         output = exports.weekly_calendar_xlsx(
-            year=year,
-            week=week,
+            flock_week=flock_week,
+            week_start=week_days[0],
             rows=rows,
             totals=_week_totals(rows),
         )
         return send_file(
             output,
             as_attachment=True,
-            download_name=f"legkalender-week-{year}-{week:02d}.xlsx",
+            download_name=f"legkalender-leeftijdsweek-{flock_week:03d}.xlsx",
             mimetype=(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ),
         )
 
-    @app.get("/kippen/week/<int:year>/<int:week>/export.pdf")
+    @app.get("/kippen/week/<int:flock_week>/export.pdf")
     @login_required
-    def week_export_pdf(year: int, week: int):
-        rows = _week_rows(year, week)
+    def week_export_pdf(flock_week: int):
+        active_flock = _repositories().flocks.get_current_active_flock()
+        if active_flock is None:
+            abort(404)
+        week_days = _flock_week_days(active_flock, flock_week)
+        rows = _week_rows(week_days)
         output = exports.weekly_calendar_pdf(
-            year=year,
-            week=week,
+            flock_week=flock_week,
+            week_start=week_days[0],
             rows=rows,
             totals=_week_totals(rows),
         )
         return send_file(
             output,
             as_attachment=True,
-            download_name=f"legkalender-week-{year}-{week:02d}.pdf",
+            download_name=f"legkalender-leeftijdsweek-{flock_week:03d}.pdf",
             mimetype="application/pdf",
         )
 
@@ -1639,6 +1712,36 @@ def _current_username() -> str:
     return user.username
 
 
+def _registration_owned_by_current_user(registration) -> bool:
+    owner = getattr(registration, "created_by", None) or getattr(
+        registration,
+        "registered_by",
+        None,
+    )
+    if owner is None:
+        return False
+
+    current_username = _current_username()
+    if current_username == "":
+        return False
+
+    return owner.strip() == current_username.strip()
+
+
+def _require_admin_or_owner(registration) -> None:
+    user = _current_user()
+    if user is None:
+        abort(403)
+    if _auth_service().user_has_application_role(
+        user.id,
+        KIPPEN_APPLICATION_KEY,
+        "admin",
+    ):
+        return
+    if not _registration_owned_by_current_user(registration):
+        abort(403)
+
+
 def _path_has_prefix(path: str, prefixes: tuple[str, ...]) -> bool:
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in prefixes)
 
@@ -1849,27 +1952,13 @@ def _missing_active_flock_message(house_id: str) -> str:
     )
 
 
-def _week_days(year: int, week: int) -> Optional[list[date]]:
-    try:
-        first_day = date.fromisocalendar(year, week, 1)
-    except ValueError:
-        return None
-
-    return [first_day + timedelta(days=offset) for offset in range(7)]
+def _flock_week_days(flock, flock_week: int) -> list[date]:
+    # curve_day W*7 = elapsed_days W*7+1, so start = dob + W*7+1 days
+    start = flock.date_of_birth + timedelta(days=flock_week * 7 + 1)
+    return [start + timedelta(days=i) for i in range(7)]
 
 
-def _offset_week(year: int, week: int, offset: int) -> tuple[int, int]:
-    first_day = date.fromisocalendar(year, week, 1)
-    target_day = first_day + timedelta(weeks=offset)
-    target_year, target_week, _ = target_day.isocalendar()
-    return target_year, target_week
-
-
-def _week_rows(year: int, week: int) -> list[dict[str, object]]:
-    week_days = _week_days(year, week)
-    if week_days is None:
-        abort(404)
-
+def _week_rows(week_days: list[date]) -> list[dict[str, object]]:
     repositories = _repositories()
     egg_registrations = repositories.eggs.list_between(week_days[0], week_days[-1])
     feed_water_registrations = repositories.feed_water.list_between(

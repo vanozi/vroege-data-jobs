@@ -1,6 +1,6 @@
 """Route tests for the kippen registratie app."""
 
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -240,12 +240,12 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
-    _create_packaging_weight_config(client, start_date=date.today().isoformat())
-    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    _create_packaging_weight_config(client, start_date=yesterday)
     client.post(
         "/kippen/eggs/new",
         data={
-            "registration_date": today,
+            "registration_date": yesterday,
             "first_quality_eggs": "100",
             "second_quality_eggs": "5",
         },
@@ -253,28 +253,28 @@ def test_dashboard_shows_split_registration_status_blocks(monkeypatch):
     client.post(
         "/kippen/feed-water/new",
         data={
-            "registration_date": today,
+            "registration_date": yesterday,
             "water_ml": "199555",
             "feed_grams": "109255",
         },
     )
     _create_pallet_weight_registration(
         client,
-        registration_date=today,
+        registration_date=yesterday,
         pallet_weight_kg="700",
     )
 
     response = client.get("/kippen/dashboard")
 
     assert response.status_code == 200
-    assert "Eieren vandaag" in response.text
+    assert "Eieren gisteren" in response.text
     assert "105" in response.text
-    assert "Water en voer vandaag" in response.text
+    assert "Water en voer gisteren" in response.text
     assert "199555 ml" in response.text
     assert "109255 gram voer" in response.text
     assert "Laatste eiregistraties" in response.text
     assert "Laatste water en voer" in response.text
-    assert "Eigewicht vandaag" in response.text
+    assert "Eigewicht gisteren" in response.text
     assert "Palletgewicht registreren" in response.text
     assert "Leeggoed beheren" in response.text
     assert "Palletgewichten CSV" in response.text
@@ -901,10 +901,10 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     _create_pallet_weight_registration(client, pallet_weight_kg="700")
     _create_pallet_weight_registration(client, pallet_weight_kg="710")
 
-    response = client.get("/kippen/week/2026/22")
+    response = client.get("/kippen/week/33")
 
     assert response.status_code == 200
-    assert "Week 22" in response.text
+    assert "Leeftijdsweek 33" in response.text
     assert "2026-05-26" in response.text
     assert "Actief koppel" in response.text
     assert "33 weken en 5 dagen" in response.text
@@ -1056,7 +1056,7 @@ def test_dead_hen_counts_are_visible_in_week(monkeypatch):
         },
     )
 
-    week_response = client.get("/kippen/week/2026/22")
+    week_response = client.get("/kippen/week/33")
 
     assert week_response.status_code == 200
     assert "Week totaal" in week_response.text
@@ -1157,23 +1157,23 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
     client, _ = _client(monkeypatch)
     _login(client)
     _create_active_flock(client)
-    today = date.today()
+    yesterday = date.today() - timedelta(days=1)
     week_day = date(2026, 5, 26)
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": f"{today.isoformat()}T10:30",
+            "round_at": f"{yesterday.isoformat()}T10:30",
             "egg_count": "12",
         },
     )
     client.post(
         "/kippen/outside-nest-rounds/new",
         data={
-            "round_at": f"{today.isoformat()}T15:00",
+            "round_at": f"{yesterday.isoformat()}T15:00",
             "egg_count": "8",
         },
     )
-    if today != week_day:
+    if yesterday != week_day:
         client.post(
             "/kippen/outside-nest-rounds/new",
             data={
@@ -1190,10 +1190,10 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
         )
 
     dashboard_response = client.get("/kippen/dashboard")
-    week_response = client.get("/kippen/week/2026/22")
+    week_response = client.get("/kippen/week/33")
 
     assert dashboard_response.status_code == 200
-    assert "Buitennest eieren vandaag" in dashboard_response.text
+    assert "Buitennest eieren gisteren" in dashboard_response.text
     assert ">20<" in dashboard_response.text
     assert week_response.status_code == 200
     assert "Buitennest" in week_response.text
@@ -1502,18 +1502,19 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     _create_pallet_weight_registration(client, pallet_weight_kg="700")
     _create_pallet_weight_registration(client, pallet_weight_kg="710")
 
-    response = client.get("/kippen/week/2026/22/export.xlsx")
+    response = client.get("/kippen/week/33/export.xlsx")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    assert "legkalender-week-2026-22.xlsx" in response.headers["Content-Disposition"]
+    assert "legkalender-leeftijdsweek-033.xlsx" in response.headers["Content-Disposition"]
     assert response.data.startswith(b"PK")
     workbook = load_workbook(BytesIO(response.data))
     worksheet = workbook.active
     headers = [cell.value for cell in worksheet[3]]
-    row = [cell.value for cell in worksheet[5]]
+    # flock_week 33 starts on day 232 (2026-05-21); 2026-05-26 is day 5 (0-indexed) → row 9
+    row = [cell.value for cell in worksheet[9]]
     assert "Koppel" in headers
     assert "Leeftijd" in headers
     assert "Eigewicht (g)" in headers
@@ -1529,12 +1530,13 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
 def test_week_pdf_export_downloads_pdf(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
-    response = client.get("/kippen/week/2026/22/export.pdf")
+    response = client.get("/kippen/week/33/export.pdf")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("application/pdf")
-    assert "legkalender-week-2026-22.pdf" in response.headers["Content-Disposition"]
+    assert "legkalender-leeftijdsweek-033.pdf" in response.headers["Content-Disposition"]
     assert response.data.startswith(b"%PDF")
 
 
@@ -1566,6 +1568,81 @@ def test_raw_eggs_csv_export_downloads_csv(monkeypatch):
     assert "Actief koppel" in csv_text
     assert "2026-05-26" in csv_text
     assert "Eieren" in csv_text
+
+
+def test_worker_dashboard_hides_admin_shortcuts(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/dashboard")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "Leeggoed beheren" not in body
+    assert "Koppels beheren" not in body
+    assert "Eieren CSV" not in body
+    assert "Eieren registreren" in body
+    assert "Water en voer registreren" in body
+    assert "Dode hen registreren" in body
+    assert "Buitennest ronde registreren" in body
+    assert "Palletgewicht registreren" in body
+    assert "Weekoverzicht bekijken" in body
+
+
+def test_admin_dashboard_shows_admin_shortcuts(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+
+    response = client.get("/kippen/dashboard")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "Leeggoed beheren" in body
+    assert "Koppels beheren" in body
+    assert "Eieren CSV" in body
+    assert "Weekoverzicht bekijken" in body
+
+
+def test_worker_dashboard_active_flock_is_not_a_link(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/dashboard")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "Actief koppel" in body
+    assert "/kippen/flocks/1" not in body
+
+    _login(client, user_id=1, display_name="admin")
+    admin_response = client.get("/kippen/dashboard")
+    admin_body = admin_response.data.decode()
+    assert "/kippen/flocks/1" in admin_body
+
+
+def test_worker_can_open_week_overview(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/week/33")
+
+    assert response.status_code == 200
+
+
+def test_friendly_403_page_on_admin_route(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/flocks")
+    body = response.data.decode()
+
+    assert response.status_code == 403
+    assert "Geen toegang" in body
+    assert "/kippen/dashboard" in body
 
 
 def test_raw_feed_water_csv_export_downloads_csv(monkeypatch):
@@ -1698,3 +1775,144 @@ def test_raw_outside_nest_csv_export_includes_flock_context(monkeypatch):
     assert "flock_name" in csv_text
     assert "flock_age_weeks" in csv_text
     assert "Actief koppel" in csv_text
+
+
+def test_worker_can_edit_own_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    response = client.post(
+        f"/kippen/eggs/{reg.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "110",
+            "second_quality_eggs": "5",
+        },
+    )
+
+    assert response.status_code == 302
+
+
+def test_worker_cannot_edit_other_users_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    _login(client, user_id=2, display_name="other_worker")
+    response = client.post(
+        f"/kippen/eggs/{reg.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "110",
+            "second_quality_eggs": "5",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_worker_cannot_delete_other_users_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    _login(client, user_id=2, display_name="other_worker")
+    response = client.post(f"/kippen/eggs/{reg.id}/delete")
+
+    assert response.status_code == 403
+    with Session(engine) as session:
+        still_exists = session.exec(
+            select(EggRegistration).where(EggRegistration.id == reg.id)
+        ).first()
+    assert still_exists is not None
+
+
+def test_admin_can_edit_any_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    _login(client, user_id=1, display_name="admin")
+    response = client.post(
+        f"/kippen/eggs/{reg.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "200",
+            "second_quality_eggs": "10",
+        },
+    )
+
+    assert response.status_code == 302
+
+
+def test_registration_list_hides_buttons_for_other_users(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-25",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    _login(client, user_id=2, display_name="worker")
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "110",
+            "second_quality_eggs": "3",
+        },
+    )
+
+    response = client.get("/kippen/eggs")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "/kippen/eggs/2/edit" in body
+    assert "/kippen/eggs/1/edit" not in body

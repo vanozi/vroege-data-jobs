@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Geen toegang | Kippen Registratie{% endblock %}
+
+{% block content %}
+<div class="box">
+  <h1 class="title is-4">Geen toegang</h1>
+  <p class="subtitle is-6">
+    Deze pagina is alleen voor beheerders. Vraag een beheerder om toegang
+    of ga terug naar je overzicht.
+  </p>
+  <div class="buttons">
+    <a class="button is-link" href="{{ url_for('dashboard') }}">Terug naar overzicht</a>
+  </div>
+</div>
+{% endblock %}
