@@ -1773,3 +1773,144 @@ def test_raw_outside_nest_csv_export_includes_flock_context(monkeypatch):
     assert "flock_name" in csv_text
     assert "flock_age_weeks" in csv_text
     assert "Actief koppel" in csv_text
+
+
+def test_worker_can_edit_own_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    response = client.post(
+        f"/kippen/eggs/{reg.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "110",
+            "second_quality_eggs": "5",
+        },
+    )
+
+    assert response.status_code == 302
+
+
+def test_worker_cannot_edit_other_users_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    _login(client, user_id=2, display_name="other_worker")
+    response = client.post(
+        f"/kippen/eggs/{reg.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "110",
+            "second_quality_eggs": "5",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_worker_cannot_delete_other_users_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    _login(client, user_id=2, display_name="other_worker")
+    response = client.post(f"/kippen/eggs/{reg.id}/delete")
+
+    assert response.status_code == 403
+    with Session(engine) as session:
+        still_exists = session.exec(
+            select(EggRegistration).where(EggRegistration.id == reg.id)
+        ).first()
+    assert still_exists is not None
+
+
+def test_admin_can_edit_any_registration(monkeypatch):
+    client, engine = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    with Session(engine) as session:
+        reg = session.exec(select(EggRegistration)).first()
+
+    _login(client, user_id=1, display_name="admin")
+    response = client.post(
+        f"/kippen/eggs/{reg.id}/edit",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "200",
+            "second_quality_eggs": "10",
+        },
+    )
+
+    assert response.status_code == 302
+
+
+def test_registration_list_hides_buttons_for_other_users(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-25",
+            "first_quality_eggs": "100",
+            "second_quality_eggs": "5",
+        },
+    )
+    _login(client, user_id=2, display_name="worker")
+    client.post(
+        "/kippen/eggs/new",
+        data={
+            "registration_date": "2026-05-26",
+            "first_quality_eggs": "110",
+            "second_quality_eggs": "3",
+        },
+    )
+
+    response = client.get("/kippen/eggs")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "/kippen/eggs/2/edit" in body
+    assert "/kippen/eggs/1/edit" not in body

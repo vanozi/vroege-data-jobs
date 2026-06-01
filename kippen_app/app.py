@@ -455,6 +455,7 @@ def create_app(session_factory=None) -> Flask:
         registration = repositories.eggs.get_egg_registration_by_id(registration_id)
         if registration is None:
             abort(404)
+        _require_admin_or_owner(registration)
 
         active_flock = repositories.flocks.get_active_flock_for_date(
             registration.registration_date,
@@ -486,6 +487,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if existing_registration is None:
             abort(404)
+        _require_admin_or_owner(existing_registration)
 
         registration, errors, values = eggs.build_egg_registration_from_form(
             request.form,
@@ -550,10 +552,12 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/eggs/<int:registration_id>/delete")
     @login_required
     def egg_registrations_delete(registration_id: int):
-        deleted = _repositories().eggs.delete_egg_registration(registration_id)
-        if not deleted:
+        repositories = _repositories()
+        registration = repositories.eggs.get_egg_registration_by_id(registration_id)
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.eggs.delete_egg_registration(registration_id)
         flash("Eiregistratie verwijderd.", "success")
         return redirect(url_for("egg_registrations_list"))
 
@@ -649,6 +653,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if registration is None:
             abort(404)
+        _require_admin_or_owner(registration)
 
         active_flock = repositories.flocks.get_active_flock_for_date(
             registration.registration_date,
@@ -682,6 +687,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if existing_registration is None:
             abort(404)
+        _require_admin_or_owner(existing_registration)
 
         registration, errors, values = (
             feed_water.build_feed_water_registration_from_form(
@@ -748,12 +754,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/feed-water/<int:registration_id>/delete")
     @login_required
     def feed_water_registrations_delete(registration_id: int):
-        deleted = _repositories().feed_water.delete_feed_water_registration(
+        repositories = _repositories()
+        registration = repositories.feed_water.get_feed_water_registration_by_id(
             registration_id,
         )
-        if not deleted:
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.feed_water.delete_feed_water_registration(registration_id)
         flash("Water en voer registratie verwijderd.", "success")
         return redirect(url_for("feed_water_registrations_list"))
 
@@ -843,12 +851,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/dead-hens/<int:registration_id>/delete")
     @login_required
     def dead_hens_delete(registration_id: int):
-        deleted = _repositories().dead_hens.delete_dead_hen_registration(
+        repositories = _repositories()
+        registration = repositories.dead_hens.get_dead_hen_registration_by_id(
             registration_id,
         )
-        if not deleted:
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.dead_hens.delete_dead_hen_registration(registration_id)
         flash("Dode hen registratie verwijderd.", "success")
         return redirect(url_for("dead_hens_list"))
 
@@ -929,12 +939,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/outside-nest-rounds/<int:round_id>/delete")
     @login_required
     def outside_nest_rounds_delete(round_id: int):
-        deleted = _repositories().outside_nest_rounds.delete_outside_nest_egg_round(
+        repositories = _repositories()
+        round_obj = repositories.outside_nest_rounds.get_outside_nest_egg_round_by_id(
             round_id,
         )
-        if not deleted:
+        if round_obj is None:
             abort(404)
-
+        _require_admin_or_owner(round_obj)
+        repositories.outside_nest_rounds.delete_outside_nest_egg_round(round_id)
         flash("Buitennest ronde verwijderd.", "success")
         return redirect(url_for("outside_nest_rounds_list"))
 
@@ -1180,6 +1192,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if registration is None:
             abort(404)
+        _require_admin_or_owner(registration)
 
         selected_config = (
             repositories.packaging_weights.get_packaging_weight_config_by_id(
@@ -1222,6 +1235,7 @@ def create_app(session_factory=None) -> Flask:
         )
         if existing_registration is None:
             abort(404)
+        _require_admin_or_owner(existing_registration)
 
         selected_config = _packaging_config_from_form(repositories, request.form)
         registration, errors, values = (
@@ -1283,12 +1297,14 @@ def create_app(session_factory=None) -> Flask:
     @app.post("/kippen/pallet-weights/<int:registration_id>/delete")
     @login_required
     def pallet_weights_delete(registration_id: int):
-        deleted = _repositories().pallet_weights.delete_pallet_weight_registration(
+        repositories = _repositories()
+        registration = repositories.pallet_weights.get_pallet_weight_registration_by_id(
             registration_id,
         )
-        if not deleted:
+        if registration is None:
             abort(404)
-
+        _require_admin_or_owner(registration)
+        repositories.pallet_weights.delete_pallet_weight_registration(registration_id)
         flash("Palletgewicht verwijderd.", "success")
         return redirect(url_for("pallet_weights_list"))
 
@@ -1685,6 +1701,20 @@ def _registration_owned_by_current_user(registration) -> bool:
         return False
 
     return owner.strip() == current_username.strip()
+
+
+def _require_admin_or_owner(registration) -> None:
+    user = _current_user()
+    if user is None:
+        abort(403)
+    if _auth_service().user_has_application_role(
+        user.id,
+        KIPPEN_APPLICATION_KEY,
+        "admin",
+    ):
+        return
+    if not _registration_owned_by_current_user(registration):
+        abort(403)
 
 
 def _path_has_prefix(path: str, prefixes: tuple[str, ...]) -> bool:

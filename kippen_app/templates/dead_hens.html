@@ -48,9 +48,11 @@
         <td>{{ registration.observations or "" }}</td>
         <td>{{ registration.registered_by or "" }}</td>
         <td class="has-text-right">
+          {% if kippen_user and (kippen_user.is_admin or registration.registered_by == kippen_user.username) %}
           <form method="post" action="{{ url_for('dead_hens_delete', registration_id=registration.id) }}">
             <button class="button is-small is-danger is-light" type="submit">Verwijderen</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

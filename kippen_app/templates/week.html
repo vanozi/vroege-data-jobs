@@ -103,12 +103,16 @@
         <td class="has-text-right">
           <div class="buttons are-small is-justify-content-flex-end">
             {% if egg_registration %}
-            <a class="button is-light" href="{{ url_for('egg_registrations_edit', registration_id=egg_registration.id) }}">Eieren</a>
+              {% if kippen_user and (kippen_user.is_admin or egg_registration.created_by == kippen_user.username) %}
+              <a class="button is-light" href="{{ url_for('egg_registrations_edit', registration_id=egg_registration.id) }}">Eieren</a>
+              {% endif %}
             {% else %}
             <a class="button is-light" href="{{ url_for('egg_registrations_new', date=row.date.isoformat()) }}">Eieren</a>
             {% endif %}
             {% if feed_water_registration %}
-            <a class="button is-light" href="{{ url_for('feed_water_registrations_edit', registration_id=feed_water_registration.id) }}">Water/voer</a>
+              {% if kippen_user and (kippen_user.is_admin or feed_water_registration.created_by == kippen_user.username) %}
+              <a class="button is-light" href="{{ url_for('feed_water_registrations_edit', registration_id=feed_water_registration.id) }}">Water/voer</a>
+              {% endif %}
             {% else %}
             <a class="button is-light" href="{{ url_for('feed_water_registrations_new', date=row.date.isoformat()) }}">Water/voer</a>
             {% endif %}
