@@ -15,7 +15,8 @@
       "mcp__playwright__browser_fill_form",
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_take_screenshot",
-      "mcp__playwright__browser_snapshot"
+      "mcp__playwright__browser_snapshot",
+      "PowerShell(docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d kippen-app 2>&1)"
     ]
   }
 }
