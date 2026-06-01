@@ -83,15 +83,21 @@
   <a class="button is-info" href="{{ url_for('outside_nest_rounds_new') }}">Buitennest ronde registreren</a>
   <a class="button is-primary" href="{{ url_for('pallet_weights_new') }}">Palletgewicht registreren</a>
   <a class="button is-success" href="{{ url_for('week_current') }}">Weekoverzicht bekijken</a>
+  {% if kippen_user and kippen_user.is_admin %}
   <a class="button is-light" href="{{ url_for('pallet_weights_list') }}">Palletgewichten</a>
   <a class="button is-light" href="{{ url_for('packaging_weights_list') }}">Leeggoed beheren</a>
   <a class="button is-light" href="{{ url_for('flocks_list') }}">Koppels beheren</a>
+  {% endif %}
 </div>
 
 <div class="notification is-light">
   <strong>Actief koppel:</strong>
   {% if active_flock %}
+  {% if kippen_user and kippen_user.is_admin %}
   <a href="{{ url_for('flocks_detail', flock_id=active_flock.id) }}">{{ active_flock.flock_name }}</a>
+  {% else %}
+  {{ active_flock.flock_name }}
+  {% endif %}
   sinds {{ active_flock.placement_date }}
   {% if active_flock_age %}
   &middot; leeftijd {{ active_flock_age.label }} &middot; dag {{ active_flock_age.total_days }}
@@ -101,6 +107,7 @@
   {% endif %}
 </div>
 
+{% if kippen_user and kippen_user.is_admin %}
 <div class="buttons are-small">
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='eggs') }}">Eieren CSV</a>
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='feed-water') }}">Water en voer CSV</a>
@@ -109,6 +116,7 @@
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='pallet-weights') }}">Palletgewichten CSV</a>
   <a class="button is-light" href="{{ url_for('raw_records_csv', record_type='packaging-weights') }}">Leeggoed CSV</a>
 </div>
+{% endif %}
 
 <div class="columns mt-4">
   <div class="column">

@@ -1568,6 +1568,81 @@ def test_raw_eggs_csv_export_downloads_csv(monkeypatch):
     assert "Eieren" in csv_text
 
 
+def test_worker_dashboard_hides_admin_shortcuts(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/dashboard")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "Leeggoed beheren" not in body
+    assert "Koppels beheren" not in body
+    assert "Eieren CSV" not in body
+    assert "Eieren registreren" in body
+    assert "Water en voer registreren" in body
+    assert "Dode hen registreren" in body
+    assert "Buitennest ronde registreren" in body
+    assert "Palletgewicht registreren" in body
+    assert "Weekoverzicht bekijken" in body
+
+
+def test_admin_dashboard_shows_admin_shortcuts(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+
+    response = client.get("/kippen/dashboard")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "Leeggoed beheren" in body
+    assert "Koppels beheren" in body
+    assert "Eieren CSV" in body
+    assert "Weekoverzicht bekijken" in body
+
+
+def test_worker_dashboard_active_flock_is_not_a_link(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/dashboard")
+    body = response.data.decode()
+
+    assert response.status_code == 200
+    assert "Actief koppel" in body
+    assert "/kippen/flocks/1" not in body
+
+    _login(client, user_id=1, display_name="admin")
+    admin_response = client.get("/kippen/dashboard")
+    admin_body = admin_response.data.decode()
+    assert "/kippen/flocks/1" in admin_body
+
+
+def test_worker_can_open_week_overview(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=1, display_name="admin")
+    _create_active_flock(client)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/week/2026/22")
+
+    assert response.status_code == 200
+
+
+def test_friendly_403_page_on_admin_route(monkeypatch):
+    client, _ = _client(monkeypatch)
+    _login(client, user_id=2, display_name="worker")
+
+    response = client.get("/kippen/flocks")
+    body = response.data.decode()
+
+    assert response.status_code == 403
+    assert "Geen toegang" in body
+    assert "/kippen/dashboard" in body
+
+
 def test_raw_feed_water_csv_export_downloads_csv(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
