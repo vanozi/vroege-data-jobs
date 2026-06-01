@@ -15,7 +15,6 @@ from reportlab.platypus import TableStyle
 WEEK_HEADERS = [
     "Dag",
     "Datum",
-    "Koppel",
     "Leeftijd",
     "1e soort",
     "2e soort",
@@ -50,7 +49,6 @@ def weekly_calendar_xlsx(
     worksheet.append(
         [
             "Week totaal",
-            "",
             "",
             "",
             totals["first_quality_eggs"],
@@ -110,7 +108,6 @@ def weekly_calendar_pdf(
             "Week totaal",
             "",
             "",
-            "",
             totals["first_quality_eggs"],
             totals["second_quality_eggs"],
             totals["total_eggs"],
@@ -166,7 +163,6 @@ def _week_export_row(row: dict[str, object]) -> list[object]:
     return [
         row["weekday"],
         row["date"].isoformat(),
-        _flock_name(row),
         _flock_age_label(row),
         _egg_value(egg_registration, "first_quality_eggs"),
         _egg_value(egg_registration, "second_quality_eggs"),
