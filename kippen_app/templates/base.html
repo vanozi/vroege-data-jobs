@@ -12,6 +12,18 @@
   <body>
     <main class="section">
       <div class="container">
+        {% if kippen_user %}
+          <div class="level is-mobile mb-4">
+            <div class="level-left"></div>
+            <div class="level-right">
+              <span class="tag is-light is-medium">
+                {{ kippen_user.display_name }}
+                &middot;
+                {% if kippen_user.is_admin %}Beheerder{% else %}Medewerker{% endif %}
+              </span>
+            </div>
+          </div>
+        {% endif %}
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}

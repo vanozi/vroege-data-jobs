@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/bin/ls c:/Users/woute/repos/vroege-data-jobs/tests c:/Users/woute/repos/vroege-data-jobs/tests/kippen_app)",
+      "PowerShell(& \"$env:ProgramFiles\\\\GitHub CLI\\\\gh.exe\" auth status --show-token 2>&1 | Select-String -Pattern \"Token scopes|Token:\" -SimpleMatch; & \"$env:ProgramFiles\\\\GitHub CLI\\\\gh.exe\" api repos/vanozi/vroege-data-jobs --jq '.permissions')",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m ruff format kippen_app/app.py)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m ruff check --fix kippen_app/app.py)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/kippen_app/test_routes.py -x -q 2>&1)"
+    ]
+  }
+}

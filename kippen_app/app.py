@@ -45,7 +45,6 @@ KIPPEN_APPLICATION_KEY = "kippen"
 KIPPEN_ADMIN_PREFIXES = (
     "/kippen/flocks",
     "/kippen/packaging-weights",
-    "/kippen/week",
     "/kippen/export",
 )
 KIPPEN_WORKER_PREFIXES = (
@@ -54,6 +53,7 @@ KIPPEN_WORKER_PREFIXES = (
     "/kippen/dead-hens",
     "/kippen/outside-nest-rounds",
     "/kippen/pallet-weights",
+    "/kippen/week",
 )
 
 
@@ -73,6 +73,38 @@ def create_app(session_factory=None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=app_config.cookie_secure,
     )
+
+    @app.context_processor
+    def inject_kippen_user():
+        user = _current_user()
+        if user is None:
+            return {}
+
+        auth_service = _auth_service()
+        is_admin = auth_service.user_has_application_role(
+            user.id,
+            KIPPEN_APPLICATION_KEY,
+            "admin",
+        )
+        is_worker = auth_service.user_has_application_role(
+            user.id,
+            KIPPEN_APPLICATION_KEY,
+            "worker",
+        )
+        display_name = _current_username()
+        return {
+            "kippen_user": {
+                "id": user.id,
+                "username": display_name,
+                "display_name": display_name,
+                "is_admin": is_admin,
+                "is_worker": is_worker,
+            },
+        }
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template("403.html"), 403
 
     @app.before_request
     def require_shared_kippen_access():
@@ -1637,6 +1669,22 @@ def _current_username() -> str:
         return display_name.strip()
 
     return user.username
+
+
+def _registration_owned_by_current_user(registration) -> bool:
+    owner = getattr(registration, "created_by", None) or getattr(
+        registration,
+        "registered_by",
+        None,
+    )
+    if owner is None:
+        return False
+
+    current_username = _current_username()
+    if current_username == "":
+        return False
+
+    return owner.strip() == current_username.strip()
 
 
 def _path_has_prefix(path: str, prefixes: tuple[str, ...]) -> bool:
