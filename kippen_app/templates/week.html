@@ -1,38 +1,38 @@
 {% extends "base.html" %}
 
-{% block title %}Week {{ week }} | Kippen Registratie{% endblock %}
+{% block title %}Leeftijdsweek {{ flock_week }} | Kippen Registratie{% endblock %}
 
 {% block content %}
 <div class="level">
   <div class="level-left">
     <div>
-      <h1 class="title">Week {{ week }}</h1>
-      <p class="subtitle">Eieren, water en voer voor {{ year }}.</p>
+      <h1 class="title">Leeftijdsweek {{ flock_week }}</h1>
+      <p class="subtitle">{{ active_flock.flock_name }} &middot; {{ week_start }} t/m {{ week_end }}</p>
     </div>
   </div>
   <div class="level-right">
     <div class="buttons">
       <a
         class="button is-light"
-        href="{{ url_for('week_overview', year=previous_week[0], week=previous_week[1]) }}"
+        href="{{ url_for('week_overview', flock_week=previous_flock_week) }}"
       >
         Vorige week
       </a>
       <a
         class="button is-light"
-        href="{{ url_for('week_overview', year=next_week[0], week=next_week[1]) }}"
+        href="{{ url_for('week_overview', flock_week=next_flock_week) }}"
       >
         Volgende week
       </a>
       <a
         class="button is-success is-light"
-        href="{{ url_for('week_export_xlsx', year=year, week=week) }}"
+        href="{{ url_for('week_export_xlsx', flock_week=flock_week) }}"
       >
         Excel
       </a>
       <a
         class="button is-danger is-light"
-        href="{{ url_for('week_export_pdf', year=year, week=week) }}"
+        href="{{ url_for('week_export_pdf', flock_week=flock_week) }}"
       >
         PDF
       </a>
@@ -58,7 +58,6 @@
         <th class="has-text-right">Water (ml)</th>
         <th class="has-text-right">Voer (g)</th>
         <th>Opmerkingen</th>
-        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -100,24 +99,6 @@
           {% if egg_registration and egg_registration.notes and feed_water_registration and feed_water_registration.notes %} | {% endif %}
           {% if feed_water_registration and feed_water_registration.notes %}{{ feed_water_registration.notes }}{% endif %}
         </td>
-        <td class="has-text-right">
-          <div class="buttons are-small is-justify-content-flex-end">
-            {% if egg_registration %}
-              {% if kippen_user and (kippen_user.is_admin or egg_registration.created_by == kippen_user.username) %}
-              <a class="button is-light" href="{{ url_for('egg_registrations_edit', registration_id=egg_registration.id) }}">Eieren</a>
-              {% endif %}
-            {% else %}
-            <a class="button is-light" href="{{ url_for('egg_registrations_new', date=row.date.isoformat()) }}">Eieren</a>
-            {% endif %}
-            {% if feed_water_registration %}
-              {% if kippen_user and (kippen_user.is_admin or feed_water_registration.created_by == kippen_user.username) %}
-              <a class="button is-light" href="{{ url_for('feed_water_registrations_edit', registration_id=feed_water_registration.id) }}">Water/voer</a>
-              {% endif %}
-            {% else %}
-            <a class="button is-light" href="{{ url_for('feed_water_registrations_new', date=row.date.isoformat()) }}">Water/voer</a>
-            {% endif %}
-          </div>
-        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -134,7 +115,7 @@
         </th>
         <th class="has-text-right">{{ totals.water_ml }}</th>
         <th class="has-text-right">{{ totals.feed_grams }}</th>
-        <th colspan="2"></th>
+        <th></th>
       </tr>
     </tfoot>
   </table>

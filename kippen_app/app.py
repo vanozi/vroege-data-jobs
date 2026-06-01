@@ -1,6 +1,7 @@
 """Flask app factory for the kippen registratie app."""
 
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 from typing import Optional
@@ -774,7 +775,9 @@ def create_app(session_factory=None) -> Flask:
         active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "dead_hen_form.html",
-            values=dead_hens.default_values(datetime.now()),
+            values=dead_hens.default_values(
+                datetime.now(tz=ZoneInfo("Europe/Amsterdam"))
+            ),
             errors={},
             stable_sides=dead_hens.STABLE_SIDES,
             walkways=dead_hens.WALKWAYS,
@@ -871,7 +874,9 @@ def create_app(session_factory=None) -> Flask:
         active_flock = _repositories().flocks.get_active_flock_for_date(today)
         return render_template(
             "outside_nest_round_form.html",
-            values=outside_nest.default_values(datetime.now()),
+            values=outside_nest.default_values(
+                datetime.now(tz=ZoneInfo("Europe/Amsterdam"))
+            ),
             errors={},
             action_url=url_for("outside_nest_rounds_new_post"),
             active_flock=active_flock,
@@ -1313,57 +1318,75 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/kippen/week")
     @login_required
     def week_current():
-        iso_year, iso_week, _ = date.today().isocalendar()
-        return redirect(url_for("week_overview", year=iso_year, week=iso_week))
+        active_flock = _repositories().flocks.get_current_active_flock()
+        if active_flock is None:
+            return redirect(url_for("dashboard"))
+        elapsed = (date.today() - active_flock.date_of_birth).days
+        curve_day = max(elapsed - 1, 0)
+        return redirect(url_for("week_overview", flock_week=curve_day // 7))
 
-    @app.get("/kippen/week/<int:year>/<int:week>")
+    @app.get("/kippen/week/<int:flock_week>")
     @login_required
-    def week_overview(year: int, week: int):
-        rows = _week_rows(year, week)
-
+    def week_overview(flock_week: int):
+        repositories = _repositories()
+        active_flock = repositories.flocks.get_current_active_flock()
+        if active_flock is None:
+            abort(404)
+        week_days = _flock_week_days(active_flock, flock_week)
+        rows = _week_rows(week_days)
         return render_template(
             "week.html",
-            year=year,
-            week=week,
-            previous_week=_offset_week(year, week, -1),
-            next_week=_offset_week(year, week, 1),
+            flock_week=flock_week,
+            active_flock=active_flock,
+            week_start=week_days[0],
+            week_end=week_days[-1],
+            previous_flock_week=max(0, flock_week - 1),
+            next_flock_week=flock_week + 1,
             rows=rows,
             totals=_week_totals(rows),
         )
 
-    @app.get("/kippen/week/<int:year>/<int:week>/export.xlsx")
+    @app.get("/kippen/week/<int:flock_week>/export.xlsx")
     @login_required
-    def week_export_xlsx(year: int, week: int):
-        rows = _week_rows(year, week)
+    def week_export_xlsx(flock_week: int):
+        active_flock = _repositories().flocks.get_current_active_flock()
+        if active_flock is None:
+            abort(404)
+        week_days = _flock_week_days(active_flock, flock_week)
+        rows = _week_rows(week_days)
         output = exports.weekly_calendar_xlsx(
-            year=year,
-            week=week,
+            flock_week=flock_week,
+            week_start=week_days[0],
             rows=rows,
             totals=_week_totals(rows),
         )
         return send_file(
             output,
             as_attachment=True,
-            download_name=f"legkalender-week-{year}-{week:02d}.xlsx",
+            download_name=f"legkalender-leeftijdsweek-{flock_week:03d}.xlsx",
             mimetype=(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ),
         )
 
-    @app.get("/kippen/week/<int:year>/<int:week>/export.pdf")
+    @app.get("/kippen/week/<int:flock_week>/export.pdf")
     @login_required
-    def week_export_pdf(year: int, week: int):
-        rows = _week_rows(year, week)
+    def week_export_pdf(flock_week: int):
+        active_flock = _repositories().flocks.get_current_active_flock()
+        if active_flock is None:
+            abort(404)
+        week_days = _flock_week_days(active_flock, flock_week)
+        rows = _week_rows(week_days)
         output = exports.weekly_calendar_pdf(
-            year=year,
-            week=week,
+            flock_week=flock_week,
+            week_start=week_days[0],
             rows=rows,
             totals=_week_totals(rows),
         )
         return send_file(
             output,
             as_attachment=True,
-            download_name=f"legkalender-week-{year}-{week:02d}.pdf",
+            download_name=f"legkalender-leeftijdsweek-{flock_week:03d}.pdf",
             mimetype="application/pdf",
         )
 
@@ -1929,27 +1952,13 @@ def _missing_active_flock_message(house_id: str) -> str:
     )
 
 
-def _week_days(year: int, week: int) -> Optional[list[date]]:
-    try:
-        first_day = date.fromisocalendar(year, week, 1)
-    except ValueError:
-        return None
-
-    return [first_day + timedelta(days=offset) for offset in range(7)]
+def _flock_week_days(flock, flock_week: int) -> list[date]:
+    # curve_day W*7 = elapsed_days W*7+1, so start = dob + W*7+1 days
+    start = flock.date_of_birth + timedelta(days=flock_week * 7 + 1)
+    return [start + timedelta(days=i) for i in range(7)]
 
 
-def _offset_week(year: int, week: int, offset: int) -> tuple[int, int]:
-    first_day = date.fromisocalendar(year, week, 1)
-    target_day = first_day + timedelta(weeks=offset)
-    target_year, target_week, _ = target_day.isocalendar()
-    return target_year, target_week
-
-
-def _week_rows(year: int, week: int) -> list[dict[str, object]]:
-    week_days = _week_days(year, week)
-    if week_days is None:
-        abort(404)
-
+def _week_rows(week_days: list[date]) -> list[dict[str, object]]:
     repositories = _repositories()
     egg_registrations = repositories.eggs.list_between(week_days[0], week_days[-1])
     feed_water_registrations = repositories.feed_water.list_between(

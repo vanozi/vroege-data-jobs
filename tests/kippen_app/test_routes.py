@@ -901,10 +901,10 @@ def test_week_overview_shows_saved_registration_and_totals(monkeypatch):
     _create_pallet_weight_registration(client, pallet_weight_kg="700")
     _create_pallet_weight_registration(client, pallet_weight_kg="710")
 
-    response = client.get("/kippen/week/2026/22")
+    response = client.get("/kippen/week/33")
 
     assert response.status_code == 200
-    assert "Week 22" in response.text
+    assert "Leeftijdsweek 33" in response.text
     assert "2026-05-26" in response.text
     assert "Actief koppel" in response.text
     assert "33 weken en 5 dagen" in response.text
@@ -1056,7 +1056,7 @@ def test_dead_hen_counts_are_visible_in_week(monkeypatch):
         },
     )
 
-    week_response = client.get("/kippen/week/2026/22")
+    week_response = client.get("/kippen/week/33")
 
     assert week_response.status_code == 200
     assert "Week totaal" in week_response.text
@@ -1190,7 +1190,7 @@ def test_outside_nest_round_counts_are_visible_in_dashboard_and_week(monkeypatch
         )
 
     dashboard_response = client.get("/kippen/dashboard")
-    week_response = client.get("/kippen/week/2026/22")
+    week_response = client.get("/kippen/week/33")
 
     assert dashboard_response.status_code == 200
     assert "Buitennest eieren gisteren" in dashboard_response.text
@@ -1502,18 +1502,19 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     _create_pallet_weight_registration(client, pallet_weight_kg="700")
     _create_pallet_weight_registration(client, pallet_weight_kg="710")
 
-    response = client.get("/kippen/week/2026/22/export.xlsx")
+    response = client.get("/kippen/week/33/export.xlsx")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    assert "legkalender-week-2026-22.xlsx" in response.headers["Content-Disposition"]
+    assert "legkalender-leeftijdsweek-033.xlsx" in response.headers["Content-Disposition"]
     assert response.data.startswith(b"PK")
     workbook = load_workbook(BytesIO(response.data))
     worksheet = workbook.active
     headers = [cell.value for cell in worksheet[3]]
-    row = [cell.value for cell in worksheet[5]]
+    # flock_week 33 starts on day 232 (2026-05-21); 2026-05-26 is day 5 (0-indexed) → row 9
+    row = [cell.value for cell in worksheet[9]]
     assert "Koppel" in headers
     assert "Leeftijd" in headers
     assert "Eigewicht (g)" in headers
@@ -1529,12 +1530,13 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
 def test_week_pdf_export_downloads_pdf(monkeypatch):
     client, _ = _client(monkeypatch)
     _login(client)
+    _create_active_flock(client)
 
-    response = client.get("/kippen/week/2026/22/export.pdf")
+    response = client.get("/kippen/week/33/export.pdf")
 
     assert response.status_code == 200
     assert response.headers["Content-Type"].startswith("application/pdf")
-    assert "legkalender-week-2026-22.pdf" in response.headers["Content-Disposition"]
+    assert "legkalender-leeftijdsweek-033.pdf" in response.headers["Content-Disposition"]
     assert response.data.startswith(b"%PDF")
 
 
@@ -1626,7 +1628,7 @@ def test_worker_can_open_week_overview(monkeypatch):
     _create_active_flock(client)
     _login(client, user_id=2, display_name="worker")
 
-    response = client.get("/kippen/week/2026/22")
+    response = client.get("/kippen/week/33")
 
     assert response.status_code == 200
 
