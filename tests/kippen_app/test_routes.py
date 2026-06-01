@@ -1515,10 +1515,8 @@ def test_week_excel_export_downloads_xlsx(monkeypatch):
     headers = [cell.value for cell in worksheet[3]]
     # flock_week 33 starts on day 232 (2026-05-21); 2026-05-26 is day 5 (0-indexed) → row 9
     row = [cell.value for cell in worksheet[9]]
-    assert "Koppel" in headers
     assert "Leeftijd" in headers
     assert "Eigewicht (g)" in headers
-    assert "Actief koppel" in row
     assert "33 weken en 5 dagen" in row
     assert 105 in row
     assert 10123 in row

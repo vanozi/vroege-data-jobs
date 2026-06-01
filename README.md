@@ -127,15 +127,9 @@ Current portal routes:
 - `/healthz`: healthcheck.
 
 Portal login users are stored in the shared auth tables. Run migrations and the
-`auth-bootstrap` tool before relying on `/login`. The legacy
-`PORTAL_ADMIN_USERNAME` and `PORTAL_ADMIN_PASSWORD_HASH` settings are no longer
-used by the central portal login.
-
-Create a password hash for legacy local checks or the separate Kippen login:
-
-```powershell
-.\.venv\Scripts\python.exe -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
-```
+`auth-bootstrap` tool before relying on `/login`. The `PORTAL_ADMIN_USERNAME`
+and `PORTAL_ADMIN_PASSWORD_HASH` settings are legacy and no longer used; do not
+add them to new deployments.
 
 Run the Flask portal locally from the repository root:
 
@@ -153,8 +147,6 @@ Optional local configuration:
 
 ```env
 PORTAL_SECRET_KEY=change-me
-PORTAL_ADMIN_USERNAME=admin
-PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=false
 ```
@@ -229,8 +221,6 @@ Set at least these values in `deploy/dashboard.env`:
 
 ```env
 PORTAL_SECRET_KEY=change-me
-PORTAL_ADMIN_USERNAME=admin
-PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_DEFAULT_USER_PASSWORD=welkom123
 AUTH_BOOTSTRAP_USERNAME=admin
 AUTH_BOOTSTRAP_PASSWORD=replace-with-temporary-password
@@ -375,8 +365,6 @@ Set at least these values in `deploy/dashboard.env`:
 
 ```env
 PORTAL_SECRET_KEY=change-me
-PORTAL_ADMIN_USERNAME=admin
-PORTAL_ADMIN_PASSWORD_HASH=...
 PORTAL_SESSION_HOURS=12
 PORTAL_COOKIE_SECURE=true
 PORTAL_DEFAULT_USER_PASSWORD=welkom123
@@ -402,18 +390,6 @@ TANK_TERMINAL_PASSWORD=...
 Do not wrap values in quotes in `deploy/dashboard.env`. Compose reads this file
 with `format: raw`, so quotes would be passed into the containers as literal
 characters.
-
-Keep Werkzeug password hashes in `deploy/dashboard.env`, not in the Compose
-`.env` file. Hashes can contain `$`, and Compose treats `$...` as variable
-interpolation in `.env`. The Compose services read `deploy/dashboard.env` with
-`env_file` format `raw` so password hashes are passed to the containers
-unchanged.
-
-Create a portal password hash from a machine with Werkzeug installed:
-
-```bash
-python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('replace-with-password'))"
-```
 
 Validate, migrate, and start the production stack:
 
@@ -518,6 +494,23 @@ The Kippen registratie app is served by the `kippen-app` service. Production
 uses `APP_HOST=app.gebroedersvroege.nl`; Traefik routes `/kippen` on that host
 to the app.
 
+Access requires a shared portal session and active `kippen` application access.
+The app enforces two roles within the `kippen` application:
+
+| Role | What a user can do |
+|---|---|
+| `worker` | Daily registration (eggs, water/voer, dead hens, outside-nest rounds, pallet weights), week overview (read-only), registration list pages with edit/delete on own entries only. |
+| `admin` | Everything a worker can do, plus: Leeggoed beheren, Koppels beheren, CSV exports, edit/delete any row regardless of who created it. |
+
+A user with both `admin` and `worker` roles gets the admin view. The bootstrap
+admin is automatically granted both roles for `kippen`. Grant only `worker` to
+farm employees who should do daily registrations but not manage flocks or
+packaging configurations.
+
+The header badge shows **Beheerder** or **Medewerker** so users know which view
+they are in. Workers who navigate to an admin-only URL see a friendly Dutch 403
+page with a link back to the dashboard rather than a bare error.
+
 Useful routes:
 
 - `/kippen/dashboard`: overview after login.
@@ -536,8 +529,8 @@ Useful routes:
 - `/kippen/feed-water`: recent water/feed registrations.
 - `/kippen/dead-hens/new`: dead hen registration.
 - `/kippen/outside-nest-rounds/new`: outside-nest egg round.
-- `/kippen/week`: current week overview.
-- `/kippen/week/<year>/<week>`: specific ISO week overview.
+- `/kippen/week`: redirect to the current flock age week.
+- `/kippen/week/<flock_week>`: week overview for flock age week N (e.g. `17` for the week the flock is 17w0d–17w6d old).
 
 Flock workflow:
 
@@ -591,8 +584,8 @@ pallet registrations in that week.
 
 Weekly exports:
 
-- `/kippen/week/<year>/<week>/export.xlsx`: Excel laying calendar export.
-- `/kippen/week/<year>/<week>/export.pdf`: PDF laying calendar export.
+- `/kippen/week/<flock_week>/export.xlsx`: Excel laying calendar export for flock age week N.
+- `/kippen/week/<flock_week>/export.pdf`: PDF laying calendar export for flock age week N.
 
 Raw CSV exports:
 
@@ -608,10 +601,10 @@ Raw CSV exports:
 Raw CSV exports include `flock_id`, `flock_name`, `flock_date_of_birth`,
 `flock_age_weeks`, and `flock_age_days`.
 
-Example:
+Example (flock age week 19):
 
 ```text
-https://app.gebroedersvroege.nl/kippen/week/2026/22/export.xlsx
+https://app.gebroedersvroege.nl/kippen/week/19/export.xlsx
 ```
 
 Backups are database-level. The PostgreSQL backup command above includes the
