@@ -7,7 +7,15 @@
       "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m ruff check --fix kippen_app/app.py)",
       "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/kippen_app/test_routes.py -x -q 2>&1)",
       "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m ruff format kippen_app/)",
-      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m ruff check --fix kippen_app/)"
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m ruff check --fix kippen_app/)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/kippen_app/test_routes.py -q 2>&1)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(docker compose -f docker-compose.yml -f docker-compose.local.yml ps --format \"table {{.Name}}\\\\t{{.Status}}\" 2>&1)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_snapshot"
     ]
   }
 }
