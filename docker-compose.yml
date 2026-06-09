@@ -100,6 +100,26 @@ services:
     networks:
       - dashboards
 
+  kippen-norms-seed:
+    build:
+      context: .
+      dockerfile: docker/database/Dockerfile
+    profiles:
+      - tools
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - python
+      - -m
+      - database.seeds.load_lay_curve_norms
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+
   datajob-uniform-agri:
     <<: *datajob-base
     command:
@@ -243,6 +263,55 @@ services:
       - traefik.http.routers.marimo-klauwgezondheid-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
       - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid
+
+  marimo-kippen-dashboard:
+    build:
+      context: .
+      dockerfile: docker/marimo/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/kippen_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2720"
+      - --base-url
+      - /kippen-dashboard
+      - --proxy
+      - https://${APP_HOST}
+      - --no-token
+    expose:
+      - "2720"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marimo-kippen-dashboard.rule=Host(`${APP_HOST}`) && PathPrefix(`/kippen-dashboard`)
+      - traefik.http.routers.marimo-kippen-dashboard.entrypoints=websecure
+      - traefik.http.routers.marimo-kippen-dashboard.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-kippen-dashboard.middlewares=portal-auth
+      - traefik.http.routers.marimo-kippen-dashboard.priority=100
+      - traefik.http.routers.marimo-kippen-dashboard.service=marimo-kippen-dashboard
+      - traefik.http.services.marimo-kippen-dashboard.loadbalancer.server.port=2720
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.rule=Host(`${APP_HOST}`) && Path(`/kippen-dashboard/manifest.json`)
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.entrypoints=websecure
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.middlewares=portal-auth
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.priority=200
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.service=marimo-kippen-dashboard
 
   marimo-tank-terminal:
     build:

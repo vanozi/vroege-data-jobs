@@ -44,22 +44,24 @@ def test_bootstrap_seeds_core_apps_roles_and_first_admin_access():
     user = context.users.get_user_by_username("ADMIN")
     applications = context.applications.list_applications()
 
-    assert result.applications_seeded == 4
+    assert result.applications_seeded == 5
     assert result.roles_seeded == 3
     assert result.admin_user_created
-    assert result.admin_access_grants == 4
-    assert result.admin_role_grants == 5
+    assert result.admin_access_grants == 5
+    assert result.admin_role_grants == 6
     assert user.first_name == "Admin"
     assert user.must_change_password is False
     assert service.verify_password(user.password_hash, "correct-password")
     assert [application.key for application in applications] == [
         "kippen",
+        "dashboard_kippen",
         "dashboard_klauwgezondheid",
         "dashboard_tank_terminal",
         "user_administration",
     ]
     assert _role_keys_for(context, user.id, "user_administration") == ["admin"]
     assert _role_keys_for(context, user.id, "kippen") == ["admin", "worker"]
+    assert _role_keys_for(context, user.id, "dashboard_kippen") == ["viewer"]
     assert _role_keys_for(context, user.id, "dashboard_klauwgezondheid") == ["viewer"]
     assert _role_keys_for(context, user.id, "dashboard_tank_terminal") == ["viewer"]
 
@@ -76,9 +78,9 @@ def test_bootstrap_is_idempotent_for_core_records_and_grants():
 
     assert second_result.admin_user_updated
     assert len(context.users.list_users()) == 1
-    assert len(context.applications.list_applications()) == 4
+    assert len(context.applications.list_applications()) == 5
     assert len(context.roles.list_roles()) == 3
-    assert len(context.access.list_user_applications(1)) == 4
+    assert len(context.access.list_user_applications(1)) == 5
 
 
 def test_bootstrap_skips_admin_when_users_exist_and_no_admin_config():

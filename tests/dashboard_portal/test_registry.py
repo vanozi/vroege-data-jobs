@@ -15,11 +15,13 @@ def clear_dashboard_registry_env(monkeypatch):
 def test_dashboard_registry_contains_default_dashboards():
     dashboards = registry.get_dashboard_links()
 
-    assert len(dashboards) == 2
-    assert dashboards[0].name == "Klauwgezondheid"
-    assert dashboards[0].url == "/klauwgezondheid"
-    assert dashboards[1].name == "Tanken"
-    assert dashboards[1].url == "/tank-terminal"
+    assert len(dashboards) == 3
+    assert dashboards[0].name == "Kippen dashboard"
+    assert dashboards[0].url == "/kippen-dashboard"
+    assert dashboards[1].name == "Klauwgezondheid"
+    assert dashboards[1].url == "/klauwgezondheid"
+    assert dashboards[2].name == "Tanken"
+    assert dashboards[2].url == "/tank-terminal"
 
 
 def test_dashboard_registry_can_be_configured_from_environment(monkeypatch):

@@ -53,6 +53,14 @@ def test_login_with_correct_credentials_shows_accessible_applications(monkeypatc
         "dashboard",
         30,
     )
+    _create_application(
+        context,
+        "dashboard_kippen",
+        "Kippen dashboard",
+        "/kippen-dashboard",
+        "dashboard",
+        15,
+    )
     _grant_access(context, user.id, kippen.id)
     _grant_access(context, user.id, tanken.id)
 
@@ -450,6 +458,14 @@ def test_auth_verify_is_application_aware(monkeypatch):
         "dashboard",
         20,
     )
+    _create_application(
+        context,
+        "dashboard_kippen",
+        "Kippen dashboard",
+        "/kippen-dashboard",
+        "dashboard",
+        15,
+    )
     _grant_access(context, user.id, tanken.id)
     client.post(
         "/login",
@@ -612,6 +628,9 @@ def test_auth_verify_rejects_inactive_application(monkeypatch):
 
 def test_application_key_for_path_maps_known_prefixes():
     assert portal_app.application_key_for_path("/kippen/dashboard") == "kippen"
+    assert (
+        portal_app.application_key_for_path("/kippen-dashboard") == "dashboard_kippen"
+    )
     assert (
         portal_app.application_key_for_path("/klauwgezondheid/?query=true")
         == "dashboard_klauwgezondheid"

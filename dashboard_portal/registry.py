@@ -18,6 +18,12 @@ class DashboardLink:
 
 DEFAULT_DASHBOARDS = [
     DashboardLink(
+        name="Kippen dashboard",
+        description="Analyse en trends van leghennenproductie per koppel.",
+        url="/kippen-dashboard",
+        status="Productie",
+    ),
+    DashboardLink(
         name="Klauwgezondheid",
         description="Mortellaro en klauwgezondheid van de actieve koppel.",
         url="/klauwgezondheid",

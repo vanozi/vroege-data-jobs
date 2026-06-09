@@ -226,7 +226,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
             }
         )
     else:
-        date_from, date_to = date_range_filter.value
+        _date_from, _date_to = date_range_filter.value
         df_eggs = pl.read_database_uri(
             query=f"""
             SELECT
@@ -236,7 +236,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
                 total_eggs
             FROM egg_registrations
             WHERE flock_id = {selected_flock_id}
-              AND registration_date BETWEEN '{date_from}' AND '{date_to}'
+              AND registration_date BETWEEN '{_date_from}' AND '{_date_to}'
             ORDER BY registration_date
             """,
             uri=connectorx_database_url,
@@ -256,7 +256,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
             }
         )
     else:
-        date_from, date_to = date_range_filter.value
+        _date_from, _date_to = date_range_filter.value
         df_feed_water = pl.read_database_uri(
             query=f"""
             SELECT
@@ -265,7 +265,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
                 feed_grams
             FROM feed_water_registrations
             WHERE flock_id = {selected_flock_id}
-              AND registration_date BETWEEN '{date_from}' AND '{date_to}'
+              AND registration_date BETWEEN '{_date_from}' AND '{_date_to}'
             ORDER BY registration_date
             """,
             uri=connectorx_database_url,
@@ -287,7 +287,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
             }
         )
     else:
-        date_from, date_to = date_range_filter.value
+        _date_from, _date_to = date_range_filter.value
         df_dead_hens = pl.read_database_uri(
             query=f"""
             SELECT
@@ -298,7 +298,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
                 suspected_cause
             FROM dead_hen_registrations
             WHERE flock_id = {selected_flock_id}
-              AND found_at::date BETWEEN '{date_from}' AND '{date_to}'
+              AND found_at::date BETWEEN '{_date_from}' AND '{_date_to}'
             ORDER BY found_at
             """,
             uri=connectorx_database_url,
@@ -317,7 +317,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
             }
         )
     else:
-        date_from, date_to = date_range_filter.value
+        _date_from, _date_to = date_range_filter.value
         df_outside_nest = pl.read_database_uri(
             query=f"""
             SELECT
@@ -325,7 +325,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
                 egg_count
             FROM outside_nest_egg_rounds
             WHERE flock_id = {selected_flock_id}
-              AND round_at::date BETWEEN '{date_from}' AND '{date_to}'
+              AND round_at::date BETWEEN '{_date_from}' AND '{_date_to}'
             ORDER BY round_at
             """,
             uri=connectorx_database_url,
@@ -347,7 +347,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
             }
         )
     else:
-        date_from, date_to = date_range_filter.value
+        _date_from, _date_to = date_range_filter.value
         df_pallets = pl.read_database_uri(
             query=f"""
             SELECT
@@ -358,7 +358,7 @@ def _(connectorx_database_url, date_range_filter, pl, selected_flock_id):
                 supplier_name
             FROM egg_pallet_weight_registrations
             WHERE flock_id = {selected_flock_id}
-              AND registration_date BETWEEN '{date_from}' AND '{date_to}'
+              AND registration_date BETWEEN '{_date_from}' AND '{_date_to}'
             ORDER BY registration_date
             """,
             uri=connectorx_database_url,
@@ -486,9 +486,9 @@ def _(
         ):
             import polars as _pl2
 
-            norm_row = df_norms.filter(_pl2.col("age_weeks") == last_flock_week)
-            if not norm_row.is_empty():
-                norm_lay_pct = norm_row["lay_percentage_norm"][0]
+            _norm_row = df_norms.filter(_pl2.col("age_weeks") == last_flock_week)
+            if not _norm_row.is_empty():
+                norm_lay_pct = _norm_row["lay_percentage_norm"][0]
 
         def _fmt_pct(v):
             return f"{v:.1f}%" if v is not None else "–"
@@ -603,9 +603,9 @@ def _(
             100.0 - cum_dead_pct if bird_count > 0 else None
         )
 
-        norm_row = None
+        _norm_row = None
         if show_norms_switch.value and last_flock_week is not None:
-            norm_row = transforms.get_norm_for_flock_week(df_norms, last_flock_week)
+            _norm_row = transforms.get_norm_for_flock_week(df_norms, last_flock_week)
 
         def _fmt(value, precision=2, unit=""):
             if value is None:
@@ -652,7 +652,7 @@ def _(
 
         table_rows = []
         for label, actual_value, norm_key, precision, unit in rows:
-            norm_value = norm_row.get(norm_key) if norm_row else None
+            norm_value = _norm_row.get(norm_key) if _norm_row else None
             delta = transforms.format_norm_delta(
                 actual_value,
                 norm_value,
@@ -830,15 +830,15 @@ def _(
         avg_feed = df_feed_water["feed_grams"].mean()
         avg_water = df_feed_water["water_ml"].mean()
         last_fw = df_fw.tail(1).to_dicts()[0]
-        norm_row = transforms.get_norm_for_flock_week(
+        _norm_row = transforms.get_norm_for_flock_week(
             df_norms,
             last_fw["flock_week"],
         )
         feed_delta = ""
-        if show_norms_switch.value and norm_row:
+        if show_norms_switch.value and _norm_row:
             feed_delta = transforms.format_norm_delta(
                 last_fw["feed_grams"],
-                norm_row["feed_intake_grams_per_day_norm"],
+                _norm_row["feed_intake_grams_per_day_norm"],
                 unit=" gram",
                 precision=0,
             )
@@ -1060,15 +1060,15 @@ def _(
         cum_pct = total_dead / bird_count * 100.0 if bird_count > 0 else 0.0
         avg_per_day = df_daily_dead["dead_count"].mean()
         last_dead_row = df_daily_dead.tail(1).to_dicts()[0]
-        norm_row = transforms.get_norm_for_flock_week(
+        _norm_row = transforms.get_norm_for_flock_week(
             df_norms,
             last_dead_row["flock_week"],
         )
         mortality_delta = ""
-        if show_norms_switch.value and norm_row:
+        if show_norms_switch.value and _norm_row:
             mortality_delta = transforms.format_norm_delta(
                 last_dead_row["cum_dead_pct"],
-                100.0 - norm_row["liveability_percentage_norm"],
+                100.0 - _norm_row["liveability_percentage_norm"],
                 unit="%",
                 precision=2,
             )
@@ -1216,15 +1216,15 @@ def _(
         max_ew = df_pallets["egg_weight_grams"].max()
         n_pallets = len(df_pallets)
         last_weight_row = df_daily_ew.tail(1).to_dicts()[0]
-        norm_row = transforms.get_norm_for_flock_week(
+        _norm_row = transforms.get_norm_for_flock_week(
             df_norms,
             last_weight_row["flock_week"],
         )
         egg_weight_delta = ""
-        if show_norms_switch.value and norm_row:
+        if show_norms_switch.value and _norm_row:
             egg_weight_delta = transforms.format_norm_delta(
                 last_weight_row["egg_weight_avg"],
-                norm_row["egg_weight_grams_norm"],
+                _norm_row["egg_weight_grams_norm"],
                 unit=" g",
                 precision=2,
             )
@@ -1286,11 +1286,11 @@ def _(
     else:
         # Bird count per day for lay %
         bird_count_df = transforms.daily_bird_count(df_dead_hens, bird_count)
-        lay_pct_df = transforms.daily_lay_percentage(df_eggs, bird_count_df)
+        _lay_pct_df = transforms.daily_lay_percentage(df_eggs, bird_count_df)
 
         df_eggs_w = df_eggs.sort("registration_date")
-        if not lay_pct_df.is_empty():
-            df_eggs_w = df_eggs_w.join(lay_pct_df, on="registration_date", how="left")
+        if not _lay_pct_df.is_empty():
+            df_eggs_w = df_eggs_w.join(_lay_pct_df, on="registration_date", how="left")
 
         if rolling_switch.value and "lay_percentage" in df_eggs_w.columns:
             df_eggs_w = transforms.add_rolling_average(
@@ -1407,7 +1407,7 @@ def _(
         )
 
         avg_lay = (
-            lay_pct_df["lay_percentage"].mean() if not lay_pct_df.is_empty() else None
+            _lay_pct_df["lay_percentage"].mean() if not _lay_pct_df.is_empty() else None
         )
         total_eggs_c = int(df_eggs["total_eggs"].sum())
         lay_str = (
@@ -1416,15 +1416,15 @@ def _(
             else "Legpercentage: geen kippenstand data"
         )
         last_egg_day = df_eggs_w.tail(1).to_dicts()[0]
-        norm_row = transforms.get_norm_for_flock_week(
+        _norm_row = transforms.get_norm_for_flock_week(
             df_norms,
             last_egg_day["flock_week"],
         )
         lay_delta = ""
-        if show_norms_switch.value and norm_row:
+        if show_norms_switch.value and _norm_row:
             lay_delta = transforms.format_norm_delta(
                 last_egg_day.get("lay_percentage"),
-                norm_row["lay_percentage_norm"],
+                _norm_row["lay_percentage_norm"],
                 unit="%",
                 precision=1,
             )
@@ -1481,27 +1481,27 @@ def _(
         )
         summary_fcr = mo.md("")
     else:
-        fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
+        _fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
 
-        if fcr_df.is_empty() or fcr_df["fcr"].drop_nulls().is_empty():
+        if _fcr_df.is_empty() or _fcr_df["fcr"].drop_nulls().is_empty():
             chart_fcr = mo.callout(
                 mo.md("FCR kan pas berekend worden na de eerste palletmeting."),
                 kind="warn",
             )
             summary_fcr = mo.md("")
         else:
-            fcr_df = transforms.add_flock_week_column(
-                fcr_df, "registration_date", flock_dob
+            _fcr_df = transforms.add_flock_week_column(
+                _fcr_df, "registration_date", flock_dob
             )
 
             if rolling_switch.value:
-                fcr_df = transforms.add_rolling_average(
-                    fcr_df.filter(pl.col("fcr").is_not_null()),
+                _fcr_df = transforms.add_rolling_average(
+                    _fcr_df.filter(pl.col("fcr").is_not_null()),
                     "fcr",
                     window=7,
                 )
 
-            df_fcr_pd = fcr_df.to_pandas()
+            df_fcr_pd = _fcr_df.to_pandas()
 
             fcr_line = (
                 alt.Chart(df_fcr_pd)
@@ -1601,20 +1601,20 @@ def _(
                 )
             )
 
-            avg_fcr = fcr_df["fcr"].drop_nulls().mean()
-            n_measured = int(fcr_df["is_measured_weight"].sum())
+            avg_fcr = _fcr_df["fcr"].drop_nulls().mean()
+            n_measured = int(_fcr_df["is_measured_weight"].sum())
             last_fcr_row = (
-                fcr_df.filter(pl.col("fcr").is_not_null()).tail(1).to_dicts()[0]
+                _fcr_df.filter(pl.col("fcr").is_not_null()).tail(1).to_dicts()[0]
             )
-            norm_row = transforms.get_norm_for_flock_week(
+            _norm_row = transforms.get_norm_for_flock_week(
                 df_norms,
                 last_fcr_row["flock_week"],
             )
             fcr_delta = ""
-            if show_norms_switch.value and norm_row:
+            if show_norms_switch.value and _norm_row:
                 fcr_delta = transforms.format_norm_delta(
                     last_fcr_row["fcr"],
-                    norm_row["feed_conversion_ratio_norm"],
+                    _norm_row["feed_conversion_ratio_norm"],
                     precision=3,
                 )
             summary_fcr = mo.md(
@@ -1649,12 +1649,14 @@ def _(
             {"registration_date": pl.Series([], dtype=pl.Date)}
         )
     else:
-        date_from, date_to = date_range_filter.value
+        _date_from, _date_to = date_range_filter.value
         date_from_value = (
-            date_from if isinstance(date_from, date) else date.fromisoformat(date_from)
+            _date_from
+            if isinstance(_date_from, date)
+            else date.fromisoformat(_date_from)
         )
         date_to_value = (
-            date_to if isinstance(date_to, date) else date.fromisoformat(date_to)
+            _date_to if isinstance(_date_to, date) else date.fromisoformat(_date_to)
         )
         base_df = pl.DataFrame(
             {
@@ -1714,9 +1716,9 @@ def _(
             )
         )
 
-        lay_pct_df = transforms.daily_lay_percentage(df_eggs, daily_birds)
-        fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
-        weight_filled_df = transforms.join_forward_filled_weight(
+        _lay_pct_df = transforms.daily_lay_percentage(df_eggs, daily_birds)
+        _fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
+        _weight_filled_df = transforms.join_forward_filled_weight(
             base_df,
             df_pallets,
         )
@@ -1731,9 +1733,9 @@ def _(
             .join(daily_birds, on="registration_date", how="left")
             .join(outside_daily, on="registration_date", how="left")
             .join(measured_weights, on="registration_date", how="left")
-            .join(weight_filled_df, on="registration_date", how="left")
-            .join(lay_pct_df, on="registration_date", how="left")
-            .join(fcr_df, on="registration_date", how="left")
+            .join(_weight_filled_df, on="registration_date", how="left")
+            .join(_lay_pct_df, on="registration_date", how="left")
+            .join(_fcr_df, on="registration_date", how="left")
             .with_columns(
                 pl.col("first_quality_eggs").fill_null(0),
                 pl.col("second_quality_eggs").fill_null(0),

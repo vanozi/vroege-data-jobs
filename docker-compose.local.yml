@@ -77,6 +77,38 @@ services:
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
       - traefik.http.routers.marimo-klauwgezondheid-manifest.service=marimo-klauwgezondheid
 
+  marimo-kippen-dashboard:
+    command: !override
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/kippen_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2720"
+      - --base-url
+      - /kippen-dashboard
+      - --proxy
+      - http://${APP_HOST}
+      - --no-token
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.marimo-kippen-dashboard.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && PathPrefix(`/kippen-dashboard`)
+      - traefik.http.routers.marimo-kippen-dashboard.entrypoints=web
+      - traefik.http.routers.marimo-kippen-dashboard.middlewares=portal-auth
+      - traefik.http.routers.marimo-kippen-dashboard.priority=100
+      - traefik.http.routers.marimo-kippen-dashboard.service=marimo-kippen-dashboard
+      - traefik.http.services.marimo-kippen-dashboard.loadbalancer.server.port=2720
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && Path(`/kippen-dashboard/manifest.json`)
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.entrypoints=web
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.middlewares=portal-auth
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.priority=200
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.service=marimo-kippen-dashboard
+
   marimo-tank-terminal:
     command: !override
       - python
