@@ -120,6 +120,32 @@ services:
     networks:
       - dashboards
 
+  kippen-dashboard-demo-seed:
+    build:
+      context: .
+      dockerfile: docker/database/Dockerfile
+    profiles:
+      - tools
+    env_file:
+      - path: ./deploy/dashboard.env
+        required: false
+        format: raw
+    command:
+      - python
+      - -m
+      - database.seeds.load_demo_kippen_dashboard_data
+      - --days
+      - "180"
+      - --seed
+      - "7"
+      - --house-id
+      - main
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+
   datajob-uniform-agri:
     <<: *datajob-base
     command:
