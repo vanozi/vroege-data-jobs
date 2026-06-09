@@ -15,6 +15,8 @@ from .laying_hens import (
     EggRegistration,
     FeedWaterRegistration,
     Flock,
+    FlockLayCurveNorm,
+    FlockLayCurveProfile,
     OutsideNestEggRound,
 )
 from .melking import Melking
@@ -28,6 +30,8 @@ __all__ = [
     "EggRegistration",
     "FeedWaterRegistration",
     "Flock",
+    "FlockLayCurveNorm",
+    "FlockLayCurveProfile",
     "KlauwBehandeling",
     "Koe",
     "KoeDetail",

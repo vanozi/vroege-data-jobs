@@ -21,6 +21,7 @@ from shared_auth.service import SharedAuthService
 PATH_APPLICATION_KEYS = [
     ("/admin", "user_administration"),
     ("/kippen", "kippen"),
+    ("/kippen-dashboard", "dashboard_kippen"),
     ("/klauwgezondheid", "dashboard_klauwgezondheid"),
     ("/tank-terminal", "dashboard_tank_terminal"),
 ]

@@ -192,16 +192,16 @@ The services use separate Dockerfiles and dependency files:
 - [`docker/kippen/Dockerfile`](docker/kippen/Dockerfile): Kippen registratie
   Flask app and Gunicorn.
 - [`docker/marimo/Dockerfile`](docker/marimo/Dockerfile): Marimo dashboard and
-  dashboard data dependencies.
+  dashboard data dependencies for Kippen, Klauwgezondheid, and Tanken.
 - [`docker/database/Dockerfile`](docker/database/Dockerfile): Alembic migration
   runner for the `database/` package.
 - [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
   datajob runner for Klauwscore and Uniform Agri.
 
 Traefik protects the Marimo dashboard paths with the portal `/auth/verify`
-ForwardAuth endpoint. Direct access to `/klauwgezondheid`, `/tank-terminal`,
-and their Marimo manifest routes without a valid shared portal session and
-matching application access returns unauthorized.
+ForwardAuth endpoint. Direct access to `/kippen-dashboard`, `/klauwgezondheid`,
+`/tank-terminal`, and their Marimo manifest routes without a valid shared
+portal session and matching application access returns unauthorized.
 The Kippen registratie app at `/kippen` uses the shared portal session and
 requires active `kippen` application access.
 
@@ -262,10 +262,17 @@ docker compose --env-file .env.local.example -f docker-compose.yml -f docker-com
 ```
 
 The bootstrap command creates the core application keys (`kippen`,
-`dashboard_klauwgezondheid`, `dashboard_tank_terminal`, and
-`user_administration`), the core roles (`admin`, `worker`, `viewer`), and grants
-the bootstrap admin access to those apps. If users already exist and
+`dashboard_kippen`, `dashboard_klauwgezondheid`,
+`dashboard_tank_terminal`, and `user_administration`), the core roles
+(`admin`, `worker`, `viewer`), and grants the bootstrap admin access to those
+apps. If users already exist and
 `AUTH_BOOTSTRAP_USERNAME` is empty, it only refreshes the core apps and roles.
+
+Load the lay-curve norm seed after migrations:
+
+```powershell
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml --profile tools run --rm kippen-norms-seed
+```
 
 The Kippen migrations create the `flocks` table, require `flock_id` on new
 registrations, and split the old combined daily table into
@@ -295,6 +302,7 @@ Local routes:
 - `http://localhost/`: Flask portal.
 - `http://localhost/admin/users`: user administration for portal admins.
 - `http://localhost/kippen`: Kippen registratie app.
+- `http://localhost/kippen-dashboard`: Kippen Marimo dashboard.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
 - `http://localhost/tank-terminal`: Tanken Marimo dashboard.
 - `http://localhost:8080`: Adminer database editor.
@@ -311,8 +319,8 @@ Useful local checks:
 
 ```powershell
 docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml ps
-docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml logs -f traefik portal marimo-klauwgezondheid
-docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml logs --tail=100 marimo-klauwgezondheid
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml logs -f traefik portal marimo-kippen-dashboard
+docker compose --env-file .env.local.example -f docker-compose.yml -f docker-compose.local.yml logs --tail=100 marimo-kippen-dashboard
 ```
 
 If port `80` is already in use, stop the other service or change the local
@@ -327,6 +335,7 @@ Production routes:
 - `https://app.gebroedersvroege.nl/admin/users`: user administration for portal
   admins.
 - `https://app.gebroedersvroege.nl/kippen`: Kippen registratie app.
+- `https://app.gebroedersvroege.nl/kippen-dashboard`: Kippen Marimo dashboard.
 - `https://app.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
 - `https://app.gebroedersvroege.nl/tank-terminal`: Tanken Marimo dashboard.
 
@@ -398,6 +407,7 @@ docker compose config --quiet
 docker compose up -d postgres
 docker compose --profile tools run --rm db-migrate
 docker compose --profile tools run --rm auth-bootstrap
+docker compose --profile tools run --rm kippen-norms-seed
 docker compose up -d --build
 ```
 
@@ -405,6 +415,9 @@ For shared auth bootstrap, `AUTH_BOOTSTRAP_PASSWORD` is only used to create a
 new bootstrap user. It is not logged. If the bootstrap user already exists,
 passwords are not reset unless `AUTH_BOOTSTRAP_RESET_PASSWORD=true` is set
 explicitly for that run.
+
+`kippen-norms-seed` loads `database/seeds/dekalb_white_norms.csv` into
+`flock_lay_curve_norms` with idempotent upserts on `(breed_key, age_weeks)`.
 
 Run production datajobs manually:
 
@@ -418,9 +431,9 @@ Useful production checks:
 
 ```bash
 docker compose ps
-docker compose logs -f traefik portal marimo-klauwgezondheid
+docker compose logs -f traefik portal marimo-kippen-dashboard
 docker compose logs -f postgres
-docker compose logs --tail=100 marimo-klauwgezondheid
+docker compose logs --tail=100 marimo-kippen-dashboard
 ```
 
 ### Nightly datajobs
@@ -463,8 +476,8 @@ For a dashboard-only code or dependency change, rebuilding only Marimo is often
 enough:
 
 ```bash
-docker compose build marimo-klauwgezondheid
-docker compose up -d --force-recreate marimo-klauwgezondheid
+docker compose build marimo-kippen-dashboard
+docker compose up -d --force-recreate marimo-kippen-dashboard
 ```
 
 Restart Traefik after label or routing changes:
@@ -555,6 +568,23 @@ new registrations.
 The dashboard and registration pages show the active flock plus bird age in
 weeks, days, and total days. Weekly overviews and exports include flock context
 and age for each day.
+
+### Kippen dashboard
+
+The Kippen Marimo dashboard is served by the `marimo-kippen-dashboard` service
+at `/kippen-dashboard`. Access requires a shared portal session and active
+`dashboard_kippen` application access. The bootstrap admin receives the
+`viewer` role on this dashboard by default.
+
+The dashboard is read-only and compares flock performance against seeded
+lay-curve norms from `flock_lay_curve_norms`.
+
+To add a new norm CSV for another breed:
+
+1. Add the CSV under `database/seeds/`.
+2. Run `python -m database.seeds.load_lay_curve_norms --csv path/to/file.csv`.
+3. Set `flocks.breed` to a value that normalizes to the CSV `breed_key`, or add
+   an alias in `dashboard/kippen_transforms.py`.
 
 Egg pallet weight workflow:
 

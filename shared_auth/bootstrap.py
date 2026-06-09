@@ -66,6 +66,14 @@ CORE_APPLICATIONS = [
         display_order=10,
     ),
     CoreApplication(
+        key="dashboard_kippen",
+        name="Kippen dashboard",
+        url="/kippen-dashboard",
+        category="dashboard",
+        description="Analyse en trends van leghennenproductie per koppel.",
+        display_order=15,
+    ),
+    CoreApplication(
         key="dashboard_klauwgezondheid",
         name="Klauwgezondheid",
         url="/klauwgezondheid",
@@ -112,6 +120,7 @@ CORE_ROLES = [
 ADMIN_ROLE_GRANTS = {
     "user_administration": ["admin"],
     "kippen": ["admin", "worker"],
+    "dashboard_kippen": ["viewer"],
     "dashboard_klauwgezondheid": ["viewer"],
     "dashboard_tank_terminal": ["viewer"],
 }
