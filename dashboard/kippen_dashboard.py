@@ -651,8 +651,8 @@ def _(
 
 
 @app.cell
-def _(df_daily_overview, mo, pl, selected_flock):
-    """Datatabel en CSV-download onderaan de pagina."""
+def _(alt, df_daily_overview, mo, pl, selected_flock):
+    """Datatabel, CSV-download en buitennest-grafiek onderaan de pagina."""
     if selected_flock is None or df_daily_overview.is_empty():
         daily_table_section = mo.callout(
             mo.md("Geen dagoverzicht beschikbaar voor de huidige selectie."),
@@ -711,7 +711,49 @@ def _(df_daily_overview, mo, pl, selected_flock):
             page_size=20,
             label="Per-dag overzicht met werkelijke en normwaarden",
         )
-        daily_table_section = mo.vstack([csv_download, daily_table], gap=1)
+        outside_nest_chart_df = (
+            df_daily_overview.select(["registration_date", "outside_nest_eggs"])
+            .filter(pl.col("outside_nest_eggs") > 0)
+            .with_columns(
+                pl.col("registration_date").dt.strftime("%d-%m-%Y").alias("date_label")
+            )
+        )
+
+        if outside_nest_chart_df.is_empty():
+            outside_nest_chart = mo.callout(
+                mo.md("Geen buitennest-eieren in de huidige selectie."),
+                kind="info",
+            )
+        else:
+            outside_nest_chart_pd = outside_nest_chart_df.to_pandas()
+            base_chart = alt.Chart(outside_nest_chart_pd).encode(
+                x=alt.X(
+                    "date_label:N",
+                    title="Datum",
+                    sort=None,
+                    axis=alt.Axis(labelAngle=-45),
+                ),
+                y=alt.Y("outside_nest_eggs:Q", title="Buitennest eieren"),
+            )
+
+            outside_nest_chart = mo.ui.altair_chart(
+                (
+                    base_chart.mark_bar(color="#e67e22")
+                    + base_chart.mark_text(
+                        dy=-8,
+                        color="#784212",
+                    ).encode(text=alt.Text("outside_nest_eggs:Q", format=".0f"))
+                ).properties(
+                    width=900,
+                    height=320,
+                    title="Buitennest eieren per dag",
+                )
+            )
+
+        daily_table_section = mo.vstack(
+            [csv_download, daily_table, outside_nest_chart],
+            gap=1,
+        )
 
     daily_table_section
     return (daily_table_section,)
