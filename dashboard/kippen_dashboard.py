@@ -566,5 +566,661 @@ def _(
     )
 
 
+@app.cell
+def _(
+    alt,
+    bird_count,
+    date_range_filter,
+    df_dead_hens,
+    df_eggs,
+    df_feed_water,
+    df_pallets,
+    flock_dob,
+    mo,
+    pl,
+    rolling_switch,
+    transforms,
+):
+    """Chart 1: Voer en water per dag."""
+    mo.md("## Voer en water per dag")
+    return
+
+
+@app.cell
+def _(
+    alt,
+    date_range_filter,
+    df_feed_water,
+    mo,
+    pl,
+    rolling_switch,
+    transforms,
+):
+    """Chart 1 inhoud: voer en water lijnen."""
+    if df_feed_water.is_empty() or not date_range_filter.value:
+        chart_feed_water = mo.callout(
+            mo.md("Geen voer/water data in deze selectie."), kind="info"
+        )
+        summary_feed_water = mo.md("")
+    else:
+        df_fw = df_feed_water.sort("registration_date")
+
+        if rolling_switch.value:
+            df_fw = transforms.add_rolling_average(df_fw, "feed_grams", window=7)
+            df_fw = transforms.add_rolling_average(df_fw, "water_ml", window=7)
+
+        df_fw_pd = df_fw.to_pandas()
+
+        base = alt.Chart(df_fw_pd).encode(
+            x=alt.X(
+                "registration_date:T", title="Datum", axis=alt.Axis(format="%d-%m")
+            ),
+        )
+
+        feed_bar = base.mark_bar(color="#c6a84b", opacity=0.5).encode(
+            y=alt.Y(
+                "feed_grams:Q", title="Voer (gram)", axis=alt.Axis(titleColor="#c6a84b")
+            ),
+            tooltip=[
+                alt.Tooltip("registration_date:T", title="Datum", format="%d-%m-%Y"),
+                alt.Tooltip("feed_grams:Q", title="Voer (gram)", format=","),
+            ],
+        )
+
+        water_line = base.mark_line(color="#3182ce", strokeWidth=2).encode(
+            y=alt.Y(
+                "water_ml:Q", title="Water (ml)", axis=alt.Axis(titleColor="#3182ce")
+            ),
+            tooltip=[
+                alt.Tooltip("registration_date:T", title="Datum", format="%d-%m-%Y"),
+                alt.Tooltip("water_ml:Q", title="Water (ml)", format=","),
+            ],
+        )
+
+        layers = [feed_bar, water_line]
+
+        if rolling_switch.value and "feed_grams_rolling7" in df_fw_pd.columns:
+            layers.append(
+                base.mark_line(
+                    color="#8B6914", strokeDash=[4, 2], strokeWidth=1.5
+                ).encode(
+                    y=alt.Y("feed_grams_rolling7:Q"),
+                    tooltip=[
+                        alt.Tooltip(
+                            "feed_grams_rolling7:Q", title="Voer 7d gem.", format=".0f"
+                        )
+                    ],
+                )
+            )
+        if rolling_switch.value and "water_ml_rolling7" in df_fw_pd.columns:
+            layers.append(
+                base.mark_line(
+                    color="#1a5276", strokeDash=[4, 2], strokeWidth=1.5
+                ).encode(
+                    y=alt.Y("water_ml_rolling7:Q"),
+                    tooltip=[
+                        alt.Tooltip(
+                            "water_ml_rolling7:Q", title="Water 7d gem.", format=".0f"
+                        )
+                    ],
+                )
+            )
+
+        chart_feed_water = mo.ui.altair_chart(
+            alt.layer(*layers)
+            .resolve_scale(y="independent")
+            .properties(
+                width=900, height=300, title="Voer (gram) en water (ml) per dag"
+            )
+        )
+
+        avg_feed = df_feed_water["feed_grams"].mean()
+        avg_water = df_feed_water["water_ml"].mean()
+        summary_feed_water = mo.md(
+            f"Gemiddeld voer: **{avg_feed:.0f} gram/dag** · "
+            f"Gemiddeld water: **{avg_water:.0f} ml/dag**"
+        )
+
+    mo.vstack([chart_feed_water, summary_feed_water])
+    return chart_feed_water, summary_feed_water
+
+
+@app.cell
+def _(alt, date_range_filter, df_outside_nest, mo, pl, rolling_switch, transforms):
+    """Chart 2: Buitennest-eieren per dag."""
+    mo.md("## Buitennest-eieren per dag")
+    return
+
+
+@app.cell
+def _(alt, date_range_filter, df_outside_nest, mo, pl, rolling_switch, transforms):
+    """Chart 2 inhoud."""
+    if df_outside_nest.is_empty() or not date_range_filter.value:
+        chart_outside_nest = mo.callout(
+            mo.md("Geen buitennest data in deze selectie."), kind="info"
+        )
+        summary_outside_nest = mo.md("")
+    else:
+        df_on = (
+            df_outside_nest.group_by("round_date")
+            .agg(pl.col("egg_count").sum())
+            .sort("round_date")
+        )
+
+        if rolling_switch.value:
+            df_on = transforms.add_rolling_average(
+                df_on, "egg_count", window=7, date_col="round_date"
+            )
+
+        df_on_pd = df_on.to_pandas()
+
+        bar = (
+            alt.Chart(df_on_pd)
+            .mark_bar(color="#e67e22", opacity=0.75)
+            .encode(
+                x=alt.X("round_date:T", title="Datum", axis=alt.Axis(format="%d-%m")),
+                y=alt.Y("egg_count:Q", title="Buitennest eieren"),
+                tooltip=[
+                    alt.Tooltip("round_date:T", title="Datum", format="%d-%m-%Y"),
+                    alt.Tooltip("egg_count:Q", title="Buitennest eieren"),
+                ],
+            )
+        )
+
+        layers_on = [bar]
+        if rolling_switch.value and "egg_count_rolling7" in df_on_pd.columns:
+            layers_on.append(
+                alt.Chart(df_on_pd)
+                .mark_line(color="#784212", strokeDash=[4, 2], strokeWidth=1.5)
+                .encode(
+                    x=alt.X("round_date:T"),
+                    y=alt.Y("egg_count_rolling7:Q"),
+                    tooltip=[
+                        alt.Tooltip(
+                            "egg_count_rolling7:Q", title="7d gem.", format=".1f"
+                        )
+                    ],
+                )
+            )
+
+        chart_outside_nest = mo.ui.altair_chart(
+            alt.layer(*layers_on).properties(
+                width=900, height=280, title="Buitennest-eieren per dag"
+            )
+        )
+
+        avg_on = df_on["egg_count"].mean()
+        total_on = int(df_on["egg_count"].sum())
+        summary_outside_nest = mo.md(
+            f"Totaal buitennest-eieren: **{total_on:,}** · Gemiddeld per dag: **{avg_on:.1f}**"
+        )
+
+    mo.vstack([chart_outside_nest, summary_outside_nest])
+    return chart_outside_nest, summary_outside_nest
+
+
+@app.cell
+def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
+    """Chart 3: Dode hennen per dag + cumulatieve uitval."""
+    mo.md("## Dode hennen en uitval")
+    return
+
+
+@app.cell
+def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
+    """Chart 3 inhoud."""
+    if df_dead_hens.is_empty() or not date_range_filter.value:
+        chart_dead_hens = mo.callout(
+            mo.md("Geen dode-hennen data in deze selectie."), kind="info"
+        )
+        summary_dead_hens = mo.md("")
+    else:
+        df_daily_dead = (
+            df_dead_hens.group_by("found_date")
+            .agg(pl.col("dead_count").sum())
+            .sort("found_date")
+            .with_columns(pl.col("dead_count").cum_sum().alias("cum_dead"))
+        )
+        if bird_count > 0:
+            df_daily_dead = df_daily_dead.with_columns(
+                (pl.col("cum_dead") / bird_count * 100.0).alias("cum_dead_pct")
+            )
+
+        df_dd_pd = df_daily_dead.to_pandas()
+
+        bar_dead = (
+            alt.Chart(df_dd_pd)
+            .mark_bar(color="#c0392b", opacity=0.7)
+            .encode(
+                x=alt.X("found_date:T", title="Datum", axis=alt.Axis(format="%d-%m")),
+                y=alt.Y("dead_count:Q", title="Dode hennen"),
+                tooltip=[
+                    alt.Tooltip("found_date:T", title="Datum", format="%d-%m-%Y"),
+                    alt.Tooltip("dead_count:Q", title="Dode hennen"),
+                ],
+            )
+        )
+
+        layers_dead = [bar_dead]
+
+        if bird_count > 0 and "cum_dead_pct" in df_dd_pd.columns:
+            line_cum = (
+                alt.Chart(df_dd_pd)
+                .mark_line(color="#7b241c", strokeWidth=2)
+                .encode(
+                    x=alt.X("found_date:T"),
+                    y=alt.Y(
+                        "cum_dead_pct:Q",
+                        title="Cumulatieve uitval (%)",
+                        axis=alt.Axis(titleColor="#7b241c"),
+                    ),
+                    tooltip=[
+                        alt.Tooltip("found_date:T", title="Datum", format="%d-%m-%Y"),
+                        alt.Tooltip(
+                            "cum_dead_pct:Q", title="Cumulatief uitval %", format=".2f"
+                        ),
+                    ],
+                )
+            )
+            layers_dead.append(line_cum)
+
+        chart_dead_hens = mo.ui.altair_chart(
+            alt.layer(*layers_dead)
+            .resolve_scale(y="independent")
+            .properties(
+                width=900,
+                height=280,
+                title="Dode hennen per dag en cumulatieve uitval %",
+            )
+        )
+
+        total_dead = int(df_dead_hens["dead_count"].sum())
+        cum_pct = total_dead / bird_count * 100.0 if bird_count > 0 else 0.0
+        avg_per_day = df_daily_dead["dead_count"].mean()
+        summary_dead_hens = mo.md(
+            f"Totaal: **{total_dead}** dode hennen · "
+            f"Cumulatieve uitval: **{cum_pct:.2f}%** · "
+            f"Gemiddeld per dag: **{avg_per_day:.1f}**"
+        )
+
+    mo.vstack([chart_dead_hens, summary_dead_hens])
+    return chart_dead_hens, summary_dead_hens
+
+
+@app.cell
+def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
+    """Chart 4: Palletgewicht en eigewicht."""
+    mo.md("## Palletgewicht en eigewicht")
+    return
+
+
+@app.cell
+def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
+    """Chart 4 inhoud."""
+    if df_pallets.is_empty() or not date_range_filter.value:
+        chart_pallets = mo.callout(
+            mo.md("Geen palletgewicht data in deze selectie."), kind="info"
+        )
+        summary_pallets = mo.md("")
+    else:
+        # Daily average egg weight as main line
+        df_daily_ew = (
+            df_pallets.group_by("registration_date")
+            .agg(
+                pl.col("egg_weight_grams").mean().alias("egg_weight_avg"),
+                pl.col("pallet_weight_kg").sum().alias("pallet_weight_total"),
+            )
+            .sort("registration_date")
+        )
+
+        df_ew_pd = df_daily_ew.to_pandas()
+        df_raw_pd = df_pallets.to_pandas()
+
+        # Individual pallet scatter (markers)
+        scatter = (
+            alt.Chart(df_raw_pd)
+            .mark_point(color="#7d3c98", size=50, opacity=0.5)
+            .encode(
+                x=alt.X(
+                    "registration_date:T", title="Datum", axis=alt.Axis(format="%d-%m")
+                ),
+                y=alt.Y("egg_weight_grams:Q", title="Eigewicht (gram)"),
+                tooltip=[
+                    alt.Tooltip(
+                        "registration_date:T", title="Datum", format="%d-%m-%Y"
+                    ),
+                    alt.Tooltip(
+                        "egg_weight_grams:Q", title="Eigewicht (g)", format=".2f"
+                    ),
+                    alt.Tooltip("supplier_name:N", title="Leverancier"),
+                    alt.Tooltip("pallet_weight_kg:Q", title="Pallet kg", format=".1f"),
+                ],
+            )
+        )
+
+        # Daily average line
+        avg_line = (
+            alt.Chart(df_ew_pd)
+            .mark_line(color="#6c3483", strokeWidth=2)
+            .encode(
+                x=alt.X("registration_date:T"),
+                y=alt.Y("egg_weight_avg:Q"),
+                tooltip=[
+                    alt.Tooltip(
+                        "registration_date:T", title="Datum", format="%d-%m-%Y"
+                    ),
+                    alt.Tooltip(
+                        "egg_weight_avg:Q", title="Daggemiddelde (g)", format=".2f"
+                    ),
+                ],
+            )
+        )
+
+        chart_pallets = mo.ui.altair_chart(
+            alt.layer(scatter, avg_line).properties(
+                width=900,
+                height=280,
+                title="Eigewicht per pallet (punten) en daggemiddelde (lijn)",
+            )
+        )
+
+        avg_ew = df_pallets["egg_weight_grams"].mean()
+        min_ew = df_pallets["egg_weight_grams"].min()
+        max_ew = df_pallets["egg_weight_grams"].max()
+        n_pallets = len(df_pallets)
+        summary_pallets = mo.md(
+            f"Gemiddeld eigewicht: **{avg_ew:.2f} g** · "
+            f"Min: **{min_ew:.2f} g** · Max: **{max_ew:.2f} g** · "
+            f"Aantal pallets: **{n_pallets}**"
+        )
+
+    mo.vstack([chart_pallets, summary_pallets])
+    return chart_pallets, summary_pallets
+
+
+@app.cell
+def _(
+    alt,
+    bird_count,
+    date_range_filter,
+    df_dead_hens,
+    df_eggs,
+    flock_dob,
+    mo,
+    pl,
+    rolling_switch,
+    transforms,
+):
+    """Chart 5: Totaal eieren en legpercentage."""
+    mo.md("## Eieren en legpercentage")
+    return
+
+
+@app.cell
+def _(
+    alt,
+    bird_count,
+    date_range_filter,
+    df_dead_hens,
+    df_eggs,
+    flock_dob,
+    mo,
+    pl,
+    rolling_switch,
+    transforms,
+):
+    """Chart 5 inhoud."""
+    if df_eggs.is_empty() or not date_range_filter.value:
+        chart_eggs = mo.callout(
+            mo.md("Geen eiregistraties in deze selectie."), kind="info"
+        )
+        summary_eggs = mo.md("")
+    else:
+        # Bird count per day for lay %
+        bird_count_df = transforms.daily_bird_count(df_dead_hens, bird_count)
+        lay_pct_df = transforms.daily_lay_percentage(df_eggs, bird_count_df)
+
+        df_eggs_w = df_eggs.sort("registration_date")
+        if not lay_pct_df.is_empty():
+            df_eggs_w = df_eggs_w.join(lay_pct_df, on="registration_date", how="left")
+
+        if rolling_switch.value and "lay_percentage" in df_eggs_w.columns:
+            df_eggs_w = transforms.add_rolling_average(
+                df_eggs_w, "lay_percentage", window=7
+            )
+
+        df_eggs_w = transforms.add_flock_week_column(
+            df_eggs_w, "registration_date", flock_dob
+        )
+        df_ep = df_eggs_w.to_pandas()
+
+        bar_eggs = (
+            alt.Chart(df_ep)
+            .mark_bar(opacity=0.7)
+            .encode(
+                x=alt.X(
+                    "registration_date:T", title="Datum", axis=alt.Axis(format="%d-%m")
+                ),
+                y=alt.Y("total_eggs:Q", title="Eieren"),
+                color=alt.value("#27ae60"),
+                tooltip=[
+                    alt.Tooltip(
+                        "registration_date:T", title="Datum", format="%d-%m-%Y"
+                    ),
+                    alt.Tooltip("flock_week:Q", title="Leeftijdsweek"),
+                    alt.Tooltip("total_eggs:Q", title="Totaal eieren", format=","),
+                    alt.Tooltip("first_quality_eggs:Q", title="1e soort"),
+                    alt.Tooltip("second_quality_eggs:Q", title="2e soort"),
+                ],
+            )
+        )
+
+        layers_eggs = [bar_eggs]
+
+        if "lay_percentage" in df_ep.columns:
+            line_lay = (
+                alt.Chart(df_ep)
+                .mark_line(color="#1a5276", strokeWidth=2)
+                .encode(
+                    x=alt.X("registration_date:T"),
+                    y=alt.Y(
+                        "lay_percentage:Q",
+                        title="Legpercentage (%)",
+                        axis=alt.Axis(titleColor="#1a5276"),
+                        scale=alt.Scale(zero=False),
+                    ),
+                    tooltip=[
+                        alt.Tooltip(
+                            "registration_date:T", title="Datum", format="%d-%m-%Y"
+                        ),
+                        alt.Tooltip(
+                            "lay_percentage:Q", title="Legpercentage %", format=".1f"
+                        ),
+                    ],
+                )
+            )
+            layers_eggs.append(line_lay)
+
+            if rolling_switch.value and "lay_percentage_rolling7" in df_ep.columns:
+                layers_eggs.append(
+                    alt.Chart(df_ep)
+                    .mark_line(color="#0d3349", strokeDash=[4, 2], strokeWidth=1.5)
+                    .encode(
+                        x=alt.X("registration_date:T"),
+                        y=alt.Y("lay_percentage_rolling7:Q"),
+                        tooltip=[
+                            alt.Tooltip(
+                                "lay_percentage_rolling7:Q",
+                                title="Leg% 7d gem.",
+                                format=".1f",
+                            )
+                        ],
+                    )
+                )
+
+        chart_eggs = mo.ui.altair_chart(
+            alt.layer(*layers_eggs)
+            .resolve_scale(y="independent")
+            .properties(
+                width=900,
+                height=300,
+                title="Totaal eieren (bars) en legpercentage % (lijn)",
+            )
+        )
+
+        avg_lay = (
+            lay_pct_df["lay_percentage"].mean() if not lay_pct_df.is_empty() else None
+        )
+        total_eggs_c = int(df_eggs["total_eggs"].sum())
+        lay_str = (
+            f"Gem. legpercentage: **{avg_lay:.1f}%**"
+            if avg_lay is not None
+            else "Legpercentage: geen kippenstand data"
+        )
+        summary_eggs = mo.md(f"Totaal eieren: **{total_eggs_c:,}** · {lay_str}")
+
+    mo.vstack([chart_eggs, summary_eggs])
+    return chart_eggs, summary_eggs
+
+
+@app.cell
+def _(
+    alt,
+    date_range_filter,
+    df_eggs,
+    df_feed_water,
+    df_pallets,
+    flock_dob,
+    mo,
+    rolling_switch,
+    transforms,
+):
+    """Chart 6: Voederconversie (FCR)."""
+    mo.md("## Voederconversie (FCR)")
+    return
+
+
+@app.cell
+def _(
+    alt,
+    date_range_filter,
+    df_eggs,
+    df_feed_water,
+    df_pallets,
+    flock_dob,
+    mo,
+    pl,
+    rolling_switch,
+    transforms,
+):
+    """Chart 6 inhoud."""
+    if df_feed_water.is_empty() or df_eggs.is_empty() or not date_range_filter.value:
+        chart_fcr = mo.callout(
+            mo.md("Onvoldoende data voor FCR-berekening (voer + eieren nodig)."),
+            kind="info",
+        )
+        summary_fcr = mo.md("")
+    else:
+        fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
+
+        if fcr_df.is_empty() or fcr_df["fcr"].drop_nulls().is_empty():
+            chart_fcr = mo.callout(
+                mo.md("FCR kan pas berekend worden na de eerste palletmeting."),
+                kind="warn",
+            )
+            summary_fcr = mo.md("")
+        else:
+            fcr_df = transforms.add_flock_week_column(
+                fcr_df, "registration_date", flock_dob
+            )
+
+            if rolling_switch.value:
+                fcr_df = transforms.add_rolling_average(
+                    fcr_df.filter(pl.col("fcr").is_not_null()),
+                    "fcr",
+                    window=7,
+                )
+
+            df_fcr_pd = fcr_df.to_pandas()
+
+            fcr_line = (
+                alt.Chart(df_fcr_pd)
+                .mark_line(color="#1abc9c", strokeWidth=2)
+                .encode(
+                    x=alt.X(
+                        "registration_date:T",
+                        title="Datum",
+                        axis=alt.Axis(format="%d-%m"),
+                    ),
+                    y=alt.Y(
+                        "fcr:Q",
+                        title="FCR (gram voer / gram ei)",
+                        scale=alt.Scale(zero=False),
+                    ),
+                    tooltip=[
+                        alt.Tooltip(
+                            "registration_date:T", title="Datum", format="%d-%m-%Y"
+                        ),
+                        alt.Tooltip("flock_week:Q", title="Leeftijdsweek"),
+                        alt.Tooltip("fcr:Q", title="FCR", format=".3f"),
+                    ],
+                )
+            )
+
+            # Measured-weight markers on top of the FCR line
+            df_measured = df_fcr_pd[df_fcr_pd["is_measured_weight"] == True]  # noqa: E712
+            measured_points = (
+                alt.Chart(df_measured)
+                .mark_point(color="#117a65", size=60, filled=True)
+                .encode(
+                    x=alt.X("registration_date:T"),
+                    y=alt.Y("fcr:Q"),
+                    tooltip=[
+                        alt.Tooltip(
+                            "registration_date:T",
+                            title="Datum (gemeten)",
+                            format="%d-%m-%Y",
+                        ),
+                        alt.Tooltip("fcr:Q", title="FCR (gemeten dag)", format=".3f"),
+                    ],
+                )
+            )
+
+            layers_fcr = [fcr_line, measured_points]
+
+            if rolling_switch.value and "fcr_rolling7" in df_fcr_pd.columns:
+                layers_fcr.append(
+                    alt.Chart(df_fcr_pd)
+                    .mark_line(color="#0e6655", strokeDash=[4, 2], strokeWidth=1.5)
+                    .encode(
+                        x=alt.X("registration_date:T"),
+                        y=alt.Y("fcr_rolling7:Q"),
+                        tooltip=[
+                            alt.Tooltip(
+                                "fcr_rolling7:Q", title="FCR 7d gem.", format=".3f"
+                            )
+                        ],
+                    )
+                )
+
+            chart_fcr = mo.ui.altair_chart(
+                alt.layer(*layers_fcr).properties(
+                    width=900,
+                    height=280,
+                    title="Voederconversie per dag (lijn) — gevulde punten = palletmeting aanwezig",
+                )
+            )
+
+            avg_fcr = fcr_df["fcr"].drop_nulls().mean()
+            n_measured = int(fcr_df["is_measured_weight"].sum())
+            summary_fcr = mo.md(
+                f"Gemiddelde FCR: **{avg_fcr:.3f}** · "
+                f"Dagen met palletmeting: **{n_measured}**"
+            )
+
+    mo.vstack([chart_fcr, summary_fcr])
+    return chart_fcr, summary_fcr
+
+
 if __name__ == "__main__":
     app.run()
