@@ -113,6 +113,10 @@ services:
       - traefik.http.routers.marimo-kippen-dashboard-manifest.priority=200
       - traefik.http.routers.marimo-kippen-dashboard-manifest.service=marimo-kippen-dashboard
 
+  kippen-dashboard-demo-seed:
+    volumes:
+      - ./database:/app/database
+
   marimo-tank-terminal:
     command: !override
       - python
