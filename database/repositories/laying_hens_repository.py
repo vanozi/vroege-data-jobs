@@ -14,6 +14,7 @@ from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
 from database.models.laying_hens import FlockLayCurveNorm
+from database.models.laying_hens import FlockLayCurveProfile
 from database.models.laying_hens import OutsideNestEggRound
 from database.repositories.base_repository import BaseRepository
 
@@ -1043,6 +1044,20 @@ class FlockLayCurveNormsRepository(BaseRepository[FlockLayCurveNorm]):
     def __init__(self, session_factory):
         super().__init__(FlockLayCurveNorm, session_factory)
 
+    def get_profile_by_breed_key(
+        self,
+        breed_key: str,
+    ) -> Optional[FlockLayCurveProfile]:
+        """Return one lay-curve profile by breed_key."""
+        with self.get_session() as session:
+            statement = select(FlockLayCurveProfile).where(
+                FlockLayCurveProfile.breed_key == breed_key
+            )
+            profile = session.exec(statement).first()
+            if profile is not None:
+                session.expunge(profile)
+            return profile
+
     def list_by_breed_key(self, breed_key: str) -> list[FlockLayCurveNorm]:
         """Return all norm rows for a breed_key ordered by age_weeks."""
         with self.get_session() as session:
@@ -1077,15 +1092,19 @@ class FlockLayCurveNormsRepository(BaseRepository[FlockLayCurveNorm]):
         norm_data: dict[str, Any],
     ) -> FlockLayCurveNorm:
         """Insert or update a norm row matched on (breed_key, age_weeks)."""
+        normalized_data = dict(norm_data)
         with self.get_session() as session:
+            profile = self._get_or_create_profile(session, normalized_data)
+            normalized_data["flock_lay_curve_profile_id"] = profile.id
+
             existing = session.exec(
                 select(FlockLayCurveNorm).where(
-                    FlockLayCurveNorm.breed_key == norm_data["breed_key"],
-                    FlockLayCurveNorm.age_weeks == norm_data["age_weeks"],
+                    FlockLayCurveNorm.breed_key == normalized_data["breed_key"],
+                    FlockLayCurveNorm.age_weeks == normalized_data["age_weeks"],
                 )
             ).first()
             if existing is not None:
-                for key, value in norm_data.items():
+                for key, value in normalized_data.items():
                     setattr(existing, key, value)
                 session.add(existing)
                 session.flush()
@@ -1093,7 +1112,7 @@ class FlockLayCurveNormsRepository(BaseRepository[FlockLayCurveNorm]):
                 session.expunge(existing)
                 return existing
 
-            norm = FlockLayCurveNorm(**norm_data)
+            norm = FlockLayCurveNorm(**normalized_data)
             session.add(norm)
             session.flush()
             session.refresh(norm)
@@ -1105,3 +1124,30 @@ class FlockLayCurveNormsRepository(BaseRepository[FlockLayCurveNorm]):
         with self.get_session() as session:
             rows = session.exec(select(FlockLayCurveNorm.breed_key).distinct()).all()
             return list(rows)
+
+    def _get_or_create_profile(
+        self,
+        session,
+        norm_data: dict[str, Any],
+    ) -> FlockLayCurveProfile:
+        statement = select(FlockLayCurveProfile).where(
+            FlockLayCurveProfile.breed_key == norm_data["breed_key"]
+        )
+        profile = session.exec(statement).first()
+        if profile is None:
+            profile = FlockLayCurveProfile(
+                breed_key=norm_data["breed_key"],
+                breed_name=norm_data["breed_name"],
+                source=norm_data["source"],
+            )
+            session.add(profile)
+            session.flush()
+            session.refresh(profile)
+            return profile
+
+        profile.breed_name = str(norm_data["breed_name"])
+        profile.source = str(norm_data["source"])
+        session.add(profile)
+        session.flush()
+        session.refresh(profile)
+        return profile

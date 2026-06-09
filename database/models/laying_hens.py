@@ -34,6 +34,11 @@ class Flock(
 
     id: Optional[int] = Field(default=None, primary_key=True)
     flock_name: str = Field(index=True)
+    flock_lay_curve_profile_id: Optional[int] = Field(
+        default=None,
+        foreign_key="flock_lay_curve_profiles.id",
+        index=True,
+    )
     date_of_birth: date = Field(index=True)
     placement_date: date = Field(index=True)
     end_date: Optional[date] = Field(default=None, index=True)
@@ -296,6 +301,10 @@ class FlockLayCurveNorm(
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    flock_lay_curve_profile_id: int = Field(
+        foreign_key="flock_lay_curve_profiles.id",
+        index=True,
+    )
     breed_key: str = Field(index=True)
     breed_name: str = Field()
     source: str = Field()
@@ -345,3 +354,25 @@ class FlockLayCurveNorm(
         default=Decimal("0"),
         sa_column=Column(Numeric(5, 3), nullable=False),
     )
+
+
+class FlockLayCurveProfile(
+    CreatedTimestampMixin,
+    SQLModel,
+    table=True,
+):
+    """One selectable lay-curve norm profile that many flocks can reference."""
+
+    __tablename__ = "flock_lay_curve_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "breed_key",
+            name="uq_flock_lay_curve_profiles_breed_key",
+        ),
+        {"comment": ("Selectable lay-curve norm profiles that flocks can reference.")},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    breed_key: str = Field(index=True)
+    breed_name: str = Field()
+    source: str = Field()

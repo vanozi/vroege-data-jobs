@@ -95,7 +95,7 @@ def _(connectorx_database_url, pl):
 
 @app.cell
 def _(df_flocks, mo, pl):
-    """Filter: huis en koppel."""
+    """Filter: huis."""
     house_options = (
         df_flocks.select("house_id").unique().sort("house_id")["house_id"].to_list()
     )
@@ -104,45 +104,56 @@ def _(df_flocks, mo, pl):
         value=house_options[0] if house_options else None,
         label="Stal",
     )
+    return house_filter, house_options
+
+
+@app.cell
+def _(df_flocks, house_filter, mo, pl):
+    """Filter: koppel voor gekozen huis."""
 
     flocks_for_house = df_flocks.filter(pl.col("house_id") == house_filter.value)
 
-    flock_options = {
-        str(row["id"]): (
-            f"{row['flock_name']} "
-            f"({row['placement_date']} – {row['end_date'] or 'heden'})"
+    flock_options = {}
+    for _flock_row in flocks_for_house.to_dicts():
+        _flock_label = (
+            f"{_flock_row['flock_name']} "
+            f"({_flock_row['placement_date']} - {_flock_row['end_date'] or 'heden'})"
         )
-        for row in flocks_for_house.to_dicts()
-    }
+        flock_options[_flock_label] = str(_flock_row["id"])
 
     active_flock_ids = (
         flocks_for_house.filter(pl.col("is_active")).select("id")["id"].to_list()
     )
-    default_flock_id = (
-        str(active_flock_ids[0])
-        if active_flock_ids
-        else (list(flock_options.keys())[0] if flock_options else None)
-    )
+    default_flock_id = str(active_flock_ids[0]) if active_flock_ids else None
+    default_flock_option = None
+    if default_flock_id is not None:
+        for _option_label, _option_value in flock_options.items():
+            if _option_value == default_flock_id:
+                default_flock_option = _option_label
+                break
+    if default_flock_option is None and flock_options:
+        default_flock_option = next(iter(flock_options.keys()))
 
     flock_filter = mo.ui.dropdown(
         options=flock_options,
-        value=default_flock_id,
+        value=default_flock_option,
         label="Koppel",
     )
-    return (
-        default_flock_id,
-        flock_filter,
-        flock_options,
-        flocks_for_house,
-        house_filter,
-        house_options,
-    )
+    return default_flock_id, flock_filter, flock_options, flocks_for_house
 
 
 @app.cell
-def _(date, df_flocks, flock_filter, mo, pl):
+def _(date, df_flocks, flock_filter, flock_options, mo, pl):
     """Selecteer het actieve koppel en bepaal het datumbereik."""
-    selected_flock_id = int(flock_filter.value) if flock_filter.value else None
+    selected_flock_value = flock_filter.value
+    if not selected_flock_value:
+        selected_flock_id = None
+    else:
+        selected_flock_key = str(selected_flock_value)
+        selected_flock_id_value = flock_options.get(
+            selected_flock_key, selected_flock_key
+        )
+        selected_flock_id = int(selected_flock_id_value)
     selected_flock_rows = (
         df_flocks.filter(pl.col("id") == selected_flock_id)
         if selected_flock_id is not None
@@ -157,13 +168,13 @@ def _(date, df_flocks, flock_filter, mo, pl):
         bird_count = 0
         flock_breed = None
     else:
-        row = selected_flock_rows.to_dicts()[0]
-        selected_flock = row
-        flock_start = row["placement_date"]
-        flock_end = row["end_date"] or date.today()
-        flock_dob = row["date_of_birth"]
-        bird_count = row["bird_count"] or 0
-        flock_breed = row["breed"]
+        _selected_row = selected_flock_rows.to_dicts()[0]
+        selected_flock = _selected_row
+        flock_start = _selected_row["placement_date"]
+        flock_end = _selected_row["end_date"] or date.today()
+        flock_dob = _selected_row["date_of_birth"]
+        bird_count = _selected_row["bird_count"] or 0
+        flock_breed = _selected_row["breed"]
 
     date_range_filter = mo.ui.date_range(
         label="Datumbereik",

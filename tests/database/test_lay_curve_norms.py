@@ -4,8 +4,9 @@ from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
+from database.models.laying_hens import FlockLayCurveProfile
 from database.repositories.laying_hens_repository import FlockLayCurveNormsRepository
 from database.seeds.load_lay_curve_norms import load_norms_with_repo
 
@@ -163,6 +164,19 @@ def test_list_breed_keys_returns_loaded_keys():
     keys = repo.list_breed_keys()
 
     assert _BREED_KEY in keys
+
+
+def test_upsert_creates_one_profile_per_breed_key():
+    engine = _create_test_engine()
+    repo = FlockLayCurveNormsRepository(_session_factory(engine))
+
+    load_norms_with_repo(_CSV_PATH, repo)
+
+    with Session(engine) as session:
+        profiles = list(session.exec(select(FlockLayCurveProfile)).all())
+
+    assert len(profiles) == 1
+    assert profiles[0].breed_key == _BREED_KEY
 
 
 def test_dry_run_does_not_write_to_database():
