@@ -401,6 +401,13 @@ def _(connectorx_database_url, flock_breed, pl, transforms):
 
 
 @app.cell
+def _(df_norms, flock_dob, transforms):
+    """Normcurve projecteren naar kalenderdatums van het koppel."""
+    df_norms_by_date = transforms.norm_dates_for_flock(df_norms, flock_dob)
+    return (df_norms_by_date,)
+
+
+@app.cell
 def _(
     bird_count,
     date_range_filter,
@@ -568,6 +575,113 @@ def _(
 
 @app.cell
 def _(
+    bird_count,
+    cum_dead_pct,
+    date_range_filter,
+    df_eggs,
+    df_feed_water,
+    df_norms,
+    df_pallets,
+    last_flock_week,
+    mo,
+    selected_flock,
+    show_norms_switch,
+    transforms,
+):
+    """Cumulatieve KPI's per opgezette hen vergeleken met de norm."""
+    if selected_flock is None or not date_range_filter.value:
+        cumulative_kpi_block = mo.md("")
+    else:
+        actual = transforms.cumulative_kpis_per_placed_hen(
+            df_eggs,
+            df_feed_water,
+            df_pallets,
+            bird_count,
+        )
+        actual["liveability_percentage"] = (
+            100.0 - cum_dead_pct if bird_count > 0 else None
+        )
+
+        norm_row = None
+        if show_norms_switch.value and last_flock_week is not None:
+            norm_row = transforms.get_norm_for_flock_week(df_norms, last_flock_week)
+
+        def _fmt(value, precision=2, unit=""):
+            if value is None:
+                return "-"
+            return f"{value:.{precision}f}{unit}"
+
+        rows = [
+            (
+                "Eieren per opgezette hen",
+                actual["eggs_per_placed_hen"],
+                "cumulative_eggs_per_placed_hen_norm",
+                1,
+                "",
+            ),
+            (
+                "Kg ei per opgezette hen",
+                actual["egg_kg_per_placed_hen"],
+                "cumulative_egg_kg_per_placed_hen_norm",
+                2,
+                " kg",
+            ),
+            (
+                "Kg voer per opgezette hen",
+                actual["feed_kg_per_placed_hen"],
+                "cumulative_feed_kg_per_placed_hen_norm",
+                2,
+                " kg",
+            ),
+            (
+                "Cumulatieve FCR",
+                actual["cum_fcr"],
+                "cumulative_feed_conversion_ratio_norm",
+                3,
+                "",
+            ),
+            (
+                "Leefbaarheid",
+                actual["liveability_percentage"],
+                "liveability_percentage_norm",
+                1,
+                "%",
+            ),
+        ]
+
+        table_rows = []
+        for label, actual_value, norm_key, precision, unit in rows:
+            norm_value = norm_row.get(norm_key) if norm_row else None
+            delta = transforms.format_norm_delta(
+                actual_value,
+                norm_value,
+                unit=unit,
+                precision=precision,
+            )
+            table_rows.append(
+                "| "
+                f"{label} | {_fmt(actual_value, precision, unit)} | "
+                f"{_fmt(norm_value, precision, unit)} | {delta or '-'} |"
+            )
+
+        cumulative_kpi_block = mo.md(
+            "\n".join(
+                [
+                    "## Cumulatief vs norm",
+                    "",
+                    "| KPI | Werkelijk | Norm | Delta |",
+                    "|---|---:|---:|---:|",
+                    *table_rows,
+                ]
+            )
+        )
+
+    cumulative_kpi_block
+    return (cumulative_kpi_block,)
+
+
+@app.cell
+def _(
     alt,
     bird_count,
     date_range_filter,
@@ -591,9 +705,13 @@ def _(
     alt,
     date_range_filter,
     df_feed_water,
+    df_norms,
+    df_norms_by_date,
+    flock_dob,
     mo,
     pl,
     rolling_switch,
+    show_norms_switch,
     transforms,
 ):
     """Chart 1 inhoud: voer en water lijnen."""
@@ -603,7 +721,11 @@ def _(
         )
         summary_feed_water = mo.md("")
     else:
-        df_fw = df_feed_water.sort("registration_date")
+        df_fw = transforms.add_flock_week_column(
+            df_feed_water.sort("registration_date"),
+            "registration_date",
+            flock_dob,
+        )
 
         if rolling_switch.value:
             df_fw = transforms.add_rolling_average(df_fw, "feed_grams", window=7)
@@ -666,6 +788,36 @@ def _(
                 )
             )
 
+        if show_norms_switch.value and not df_norms_by_date.is_empty():
+            norm_feed_pd = df_norms_by_date.select(
+                [
+                    "registration_date",
+                    "age_weeks",
+                    "feed_intake_grams_per_day_norm",
+                ]
+            ).to_pandas()
+            layers.append(
+                alt.Chart(norm_feed_pd)
+                .mark_line(color="#6b7280", strokeDash=[6, 4], strokeWidth=2)
+                .encode(
+                    x=alt.X("registration_date:T"),
+                    y=alt.Y("feed_intake_grams_per_day_norm:Q"),
+                    tooltip=[
+                        alt.Tooltip(
+                            "registration_date:T",
+                            title="Normdatum",
+                            format="%d-%m-%Y",
+                        ),
+                        alt.Tooltip("age_weeks:Q", title="Leeftijdsweek"),
+                        alt.Tooltip(
+                            "feed_intake_grams_per_day_norm:Q",
+                            title="Norm voer (g/dag)",
+                            format=".0f",
+                        ),
+                    ],
+                )
+            )
+
         chart_feed_water = mo.ui.altair_chart(
             alt.layer(*layers)
             .resolve_scale(y="independent")
@@ -676,9 +828,23 @@ def _(
 
         avg_feed = df_feed_water["feed_grams"].mean()
         avg_water = df_feed_water["water_ml"].mean()
+        last_fw = df_fw.tail(1).to_dicts()[0]
+        norm_row = transforms.get_norm_for_flock_week(
+            df_norms,
+            last_fw["flock_week"],
+        )
+        feed_delta = ""
+        if show_norms_switch.value and norm_row:
+            feed_delta = transforms.format_norm_delta(
+                last_fw["feed_grams"],
+                norm_row["feed_intake_grams_per_day_norm"],
+                unit=" gram",
+                precision=0,
+            )
         summary_feed_water = mo.md(
             f"Gemiddeld voer: **{avg_feed:.0f} gram/dag** · "
             f"Gemiddeld water: **{avg_water:.0f} ml/dag**"
+            + (f" · Laatste voer vs norm: {feed_delta}" if feed_delta else "")
         )
 
     mo.vstack([chart_feed_water, summary_feed_water])
@@ -767,7 +933,19 @@ def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
 
 
 @app.cell
-def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
+def _(
+    alt,
+    bird_count,
+    date_range_filter,
+    df_dead_hens,
+    df_norms,
+    df_norms_by_date,
+    flock_dob,
+    mo,
+    pl,
+    show_norms_switch,
+    transforms,
+):
     """Chart 3 inhoud."""
     if df_dead_hens.is_empty() or not date_range_filter.value:
         chart_dead_hens = mo.callout(
@@ -785,6 +963,11 @@ def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
             df_daily_dead = df_daily_dead.with_columns(
                 (pl.col("cum_dead") / bird_count * 100.0).alias("cum_dead_pct")
             )
+        df_daily_dead = transforms.add_flock_week_column(
+            df_daily_dead.rename({"found_date": "registration_date"}),
+            "registration_date",
+            flock_dob,
+        ).rename({"registration_date": "found_date"})
 
         df_dd_pd = df_daily_dead.to_pandas()
 
@@ -824,6 +1007,44 @@ def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
             )
             layers_dead.append(line_cum)
 
+            if show_norms_switch.value and not df_norms_by_date.is_empty():
+                norm_dead_pd = (
+                    df_norms_by_date.select(
+                        [
+                            "registration_date",
+                            "age_weeks",
+                            "liveability_percentage_norm",
+                        ]
+                    )
+                    .with_columns(
+                        (100.0 - pl.col("liveability_percentage_norm")).alias(
+                            "cum_dead_pct_norm"
+                        )
+                    )
+                    .to_pandas()
+                )
+                layers_dead.append(
+                    alt.Chart(norm_dead_pd)
+                    .mark_line(color="#6b7280", strokeDash=[6, 4], strokeWidth=2)
+                    .encode(
+                        x=alt.X("registration_date:T"),
+                        y=alt.Y("cum_dead_pct_norm:Q"),
+                        tooltip=[
+                            alt.Tooltip(
+                                "registration_date:T",
+                                title="Normdatum",
+                                format="%d-%m-%Y",
+                            ),
+                            alt.Tooltip("age_weeks:Q", title="Leeftijdsweek"),
+                            alt.Tooltip(
+                                "cum_dead_pct_norm:Q",
+                                title="Norm uitval %",
+                                format=".2f",
+                            ),
+                        ],
+                    )
+                )
+
         chart_dead_hens = mo.ui.altair_chart(
             alt.layer(*layers_dead)
             .resolve_scale(y="independent")
@@ -837,10 +1058,28 @@ def _(alt, bird_count, date_range_filter, df_dead_hens, mo, pl, transforms):
         total_dead = int(df_dead_hens["dead_count"].sum())
         cum_pct = total_dead / bird_count * 100.0 if bird_count > 0 else 0.0
         avg_per_day = df_daily_dead["dead_count"].mean()
+        last_dead_row = df_daily_dead.tail(1).to_dicts()[0]
+        norm_row = transforms.get_norm_for_flock_week(
+            df_norms,
+            last_dead_row["flock_week"],
+        )
+        mortality_delta = ""
+        if show_norms_switch.value and norm_row:
+            mortality_delta = transforms.format_norm_delta(
+                last_dead_row["cum_dead_pct"],
+                100.0 - norm_row["liveability_percentage_norm"],
+                unit="%",
+                precision=2,
+            )
         summary_dead_hens = mo.md(
             f"Totaal: **{total_dead}** dode hennen · "
             f"Cumulatieve uitval: **{cum_pct:.2f}%** · "
             f"Gemiddeld per dag: **{avg_per_day:.1f}**"
+            + (
+                f" · Laatste cumulatieve uitval vs norm: {mortality_delta}"
+                if mortality_delta
+                else ""
+            )
         )
 
     mo.vstack([chart_dead_hens, summary_dead_hens])
@@ -855,7 +1094,18 @@ def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
 
 
 @app.cell
-def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
+def _(
+    alt,
+    date_range_filter,
+    df_norms,
+    df_norms_by_date,
+    df_pallets,
+    flock_dob,
+    mo,
+    pl,
+    show_norms_switch,
+    transforms,
+):
     """Chart 4 inhoud."""
     if df_pallets.is_empty() or not date_range_filter.value:
         chart_pallets = mo.callout(
@@ -871,6 +1121,11 @@ def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
                 pl.col("pallet_weight_kg").sum().alias("pallet_weight_total"),
             )
             .sort("registration_date")
+        )
+        df_daily_ew = transforms.add_flock_week_column(
+            df_daily_ew,
+            "registration_date",
+            flock_dob,
         )
 
         df_ew_pd = df_daily_ew.to_pandas()
@@ -916,8 +1171,39 @@ def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
             )
         )
 
+        layers_pallets = [scatter, avg_line]
+        if show_norms_switch.value and not df_norms_by_date.is_empty():
+            norm_weight_pd = df_norms_by_date.select(
+                [
+                    "registration_date",
+                    "age_weeks",
+                    "egg_weight_grams_norm",
+                ]
+            ).to_pandas()
+            layers_pallets.append(
+                alt.Chart(norm_weight_pd)
+                .mark_line(color="#6b7280", strokeDash=[6, 4], strokeWidth=2)
+                .encode(
+                    x=alt.X("registration_date:T"),
+                    y=alt.Y("egg_weight_grams_norm:Q"),
+                    tooltip=[
+                        alt.Tooltip(
+                            "registration_date:T",
+                            title="Normdatum",
+                            format="%d-%m-%Y",
+                        ),
+                        alt.Tooltip("age_weeks:Q", title="Leeftijdsweek"),
+                        alt.Tooltip(
+                            "egg_weight_grams_norm:Q",
+                            title="Norm eigewicht (g)",
+                            format=".2f",
+                        ),
+                    ],
+                )
+            )
+
         chart_pallets = mo.ui.altair_chart(
-            alt.layer(scatter, avg_line).properties(
+            alt.layer(*layers_pallets).properties(
                 width=900,
                 height=280,
                 title="Eigewicht per pallet (punten) en daggemiddelde (lijn)",
@@ -928,10 +1214,28 @@ def _(alt, date_range_filter, df_pallets, mo, pl, transforms):
         min_ew = df_pallets["egg_weight_grams"].min()
         max_ew = df_pallets["egg_weight_grams"].max()
         n_pallets = len(df_pallets)
+        last_weight_row = df_daily_ew.tail(1).to_dicts()[0]
+        norm_row = transforms.get_norm_for_flock_week(
+            df_norms,
+            last_weight_row["flock_week"],
+        )
+        egg_weight_delta = ""
+        if show_norms_switch.value and norm_row:
+            egg_weight_delta = transforms.format_norm_delta(
+                last_weight_row["egg_weight_avg"],
+                norm_row["egg_weight_grams_norm"],
+                unit=" g",
+                precision=2,
+            )
         summary_pallets = mo.md(
             f"Gemiddeld eigewicht: **{avg_ew:.2f} g** · "
             f"Min: **{min_ew:.2f} g** · Max: **{max_ew:.2f} g** · "
             f"Aantal pallets: **{n_pallets}**"
+            + (
+                f" · Laatste eigewicht vs norm: {egg_weight_delta}"
+                if egg_weight_delta
+                else ""
+            )
         )
 
     mo.vstack([chart_pallets, summary_pallets])
@@ -963,10 +1267,13 @@ def _(
     date_range_filter,
     df_dead_hens,
     df_eggs,
+    df_norms,
+    df_norms_by_date,
     flock_dob,
     mo,
     pl,
     rolling_switch,
+    show_norms_switch,
     transforms,
 ):
     """Chart 5 inhoud."""
@@ -1058,6 +1365,36 @@ def _(
                     )
                 )
 
+            if show_norms_switch.value and not df_norms_by_date.is_empty():
+                norm_lay_pd = df_norms_by_date.select(
+                    [
+                        "registration_date",
+                        "age_weeks",
+                        "lay_percentage_norm",
+                    ]
+                ).to_pandas()
+                layers_eggs.append(
+                    alt.Chart(norm_lay_pd)
+                    .mark_line(color="#6b7280", strokeDash=[6, 4], strokeWidth=2)
+                    .encode(
+                        x=alt.X("registration_date:T"),
+                        y=alt.Y("lay_percentage_norm:Q"),
+                        tooltip=[
+                            alt.Tooltip(
+                                "registration_date:T",
+                                title="Normdatum",
+                                format="%d-%m-%Y",
+                            ),
+                            alt.Tooltip("age_weeks:Q", title="Leeftijdsweek"),
+                            alt.Tooltip(
+                                "lay_percentage_norm:Q",
+                                title="Norm legpercentage",
+                                format=".1f",
+                            ),
+                        ],
+                    )
+                )
+
         chart_eggs = mo.ui.altair_chart(
             alt.layer(*layers_eggs)
             .resolve_scale(y="independent")
@@ -1077,7 +1414,23 @@ def _(
             if avg_lay is not None
             else "Legpercentage: geen kippenstand data"
         )
-        summary_eggs = mo.md(f"Totaal eieren: **{total_eggs_c:,}** · {lay_str}")
+        last_egg_day = df_eggs_w.tail(1).to_dicts()[0]
+        norm_row = transforms.get_norm_for_flock_week(
+            df_norms,
+            last_egg_day["flock_week"],
+        )
+        lay_delta = ""
+        if show_norms_switch.value and norm_row:
+            lay_delta = transforms.format_norm_delta(
+                last_egg_day.get("lay_percentage"),
+                norm_row["lay_percentage_norm"],
+                unit="%",
+                precision=1,
+            )
+        summary_eggs = mo.md(
+            f"Totaal eieren: **{total_eggs_c:,}** · {lay_str}"
+            + (f" · Laatste legpercentage vs norm: {lay_delta}" if lay_delta else "")
+        )
 
     mo.vstack([chart_eggs, summary_eggs])
     return chart_eggs, summary_eggs
@@ -1087,11 +1440,14 @@ def _(
 def _(
     alt,
     date_range_filter,
+    df_norms,
+    df_norms_by_date,
     df_eggs,
     df_feed_water,
     df_pallets,
     flock_dob,
     mo,
+    show_norms_switch,
     rolling_switch,
     transforms,
 ):
@@ -1104,12 +1460,15 @@ def _(
 def _(
     alt,
     date_range_filter,
+    df_norms,
+    df_norms_by_date,
     df_eggs,
     df_feed_water,
     df_pallets,
     flock_dob,
     mo,
     pl,
+    show_norms_switch,
     rolling_switch,
     transforms,
 ):
@@ -1203,6 +1562,36 @@ def _(
                     )
                 )
 
+            if show_norms_switch.value and not df_norms_by_date.is_empty():
+                norm_fcr_pd = df_norms_by_date.select(
+                    [
+                        "registration_date",
+                        "age_weeks",
+                        "feed_conversion_ratio_norm",
+                    ]
+                ).to_pandas()
+                layers_fcr.append(
+                    alt.Chart(norm_fcr_pd)
+                    .mark_line(color="#6b7280", strokeDash=[6, 4], strokeWidth=2)
+                    .encode(
+                        x=alt.X("registration_date:T"),
+                        y=alt.Y("feed_conversion_ratio_norm:Q"),
+                        tooltip=[
+                            alt.Tooltip(
+                                "registration_date:T",
+                                title="Normdatum",
+                                format="%d-%m-%Y",
+                            ),
+                            alt.Tooltip("age_weeks:Q", title="Leeftijdsweek"),
+                            alt.Tooltip(
+                                "feed_conversion_ratio_norm:Q",
+                                title="Norm FCR",
+                                format=".3f",
+                            ),
+                        ],
+                    )
+                )
+
             chart_fcr = mo.ui.altair_chart(
                 alt.layer(*layers_fcr).properties(
                     width=900,
@@ -1213,9 +1602,24 @@ def _(
 
             avg_fcr = fcr_df["fcr"].drop_nulls().mean()
             n_measured = int(fcr_df["is_measured_weight"].sum())
+            last_fcr_row = (
+                fcr_df.filter(pl.col("fcr").is_not_null()).tail(1).to_dicts()[0]
+            )
+            norm_row = transforms.get_norm_for_flock_week(
+                df_norms,
+                last_fcr_row["flock_week"],
+            )
+            fcr_delta = ""
+            if show_norms_switch.value and norm_row:
+                fcr_delta = transforms.format_norm_delta(
+                    last_fcr_row["fcr"],
+                    norm_row["feed_conversion_ratio_norm"],
+                    precision=3,
+                )
             summary_fcr = mo.md(
                 f"Gemiddelde FCR: **{avg_fcr:.3f}** · "
                 f"Dagen met palletmeting: **{n_measured}**"
+                + (f" · Laatste FCR vs norm: {fcr_delta}" if fcr_delta else "")
             )
 
     mo.vstack([chart_fcr, summary_fcr])

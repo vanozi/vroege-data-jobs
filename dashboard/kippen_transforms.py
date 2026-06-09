@@ -13,6 +13,7 @@ Week 33 starts on curve_day 231 = elapsed_day 232 (dob + 232 days).
 import unicodedata
 from datetime import date
 from decimal import Decimal
+from typing import Optional
 
 import polars as pl
 
@@ -312,7 +313,7 @@ def cumulative_kpis_per_placed_hen(
     egg_total_col: str = "total_eggs",
     feed_col: str = "feed_grams",
     weight_col: str = "egg_weight_grams",
-) -> dict[str, float | None]:
+) -> dict[str, Optional[float]]:
     """Return cumulative production KPIs per placed (initial) hen.
 
     Returns a dict with:
@@ -349,7 +350,7 @@ def cumulative_kpis_per_placed_hen(
     egg_kg_per_hen = (egg_mass_g / 1000.0) / initial_bird_count if egg_mass_g else None
     feed_kg_per_hen = (total_feed_g / 1000.0) / initial_bird_count
 
-    cum_fcr: float | None = None
+    cum_fcr: Optional[float] = None
     if egg_mass_g and egg_mass_g > 0:
         cum_fcr = float(Decimal(str(total_feed_g)) / Decimal(str(egg_mass_g)))
 
@@ -368,7 +369,7 @@ def cumulative_kpis_per_placed_hen(
 # ---------------------------------------------------------------------------
 
 
-def normalize_breed_key(breed: str | None) -> str | None:
+def normalize_breed_key(breed: Optional[str]) -> Optional[str]:
     """Normalise a flock breed string to a breed_key for norm lookup.
 
     Lowercases, strips accents, replaces spaces/hyphens with underscores,
@@ -390,7 +391,13 @@ def normalize_breed_key(breed: str | None) -> str | None:
     clean = clean.strip("_")
     while "__" in clean:
         clean = clean.replace("__", "_")
-    return clean or None
+
+    breed_aliases = {
+        "dekalb_wit": "dekalb_white_scharrel_voliere",
+        "dekalb_white": "dekalb_white_scharrel_voliere",
+        "dekalb_white_scharrel_en_voliere": "dekalb_white_scharrel_voliere",
+    }
+    return breed_aliases.get(clean, clean) or None
 
 
 def join_norms_by_age_week(
@@ -426,7 +433,7 @@ def add_rolling_average(
     value_col: str,
     *,
     window: int = 7,
-    output_col: str | None = None,
+    output_col: Optional[str] = None,
     date_col: str = "registration_date",
 ) -> pl.DataFrame:
     """Add a rolling N-day mean column sorted by date_col.
@@ -437,3 +444,67 @@ def add_rolling_average(
     return df.sort(date_col).with_columns(
         pl.col(value_col).rolling_mean(window_size=window).alias(out_col)
     )
+
+
+# ---------------------------------------------------------------------------
+# Norm-curve helpers
+# ---------------------------------------------------------------------------
+
+
+def norm_dates_for_flock(
+    norm_df: pl.DataFrame,
+    date_of_birth: date,
+    *,
+    age_weeks_col: str = "age_weeks",
+    output_date_col: str = "registration_date",
+) -> pl.DataFrame:
+    """Add a calendar date column to a norm DataFrame for a specific flock.
+
+    Formula: date = date_of_birth + (age_weeks * 7 + 1) days.
+    This mirrors the curve-day convention: curve_day = W*7, elapsed = W*7+1.
+
+    Returns norm_df with an additional `output_date_col` (Date) column.
+    """
+    if norm_df.is_empty():
+        return norm_df.with_columns(pl.lit(None).cast(pl.Date).alias(output_date_col))
+
+    return norm_df.with_columns(
+        (pl.lit(date_of_birth) + pl.duration(days=pl.col(age_weeks_col) * 7 + 1)).alias(
+            output_date_col
+        )
+    )
+
+
+def format_norm_delta(
+    actual: Optional[float],
+    norm: Optional[float],
+    *,
+    unit: str = "",
+    precision: int = 1,
+) -> str:
+    """Return a formatted delta string comparing an actual value to a norm.
+
+    Example: format_norm_delta(96.4, 97.0, unit="%") -> "norm 97.0%, Δ **-0.6%**"
+    Returns an empty string when either value is None.
+    """
+    if actual is None or norm is None:
+        return ""
+    delta = actual - norm
+    sign = "+" if delta >= 0 else ""
+    fmt = f".{precision}f"
+    return f"norm {norm:{fmt}}{unit} · Δ **{sign}{delta:{fmt}}{unit}**"
+
+
+def get_norm_for_flock_week(
+    norm_df: pl.DataFrame,
+    flock_week: int,
+    *,
+    age_weeks_col: str = "age_weeks",
+) -> Optional[dict]:
+    """Return the norm row for a given flock_week as a dict, or None."""
+    if norm_df.is_empty():
+        return None
+    row = norm_df.filter(pl.col(age_weeks_col) == flock_week)
+    if row.is_empty():
+        return None
+    return row.to_dicts()[0]

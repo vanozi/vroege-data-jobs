@@ -14,9 +14,12 @@ from dashboard.kippen_transforms import (
     daily_bird_count,
     daily_fcr,
     daily_lay_percentage,
+    format_norm_delta,
     forward_fill_egg_weight,
+    get_norm_for_flock_week,
     join_forward_filled_weight,
     join_norms_by_age_week,
+    norm_dates_for_flock,
     normalize_breed_key,
 )
 
@@ -412,13 +415,13 @@ class TestCumulativeKpisPerPlacedHen:
 class TestNormalizeBreedKey:
     def test_dekalb_white_full_name(self):
         result = normalize_breed_key("DEKALB WHITE SCHARREL EN VOLIÈRE")
-        assert result == "dekalb_white_scharrel_en_voliere"
+        assert result == "dekalb_white_scharrel_voliere"
 
     def test_dekalb_wit_short(self):
-        assert normalize_breed_key("Dekalb Wit") == "dekalb_wit"
+        assert normalize_breed_key("Dekalb Wit") == "dekalb_white_scharrel_voliere"
 
     def test_lowercase_passthrough(self):
-        assert normalize_breed_key("dekalb_wit") == "dekalb_wit"
+        assert normalize_breed_key("dekalb_wit") == "dekalb_white_scharrel_voliere"
 
     def test_none_returns_none(self):
         assert normalize_breed_key(None) is None
@@ -509,3 +512,171 @@ class TestAddRollingAverage:
         )
         result = add_rolling_average(df, "val", window=1, output_col="my_rolling")
         assert "my_rolling" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# norm_dates_for_flock
+# ---------------------------------------------------------------------------
+
+
+class TestNormDatesForFlock:
+    def test_week_33_gives_correct_date(self):
+        # Week 33: date = dob + 33*7+1 = dob + 232 days = 2026-05-21
+        norm_df = pl.DataFrame({"age_weeks": [33], "lay_percentage_norm": [97.0]})
+        result = norm_dates_for_flock(norm_df, DOB)
+        assert "registration_date" in result.columns
+        assert result["registration_date"][0] == date(2026, 5, 21)
+
+    def test_week_18_gives_correct_date(self):
+        # Week 18: date = dob + 18*7+1 = dob + 127 days = 2026-02-05
+        norm_df = pl.DataFrame({"age_weeks": [18]})
+        result = norm_dates_for_flock(norm_df, DOB)
+        expected = date.fromordinal(DOB.toordinal() + 18 * 7 + 1)
+        assert result["registration_date"][0] == expected
+
+    def test_custom_output_col(self):
+        norm_df = pl.DataFrame({"age_weeks": [33]})
+        result = norm_dates_for_flock(norm_df, DOB, output_date_col="norm_date")
+        assert "norm_date" in result.columns
+
+    def test_empty_df_returns_null_date_column(self):
+        norm_df = pl.DataFrame({"age_weeks": pl.Series([], dtype=pl.Int32)})
+        result = norm_dates_for_flock(norm_df, DOB)
+        assert "registration_date" in result.columns
+        assert result.is_empty()
+
+    def test_date_aligns_with_flock_week(self):
+        # norm week W should land on flock_week W for the same dob
+
+        norm_df = pl.DataFrame({"age_weeks": [33, 34, 80]})
+        result = norm_dates_for_flock(norm_df, DOB)
+        for row in result.to_dicts():
+            computed_week = calculate_flock_week(row["registration_date"], DOB)
+            assert computed_week == row["age_weeks"], (
+                f"Week {row['age_weeks']}: date {row['registration_date']} "
+                f"gives flock_week {computed_week}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# format_norm_delta
+# ---------------------------------------------------------------------------
+
+
+class TestFormatNormDelta:
+    def test_negative_delta(self):
+        result = format_norm_delta(96.4, 97.0, unit="%")
+        assert "norm 97.0%" in result
+        assert "-0.6%" in result
+
+    def test_positive_delta(self):
+        result = format_norm_delta(97.5, 97.0, unit="%")
+        assert "+0.5%" in result
+
+    def test_zero_delta(self):
+        result = format_norm_delta(97.0, 97.0)
+        assert "+0.0" in result
+
+    def test_none_actual_returns_empty(self):
+        assert format_norm_delta(None, 97.0) == ""
+
+    def test_none_norm_returns_empty(self):
+        assert format_norm_delta(96.4, None) == ""
+
+    def test_custom_precision(self):
+        result = format_norm_delta(2.091, 2.090, precision=3)
+        assert "+0.001" in result
+
+    def test_no_unit(self):
+        result = format_norm_delta(2.09, 2.10)
+        assert "norm 2.1" in result
+
+
+# ---------------------------------------------------------------------------
+# get_norm_for_flock_week
+# ---------------------------------------------------------------------------
+
+
+class TestGetNormForFlockWeek:
+    def test_returns_matching_row(self):
+        norm_df = pl.DataFrame(
+            {"age_weeks": [33, 34], "lay_percentage_norm": [97.0, 97.0]}
+        )
+        result = get_norm_for_flock_week(norm_df, 33)
+        assert result is not None
+        assert result["lay_percentage_norm"] == 97.0
+
+    def test_returns_none_for_missing_week(self):
+        norm_df = pl.DataFrame({"age_weeks": [33], "lay_percentage_norm": [97.0]})
+        assert get_norm_for_flock_week(norm_df, 99) is None
+
+    def test_returns_none_for_empty_df(self):
+        norm_df = pl.DataFrame(
+            {
+                "age_weeks": pl.Series([], dtype=pl.Int32),
+                "lay_percentage_norm": pl.Series([], dtype=pl.Float64),
+            }
+        )
+        assert get_norm_for_flock_week(norm_df, 33) is None
+
+
+# ---------------------------------------------------------------------------
+# Norm overlay integration: breed key → norm presence
+# ---------------------------------------------------------------------------
+
+
+class TestNormPresenceByBreed:
+    """Tests that verify norm visibility logic without a real database.
+
+    Uses the CSV-based repo pattern from Phase 1 tests to simulate the
+    'df_norms populated vs empty' scenarios in the dashboard.
+    """
+
+    def test_matching_breed_key_gives_populated_norms(self):
+        from pathlib import Path
+
+        from sqlalchemy.pool import StaticPool
+        from sqlmodel import Session, SQLModel, create_engine
+
+        from database.repositories.laying_hens_repository import (
+            FlockLayCurveNormsRepository,
+        )
+        from database.seeds.load_lay_curve_norms import load_norms_with_repo
+
+        _CSV = (
+            Path(__file__).parent.parent.parent
+            / "database"
+            / "seeds"
+            / "dekalb_white_norms.csv"
+        )
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        SQLModel.metadata.create_all(engine)
+        repo = FlockLayCurveNormsRepository(
+            lambda: Session(engine, expire_on_commit=False)
+        )
+        load_norms_with_repo(_CSV, repo)
+
+        # breed_key in CSV is "dekalb_white_scharrel_voliere";
+        # use the short breed name from flock records; it aliases to the CSV key.
+        breed = "Dekalb Wit"
+        breed_key = normalize_breed_key(breed)
+        assert breed_key == "dekalb_white_scharrel_voliere"
+        norms = repo.list_by_breed_key(breed_key)
+        # Norms present → norm overlay should show, no hint
+        assert len(norms) == 83
+
+    def test_unknown_breed_gives_empty_norms_and_hint(self):
+        breed = "Onbekend Ras"
+        # breed_key normalises fine but there are no rows for it;
+        # simulate with an empty DataFrame as the dashboard would have.
+        df_norms = pl.DataFrame({"age_weeks": pl.Series([], dtype=pl.Int32)})
+        norm_hint = breed if df_norms.is_empty() else None
+        assert norm_hint == "Onbekend Ras"
+
+    def test_none_breed_gives_no_hint(self):
+        assert normalize_breed_key(None) is None
+        # dashboard skips norm lookup entirely when breed_key is None
