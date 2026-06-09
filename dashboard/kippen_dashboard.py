@@ -410,6 +410,7 @@ def _(df_norms, flock_dob, transforms):
 @app.cell
 def _(
     bird_count,
+    date,
     date_range_filter,
     df_dead_hens,
     df_eggs,
@@ -1624,6 +1625,299 @@ def _(
 
     mo.vstack([chart_fcr, summary_fcr])
     return chart_fcr, summary_fcr
+
+
+@app.cell
+def _(
+    bird_count,
+    date,
+    date_range_filter,
+    df_dead_hens,
+    df_eggs,
+    df_feed_water,
+    df_norms,
+    df_outside_nest,
+    df_pallets,
+    flock_dob,
+    pl,
+    rolling_switch,
+    transforms,
+):
+    """Per-dag analysetabel met werkelijke en norm-kolommen."""
+    if not date_range_filter.value:
+        df_daily_overview = pl.DataFrame(
+            {"registration_date": pl.Series([], dtype=pl.Date)}
+        )
+    else:
+        date_from, date_to = date_range_filter.value
+        date_from_value = (
+            date_from if isinstance(date_from, date) else date.fromisoformat(date_from)
+        )
+        date_to_value = (
+            date_to if isinstance(date_to, date) else date.fromisoformat(date_to)
+        )
+        base_df = pl.DataFrame(
+            {
+                "registration_date": pl.date_range(
+                    date_from_value,
+                    date_to_value,
+                    interval="1d",
+                    eager=True,
+                )
+            }
+        )
+
+        dead_daily = transforms.daily_bird_count(df_dead_hens, bird_count)
+        if dead_daily.is_empty():
+            dead_daily = base_df.select("registration_date").with_columns(
+                pl.lit(0).alias("dead_today"),
+                pl.lit(0).alias("cum_dead"),
+                pl.lit(bird_count).alias("bird_count"),
+            )
+
+        daily_birds = (
+            base_df.join(dead_daily, on="registration_date", how="left")
+            .with_columns(
+                pl.col("dead_today").fill_null(0),
+                pl.col("cum_dead").forward_fill().fill_null(0),
+                pl.col("bird_count").forward_fill().fill_null(bird_count),
+            )
+            .with_columns(
+                pl.when(pl.lit(bird_count) > 0)
+                .then(pl.col("cum_dead") / bird_count * 100.0)
+                .otherwise(pl.lit(None))
+                .alias("cum_dead_pct")
+            )
+        )
+
+        outside_daily = (
+            df_outside_nest.group_by("round_date")
+            .agg(pl.col("egg_count").sum().alias("outside_nest_eggs"))
+            .rename({"round_date": "registration_date"})
+            if not df_outside_nest.is_empty()
+            else base_df.select("registration_date").with_columns(
+                pl.lit(0).alias("outside_nest_eggs")
+            )
+        )
+
+        measured_weights = (
+            df_pallets.group_by("registration_date").agg(
+                pl.col("egg_weight_grams").mean().alias("egg_weight_avg_measured"),
+                pl.col("pallet_weight_kg").sum().alias("pallet_weight_kg_total"),
+                pl.len().alias("pallet_count"),
+            )
+            if not df_pallets.is_empty()
+            else base_df.select("registration_date").with_columns(
+                pl.lit(None).cast(pl.Float64).alias("egg_weight_avg_measured"),
+                pl.lit(None).cast(pl.Float64).alias("pallet_weight_kg_total"),
+                pl.lit(0).alias("pallet_count"),
+            )
+        )
+
+        lay_pct_df = transforms.daily_lay_percentage(df_eggs, daily_birds)
+        fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
+        weight_filled_df = transforms.join_forward_filled_weight(
+            base_df,
+            df_pallets,
+        )
+
+        df_daily_overview = (
+            base_df.join(
+                df_eggs,
+                on="registration_date",
+                how="left",
+            )
+            .join(df_feed_water, on="registration_date", how="left")
+            .join(daily_birds, on="registration_date", how="left")
+            .join(outside_daily, on="registration_date", how="left")
+            .join(measured_weights, on="registration_date", how="left")
+            .join(weight_filled_df, on="registration_date", how="left")
+            .join(lay_pct_df, on="registration_date", how="left")
+            .join(fcr_df, on="registration_date", how="left")
+            .with_columns(
+                pl.col("first_quality_eggs").fill_null(0),
+                pl.col("second_quality_eggs").fill_null(0),
+                pl.col("total_eggs").fill_null(0),
+                pl.col("water_ml").fill_null(0),
+                pl.col("feed_grams").fill_null(0),
+                pl.col("outside_nest_eggs").fill_null(0),
+                pl.col("pallet_count").fill_null(0),
+                pl.col("is_measured").fill_null(False),
+                pl.col("is_measured_weight").fill_null(False),
+            )
+        )
+
+        df_daily_overview = transforms.add_flock_week_column(
+            df_daily_overview,
+            "registration_date",
+            flock_dob,
+        )
+        df_daily_overview = transforms.join_norms_by_age_week(
+            df_daily_overview,
+            df_norms,
+        )
+        for norm_col in [
+            "lay_percentage_norm",
+            "egg_weight_grams_norm",
+            "egg_mass_grams_norm",
+            "feed_intake_grams_per_day_norm",
+            "feed_conversion_ratio_norm",
+            "liveability_percentage_norm",
+            "cumulative_eggs_per_placed_hen_norm",
+            "cumulative_egg_kg_per_placed_hen_norm",
+            "cumulative_feed_kg_per_placed_hen_norm",
+            "cumulative_feed_conversion_ratio_norm",
+        ]:
+            if norm_col not in df_daily_overview.columns:
+                df_daily_overview = df_daily_overview.with_columns(
+                    pl.lit(None).cast(pl.Float64).alias(norm_col)
+                )
+        df_daily_overview = df_daily_overview.with_columns(
+            (pl.col("total_eggs") * pl.col("egg_weight_grams_filled")).alias(
+                "egg_mass_grams"
+            ),
+        )
+
+        if rolling_switch.value:
+            df_daily_overview = transforms.add_rolling_average(
+                df_daily_overview,
+                "feed_grams",
+                window=7,
+            )
+            df_daily_overview = transforms.add_rolling_average(
+                df_daily_overview,
+                "water_ml",
+                window=7,
+            )
+            df_daily_overview = transforms.add_rolling_average(
+                df_daily_overview,
+                "lay_percentage",
+                window=7,
+            )
+            df_daily_overview = transforms.add_rolling_average(
+                df_daily_overview,
+                "fcr",
+                window=7,
+            )
+
+        df_daily_overview = df_daily_overview.select(
+            [
+                "registration_date",
+                "flock_week",
+                "bird_count",
+                "dead_today",
+                "cum_dead",
+                "cum_dead_pct",
+                "first_quality_eggs",
+                "second_quality_eggs",
+                "total_eggs",
+                "lay_percentage",
+                "lay_percentage_norm",
+                "outside_nest_eggs",
+                "water_ml",
+                "feed_grams",
+                "feed_intake_grams_per_day_norm",
+                "egg_weight_avg_measured",
+                "egg_weight_grams_filled",
+                "egg_weight_grams_norm",
+                "egg_mass_grams",
+                "egg_mass_grams_norm",
+                "pallet_weight_kg_total",
+                "pallet_count",
+                "fcr",
+                "feed_conversion_ratio_norm",
+                "liveability_percentage_norm",
+                "cumulative_eggs_per_placed_hen_norm",
+                "cumulative_egg_kg_per_placed_hen_norm",
+                "cumulative_feed_kg_per_placed_hen_norm",
+                "cumulative_feed_conversion_ratio_norm",
+                "is_measured",
+                "is_measured_weight",
+                *(
+                    [
+                        "feed_grams_rolling7",
+                        "water_ml_rolling7",
+                        "lay_percentage_rolling7",
+                        "fcr_rolling7",
+                    ]
+                    if rolling_switch.value
+                    else []
+                ),
+            ]
+        ).sort("registration_date")
+
+    return (df_daily_overview,)
+
+
+@app.cell
+def _(df_daily_overview, mo, pl, selected_flock):
+    """Datatabel en CSV-download onderaan de pagina."""
+    mo.md("## Dagoverzicht")
+
+    if selected_flock is None or df_daily_overview.is_empty():
+        daily_table_section = mo.callout(
+            mo.md("Geen dagoverzicht beschikbaar voor de huidige selectie."),
+            kind="info",
+        )
+    else:
+        table_df = df_daily_overview.with_columns(
+            pl.col("registration_date").cast(pl.String)
+        ).rename(
+            {
+                "registration_date": "Datum",
+                "flock_week": "Week",
+                "bird_count": "Hennen aanwezig",
+                "dead_today": "Dode hennen",
+                "cum_dead": "Cum. dode hennen",
+                "cum_dead_pct": "Cum. uitval %",
+                "first_quality_eggs": "1e soort",
+                "second_quality_eggs": "2e soort",
+                "total_eggs": "Totaal eieren",
+                "lay_percentage": "Legpercentage %",
+                "lay_percentage_norm": "Norm legpercentage %",
+                "outside_nest_eggs": "Buitennest eieren",
+                "water_ml": "Water ml",
+                "feed_grams": "Voer gram",
+                "feed_intake_grams_per_day_norm": "Norm voer gram",
+                "egg_weight_avg_measured": "Eigewicht gemeten g",
+                "egg_weight_grams_filled": "Eigewicht gevuld g",
+                "egg_weight_grams_norm": "Norm eigewicht g",
+                "egg_mass_grams": "Eimassa gram",
+                "egg_mass_grams_norm": "Norm eimassa gram",
+                "pallet_weight_kg_total": "Pallet kg",
+                "pallet_count": "Pallets",
+                "fcr": "FCR",
+                "feed_conversion_ratio_norm": "Norm FCR",
+                "liveability_percentage_norm": "Norm leefbaarheid %",
+                "cumulative_eggs_per_placed_hen_norm": "Norm cum. eieren/hen",
+                "cumulative_egg_kg_per_placed_hen_norm": "Norm cum. kg ei/hen",
+                "cumulative_feed_kg_per_placed_hen_norm": "Norm cum. kg voer/hen",
+                "cumulative_feed_conversion_ratio_norm": "Norm cum. FCR",
+                "is_measured": "Eigewicht gemeten",
+                "is_measured_weight": "FCR metingdag",
+                "feed_grams_rolling7": "Voer 7d gem.",
+                "water_ml_rolling7": "Water 7d gem.",
+                "lay_percentage_rolling7": "Leg% 7d gem.",
+                "fcr_rolling7": "FCR 7d gem.",
+            }
+        )
+
+        csv_download = mo.download(
+            data=df_daily_overview.write_csv().encode("utf-8"),
+            filename="kippen-dagoverzicht.csv",
+            mimetype="text/csv",
+            label="Download CSV",
+        )
+        daily_table = mo.ui.table(
+            table_df.to_pandas(),
+            selection=None,
+            page_size=20,
+            label="Per-dag overzicht met werkelijke en normwaarden",
+        )
+        daily_table_section = mo.vstack([csv_download, daily_table], gap=1)
+
+    daily_table_section
+    return (daily_table_section,)
 
 
 if __name__ == "__main__":
