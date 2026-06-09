@@ -2,9 +2,9 @@
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
-from sqlmodel import select
+from sqlmodel import col, select
 
 from database import laying_hens_calculations
 from database.models.laying_hens import DeadHenRegistration
@@ -13,6 +13,7 @@ from database.models.laying_hens import EggPalletWeightRegistration
 from database.models.laying_hens import EggRegistration
 from database.models.laying_hens import FeedWaterRegistration
 from database.models.laying_hens import Flock
+from database.models.laying_hens import FlockLayCurveNorm
 from database.models.laying_hens import OutsideNestEggRound
 from database.repositories.base_repository import BaseRepository
 
@@ -1034,3 +1035,73 @@ class EggPalletWeightRegistrationsRepository(
 
     def _to_decimal(self, value: object) -> Decimal:
         return Decimal(str(value))
+
+
+class FlockLayCurveNormsRepository(BaseRepository[FlockLayCurveNorm]):
+    """Repository for breed lay curve norm values."""
+
+    def __init__(self, session_factory):
+        super().__init__(FlockLayCurveNorm, session_factory)
+
+    def list_by_breed_key(self, breed_key: str) -> list[FlockLayCurveNorm]:
+        """Return all norm rows for a breed_key ordered by age_weeks."""
+        with self.get_session() as session:
+            statement = (
+                select(FlockLayCurveNorm)
+                .where(FlockLayCurveNorm.breed_key == breed_key)
+                .order_by(col(FlockLayCurveNorm.age_weeks).asc())
+            )
+            norms = list(session.exec(statement).all())
+            for norm in norms:
+                session.expunge(norm)
+            return norms
+
+    def get_by_breed_and_week(
+        self,
+        breed_key: str,
+        age_weeks: int,
+    ) -> Optional[FlockLayCurveNorm]:
+        """Return the norm row for a specific breed and age week."""
+        with self.get_session() as session:
+            statement = select(FlockLayCurveNorm).where(
+                FlockLayCurveNorm.breed_key == breed_key,
+                FlockLayCurveNorm.age_weeks == age_weeks,
+            )
+            norm = session.exec(statement).first()
+            if norm is not None:
+                session.expunge(norm)
+            return norm
+
+    def upsert_norm(
+        self,
+        norm_data: dict[str, Any],
+    ) -> FlockLayCurveNorm:
+        """Insert or update a norm row matched on (breed_key, age_weeks)."""
+        with self.get_session() as session:
+            existing = session.exec(
+                select(FlockLayCurveNorm).where(
+                    FlockLayCurveNorm.breed_key == norm_data["breed_key"],
+                    FlockLayCurveNorm.age_weeks == norm_data["age_weeks"],
+                )
+            ).first()
+            if existing is not None:
+                for key, value in norm_data.items():
+                    setattr(existing, key, value)
+                session.add(existing)
+                session.flush()
+                session.refresh(existing)
+                session.expunge(existing)
+                return existing
+
+            norm = FlockLayCurveNorm(**norm_data)
+            session.add(norm)
+            session.flush()
+            session.refresh(norm)
+            session.expunge(norm)
+            return norm
+
+    def list_breed_keys(self) -> list[str]:
+        """Return distinct breed_keys present in the table."""
+        with self.get_session() as session:
+            rows = session.exec(select(FlockLayCurveNorm.breed_key).distinct()).all()
+            return list(rows)

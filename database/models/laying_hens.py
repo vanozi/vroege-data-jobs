@@ -266,3 +266,82 @@ class EggPalletWeightRegistration(
     )
     notes: Optional[str] = Field(default=None)
     created_by: Optional[str] = Field(default=None)
+
+
+class FlockLayCurveNorm(
+    CreatedTimestampMixin,
+    SQLModel,
+    table=True,
+):
+    """Breed norm curve values per age week from manufacturer specifications."""
+
+    __tablename__ = "flock_lay_curve_norms"
+    __table_args__ = (
+        UniqueConstraint(
+            "breed_key",
+            "age_weeks",
+            name="uq_flock_lay_curve_norms_breed_week",
+        ),
+        CheckConstraint(
+            "age_weeks BETWEEN 18 AND 100",
+            name="ck_flock_lay_curve_norms_age_weeks_range",
+        ),
+        Index("ix_flock_lay_curve_norms_breed_key_week", "breed_key", "age_weeks"),
+        {
+            "comment": (
+                "Manufacturer breed norm curve per age week. "
+                "breed_key example: dekalb_white_scharrel_voliere."
+            )
+        },
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    breed_key: str = Field(index=True)
+    breed_name: str = Field()
+    source: str = Field()
+    age_weeks: int = Field(ge=18, le=100)
+
+    # Per aanwezige hen
+    lay_percentage: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(5, 2), nullable=False),
+    )
+    egg_weight_grams: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(5, 2), nullable=False),
+    )
+    egg_mass_grams: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(5, 2), nullable=False),
+    )
+    feed_intake_grams_per_day: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(6, 2), nullable=False),
+    )
+    feed_conversion_ratio: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(5, 3), nullable=False),
+    )
+    liveability_percentage: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(5, 2), nullable=False),
+    )
+    hen_weight_grams: Optional[int] = Field(default=None)
+
+    # Per opgezette hen (cumulatief)
+    cumulative_eggs_per_placed_hen: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(7, 1), nullable=False),
+    )
+    cumulative_egg_kg_per_placed_hen: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(7, 2), nullable=False),
+    )
+    cumulative_feed_kg_per_placed_hen: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(7, 2), nullable=False),
+    )
+    cumulative_feed_conversion_ratio: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(5, 3), nullable=False),
+    )
