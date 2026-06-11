@@ -755,6 +755,12 @@ def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
             mimetype="text/csv",
             label="Download CSV",
         )
+        weekly_csv_download = mo.download(
+            data=weekly_table_df.write_csv().encode("utf-8"),
+            filename="kippen-weekoverzicht.csv",
+            mimetype="text/csv",
+            label="Download week CSV",
+        )
         daily_table = mo.ui.table(
             table_df.to_pandas(),
             selection=None,
@@ -807,7 +813,13 @@ def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
             )
 
         daily_table_section = mo.vstack(
-            [csv_download, daily_table, weekly_table, outside_nest_chart],
+            [
+                csv_download,
+                daily_table,
+                weekly_csv_download,
+                weekly_table,
+                outside_nest_chart,
+            ],
             gap=1,
         )
 
