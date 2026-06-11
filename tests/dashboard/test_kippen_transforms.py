@@ -426,11 +426,11 @@ class TestWeeklyOverviewFromDaily:
                 "curve_day": [140, 141, 147],
                 "lay_percentage": [94.0, 96.0, 97.0],
                 "lay_percentage_norm": [95.0, 95.0, 96.0],
-                "egg_weight_grams_filled": [61.0, 63.0, 64.0],
+                "egg_weight_grams_actual": [61.0, 63.0, 64.0],
                 "egg_weight_grams_norm": [62.0, 62.0, 63.0],
                 "feed_intake_grams_per_day_actual": [118.0, 122.0, 124.0],
                 "feed_intake_grams_per_day_norm": [120.0, 120.0, 121.0],
-                "fcr": [1.95, 2.05, 1.91],
+                "fcr_actual": [1.95, 2.05, 1.91],
                 "feed_conversion_ratio_norm": [2.0, 2.0, 1.98],
                 "liveability_percentage": [99.7, 99.5, 99.4],
                 "liveability_percentage_norm": [99.8, 99.8, 99.7],
@@ -459,11 +459,11 @@ class TestWeeklyOverviewFromDaily:
                 "curve_day": [140, 141],
                 "lay_percentage": [94.0, 96.0],
                 "lay_percentage_norm": [95.0, 95.0],
-                "egg_weight_grams_filled": [61.0, 63.0],
+                "egg_weight_grams_actual": [61.0, 63.0],
                 "egg_weight_grams_norm": [62.0, 62.0],
                 "feed_intake_grams_per_day_actual": [118.0, 122.0],
                 "feed_intake_grams_per_day_norm": [120.0, 120.0],
-                "fcr": [1.95, 2.05],
+                "fcr_actual": [1.95, 2.05],
                 "feed_conversion_ratio_norm": [2.0, 2.0],
                 "liveability_percentage": [99.7, 99.5],
                 "liveability_percentage_norm": [99.8, 99.8],
@@ -476,9 +476,9 @@ class TestWeeklyOverviewFromDaily:
 
         assert len(result) == 1
         assert result["lay_percentage"][0] == pytest.approx(95.0)
-        assert result["egg_weight_grams_filled"][0] == pytest.approx(62.0)
+        assert result["egg_weight_grams_actual"][0] == pytest.approx(62.0)
         assert result["feed_intake_grams_per_day_actual"][0] == pytest.approx(120.0)
-        assert result["fcr"][0] == pytest.approx(2.0)
+        assert result["fcr_actual"][0] == pytest.approx(2.0)
         assert result["liveability_percentage"][0] == pytest.approx(99.6)
         assert result["cumulative_eggs_per_placed_hen"][0] == pytest.approx(10.9)
         assert result["cumulative_eggs_per_placed_hen_norm"][0] == pytest.approx(10.7)
@@ -494,11 +494,11 @@ class TestWeeklyOverviewFromDaily:
                 "curve_day": [140, 141],
                 "lay_percentage": [94.0, 96.0],
                 "lay_percentage_norm": [None, 95.0],
-                "egg_weight_grams_filled": [61.0, 63.0],
+                "egg_weight_grams_actual": [61.0, 63.0],
                 "egg_weight_grams_norm": [None, 62.0],
                 "feed_intake_grams_per_day_actual": [118.0, 122.0],
                 "feed_intake_grams_per_day_norm": [None, 120.0],
-                "fcr": [1.95, 2.05],
+                "fcr_actual": [1.95, 2.05],
                 "feed_conversion_ratio_norm": [None, 2.0],
                 "liveability_percentage": [99.7, 99.5],
                 "liveability_percentage_norm": [None, 99.8],

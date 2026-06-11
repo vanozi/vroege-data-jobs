@@ -499,27 +499,6 @@ def _(
         )
 
         _lay_pct_df = transforms.daily_lay_percentage(df_eggs, daily_birds)
-        fcr_feed_df = (
-            df_feed_water.join(
-                daily_birds.select(["registration_date", "bird_count"]),
-                on="registration_date",
-                how="left",
-            )
-            .with_columns(
-                pl.when(pl.col("bird_count") > 0)
-                .then(pl.col("feed_grams") * pl.col("bird_count"))
-                .otherwise(pl.lit(None))
-                .alias("total_feed_grams")
-            )
-            .select(
-                [
-                    "registration_date",
-                    "total_feed_grams",
-                ]
-            )
-            .rename({"total_feed_grams": "feed_grams"})
-        )
-        _fcr_df = transforms.daily_fcr(fcr_feed_df, df_pallets, df_eggs)
         _weight_filled_df = transforms.join_forward_filled_weight(
             base_df,
             df_pallets,
@@ -537,17 +516,12 @@ def _(
             .join(measured_weights, on="registration_date", how="left")
             .join(_weight_filled_df, on="registration_date", how="left")
             .join(_lay_pct_df, on="registration_date", how="left")
-            .join(_fcr_df, on="registration_date", how="left")
             .with_columns(
                 pl.col("first_quality_eggs").fill_null(0),
                 pl.col("second_quality_eggs").fill_null(0),
-                pl.col("total_eggs").fill_null(0),
-                pl.col("water_ml").fill_null(0),
-                pl.col("feed_grams").fill_null(0),
                 pl.col("outside_nest_eggs").fill_null(0),
                 pl.col("pallet_count").fill_null(0),
                 pl.col("is_measured").fill_null(False),
-                pl.col("is_measured_weight").fill_null(False),
             )
         )
 
@@ -581,19 +555,34 @@ def _(
             .sub(pl.lit(flock_dob))
             .dt.total_days()
             .alias("curve_day"),
+            pl.col("egg_weight_avg_measured").alias("egg_weight_grams_actual"),
             (pl.col("total_eggs") * pl.col("egg_weight_grams_filled")).alias(
                 "egg_mass_grams"
             ),
             pl.col("feed_grams").alias("feed_intake_grams_per_day_actual"),
-            pl.when(pl.col("bird_count") > 0)
+            pl.when(pl.col("feed_grams").is_not_null() & (pl.col("bird_count") > 0))
             .then(pl.col("feed_grams") * pl.col("bird_count"))
             .otherwise(pl.lit(None))
             .alias("total_feed_grams"),
+            pl.when(
+                pl.col("feed_grams").is_not_null()
+                & pl.col("egg_weight_avg_measured").is_not_null()
+                & (pl.col("egg_weight_avg_measured") > 0)
+                & pl.col("total_eggs").is_not_null()
+                & (pl.col("total_eggs") > 0)
+                & (pl.col("bird_count") > 0)
+            )
+            .then(
+                (pl.col("feed_grams") * pl.col("bird_count"))
+                / (pl.col("total_eggs") * pl.col("egg_weight_avg_measured"))
+            )
+            .otherwise(pl.lit(None))
+            .alias("fcr_actual"),
             pl.when(pl.lit(bird_count) > 0)
             .then(100.0 - pl.col("cum_dead_pct"))
             .otherwise(pl.lit(None))
             .alias("liveability_percentage"),
-            pl.col("total_eggs").cum_sum().alias("cumulative_total_eggs"),
+            pl.col("total_eggs").fill_null(0).cum_sum().alias("cumulative_total_eggs"),
         ).with_columns(
             pl.when(pl.lit(bird_count) > 0)
             .then(pl.col("cumulative_total_eggs") / bird_count)
@@ -644,13 +633,14 @@ def _(
                 "total_feed_grams",
                 "feed_intake_grams_per_day_norm",
                 "egg_weight_avg_measured",
+                "egg_weight_grams_actual",
                 "egg_weight_grams_filled",
                 "egg_weight_grams_norm",
                 "egg_mass_grams",
                 "egg_mass_grams_norm",
                 "pallet_weight_kg_total",
                 "pallet_count",
-                "fcr",
+                "fcr_actual",
                 "feed_conversion_ratio_norm",
                 "liveability_percentage",
                 "liveability_percentage_norm",
@@ -660,13 +650,11 @@ def _(
                 "cumulative_feed_kg_per_placed_hen_norm",
                 "cumulative_feed_conversion_ratio_norm",
                 "is_measured",
-                "is_measured_weight",
                 *(
                     [
                         "feed_grams_rolling7",
                         "water_ml_rolling7",
                         "lay_percentage_rolling7",
-                        "fcr_rolling7",
                     ]
                     if rolling_switch.value
                     else []
@@ -680,6 +668,7 @@ def _(
 @app.cell
 def _(
     alt,
+    date,
     df_daily_overview,
     df_norms,
     flock_dob,
@@ -705,11 +694,11 @@ def _(
                         "curve_day",
                         "lay_percentage",
                         "lay_percentage_norm",
-                        "egg_weight_grams_filled",
+                        "egg_weight_grams_actual",
                         "egg_weight_grams_norm",
                         "feed_intake_grams_per_day_actual",
                         "feed_intake_grams_per_day_norm",
-                        "fcr",
+                        "fcr_actual",
                         "feed_conversion_ratio_norm",
                         "liveability_percentage",
                         "liveability_percentage_norm",
@@ -722,11 +711,11 @@ def _(
                     pl.col("curve_day").cast(pl.Int64),
                     pl.col("lay_percentage").round(2),
                     pl.col("lay_percentage_norm").round(2),
-                    pl.col("egg_weight_grams_filled").round(1),
+                    pl.col("egg_weight_grams_actual").round(1),
                     pl.col("egg_weight_grams_norm").round(1),
                     pl.col("feed_intake_grams_per_day_actual").round(0).cast(pl.Int64),
                     pl.col("feed_intake_grams_per_day_norm").round(0).cast(pl.Int64),
-                    pl.col("fcr").round(2),
+                    pl.col("fcr_actual").round(2),
                     pl.col("feed_conversion_ratio_norm").round(2),
                     pl.col("liveability_percentage").round(2),
                     pl.col("liveability_percentage_norm").round(2),
@@ -740,11 +729,11 @@ def _(
                         "curve_day": "Curve dag",
                         "lay_percentage": "Legpercentage %",
                         "lay_percentage_norm": "Norm legpercentage %",
-                        "egg_weight_grams_filled": "Eigewicht g",
+                        "egg_weight_grams_actual": "Eigewicht g",
                         "egg_weight_grams_norm": "Norm eigewicht g",
                         "feed_intake_grams_per_day_actual": "Voeropname g/dag",
                         "feed_intake_grams_per_day_norm": "Norm voeropname g/dag",
-                        "fcr": "FCR",
+                        "fcr_actual": "FCR",
                         "feed_conversion_ratio_norm": "Norm FCR",
                         "liveability_percentage": "Leefbaarheid %",
                         "liveability_percentage_norm": "Norm leefbaarheid %",
@@ -760,9 +749,9 @@ def _(
             [
                 "flock_week",
                 "lay_percentage",
-                "egg_weight_grams_filled",
+                "egg_weight_grams_actual",
                 "feed_intake_grams_per_day_actual",
-                "fcr",
+                "fcr_actual",
                 "liveability_percentage",
                 "cumulative_eggs_per_placed_hen",
             ]
@@ -790,6 +779,35 @@ def _(
             .sort("flock_week", descending=True)
         )
         weekly_table_df = _format_overview_table(weekly_table_source_df)
+        current_flock_week = transforms.calculate_flock_week(date.today(), flock_dob)
+        weekly_quality_df = (
+            df_daily_overview.group_by("flock_week")
+            .agg(
+                pl.len().alias("row_count"),
+                pl.col("lay_percentage").count().alias("lay_count"),
+                pl.col("egg_weight_grams_actual").count().alias("egg_weight_count"),
+                pl.col("feed_intake_grams_per_day_actual").count().alias("feed_count"),
+                pl.col("fcr_actual").count().alias("fcr_count"),
+                pl.col("liveability_percentage").count().alias("liveability_count"),
+            )
+            .with_columns(
+                (
+                    (pl.col("row_count") < 7)
+                    | (pl.col("lay_count") < pl.col("row_count"))
+                    | (pl.col("egg_weight_count") < pl.col("row_count"))
+                    | (pl.col("feed_count") < pl.col("row_count"))
+                    | (pl.col("fcr_count") < pl.col("row_count"))
+                    | (pl.col("liveability_count") < pl.col("row_count"))
+                ).alias("is_incomplete_week")
+            )
+            .select(["flock_week", "is_incomplete_week"])
+        )
+        weekly_table_with_flags = weekly_table_df.join(
+            weekly_quality_df, left_on="Week", right_on="flock_week", how="left"
+        ).with_columns(
+            pl.col("is_incomplete_week").fill_null(False),
+            (pl.col("Week") == current_flock_week).alias("is_active_week"),
+        )
 
         csv_download = mo.download(
             data=df_daily_overview.write_csv().encode("utf-8"),
@@ -809,11 +827,28 @@ def _(
             page_size=20,
             label="Per-dag overzicht met werkelijke en normwaarden",
         )
-        weekly_table = mo.ui.table(
-            weekly_table_df.to_pandas(),
-            selection=None,
-            page_size=100,
-            label="Per-week overzicht met werkelijke en normwaarden",
+        weekly_table_pd = weekly_table_with_flags.drop(
+            ["flock_week", "is_active_week", "is_incomplete_week"]
+        ).to_pandas()
+        style_flags_pd = weekly_table_with_flags.select(
+            ["Week", "is_active_week", "is_incomplete_week"]
+        ).to_pandas()
+
+        def _style_week_row(row):
+            match = style_flags_pd[style_flags_pd["Week"] == row["Week"]]
+            if match.empty:
+                return [""] * len(row)
+            flag_row = match.iloc[0]
+            if bool(flag_row["is_active_week"]):
+                color = "background-color: #fff3b0;"
+            elif bool(flag_row["is_incomplete_week"]):
+                color = "background-color: #f5f5f0;"
+            else:
+                color = ""
+            return [color] * len(row)
+
+        weekly_table = mo.as_html(
+            weekly_table_pd.style.apply(_style_week_row, axis=1).hide(axis="index")
         )
         outside_nest_chart_df = (
             df_daily_overview.select(["registration_date", "outside_nest_eggs"])
@@ -857,6 +892,7 @@ def _(
         daily_table_section = mo.vstack(
             [
                 weekly_csv_download,
+                mo.md("**Per-week overzicht met werkelijke en normwaarden**"),
                 weekly_table,
                 csv_download,
                 daily_table,

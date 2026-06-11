@@ -388,9 +388,9 @@ def weekly_overview_from_daily(
 
     average_cols = [
         "lay_percentage",
-        "egg_weight_grams_filled",
+        "egg_weight_grams_actual",
         "feed_intake_grams_per_day_actual",
-        "fcr",
+        "fcr_actual",
         "liveability_percentage",
     ]
     last_norm_cols = [
