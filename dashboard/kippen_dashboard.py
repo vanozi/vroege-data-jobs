@@ -608,7 +608,7 @@ def _(
             )
             df_daily_overview = transforms.add_rolling_average(
                 df_daily_overview,
-                "fcr",
+                "fcr_actual",
                 window=7,
             )
 
