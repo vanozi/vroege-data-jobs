@@ -577,6 +577,10 @@ def _(
                     pl.lit(None).cast(pl.Float64).alias(norm_col)
                 )
         df_daily_overview = df_daily_overview.with_columns(
+            pl.col("registration_date")
+            .sub(pl.lit(flock_dob))
+            .dt.total_days()
+            .alias("curve_day"),
             (pl.col("total_eggs") * pl.col("egg_weight_grams_filled")).alias(
                 "egg_mass_grams"
             ),
@@ -623,6 +627,7 @@ def _(
             [
                 "registration_date",
                 "flock_week",
+                "curve_day",
                 "bird_count",
                 "dead_today",
                 "cum_dead",
@@ -686,6 +691,7 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
                 [
                     "registration_date",
                     "flock_week",
+                    "curve_day",
                     "lay_percentage",
                     "lay_percentage_norm",
                     "egg_weight_grams_filled",
@@ -702,6 +708,7 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
             )
             .with_columns(
                 pl.col("registration_date").cast(pl.String),
+                pl.col("curve_day").cast(pl.Int64),
                 pl.col("lay_percentage").round(2),
                 pl.col("lay_percentage_norm").round(2),
                 pl.col("egg_weight_grams_filled").round(1),
@@ -719,6 +726,7 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
                 {
                     "registration_date": "Datum",
                     "flock_week": "Week",
+                    "curve_day": "Curve dag",
                     "lay_percentage": "Legpercentage %",
                     "lay_percentage_norm": "Norm legpercentage %",
                     "egg_weight_grams_filled": "Eigewicht g",
