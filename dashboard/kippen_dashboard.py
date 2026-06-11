@@ -877,7 +877,6 @@ def _(
         daily_table_section = mo.vstack(
             [
                 weekly_csv_download,
-                mo.md("**Per-week overzicht met werkelijke en normwaarden**"),
                 weekly_table,
                 csv_download,
                 daily_table,
