@@ -678,7 +678,7 @@ def _(
 
 
 @app.cell
-def _(alt, df_daily_overview, mo, pl, selected_flock):
+def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
     """Datatabel, CSV-download en buitennest-grafiek onderaan de pagina."""
     if selected_flock is None or df_daily_overview.is_empty():
         daily_table_section = mo.callout(
@@ -686,62 +686,68 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
             kind="info",
         )
     else:
-        table_df = (
-            df_daily_overview.select(
-                [
-                    "registration_date",
-                    "flock_week",
-                    "curve_day",
-                    "lay_percentage",
-                    "lay_percentage_norm",
-                    "egg_weight_grams_filled",
-                    "egg_weight_grams_norm",
-                    "feed_intake_grams_per_day_actual",
-                    "feed_intake_grams_per_day_norm",
-                    "fcr",
-                    "feed_conversion_ratio_norm",
-                    "liveability_percentage",
-                    "liveability_percentage_norm",
-                    "cumulative_eggs_per_placed_hen",
-                    "cumulative_eggs_per_placed_hen_norm",
-                ]
+
+        def _format_overview_table(df: pl.DataFrame) -> pl.DataFrame:
+            return (
+                df.select(
+                    [
+                        "registration_date",
+                        "flock_week",
+                        "curve_day",
+                        "lay_percentage",
+                        "lay_percentage_norm",
+                        "egg_weight_grams_filled",
+                        "egg_weight_grams_norm",
+                        "feed_intake_grams_per_day_actual",
+                        "feed_intake_grams_per_day_norm",
+                        "fcr",
+                        "feed_conversion_ratio_norm",
+                        "liveability_percentage",
+                        "liveability_percentage_norm",
+                        "cumulative_eggs_per_placed_hen",
+                        "cumulative_eggs_per_placed_hen_norm",
+                    ]
+                )
+                .with_columns(
+                    pl.col("registration_date").cast(pl.String),
+                    pl.col("curve_day").cast(pl.Int64),
+                    pl.col("lay_percentage").round(2),
+                    pl.col("lay_percentage_norm").round(2),
+                    pl.col("egg_weight_grams_filled").round(1),
+                    pl.col("egg_weight_grams_norm").round(1),
+                    pl.col("feed_intake_grams_per_day_actual").round(0).cast(pl.Int64),
+                    pl.col("feed_intake_grams_per_day_norm").round(0).cast(pl.Int64),
+                    pl.col("fcr").round(2),
+                    pl.col("feed_conversion_ratio_norm").round(2),
+                    pl.col("liveability_percentage").round(2),
+                    pl.col("liveability_percentage_norm").round(2),
+                    pl.col("cumulative_eggs_per_placed_hen").round(1),
+                    pl.col("cumulative_eggs_per_placed_hen_norm").round(1),
+                )
+                .rename(
+                    {
+                        "registration_date": "Datum",
+                        "flock_week": "Week",
+                        "curve_day": "Curve dag",
+                        "lay_percentage": "Legpercentage %",
+                        "lay_percentage_norm": "Norm legpercentage %",
+                        "egg_weight_grams_filled": "Eigewicht g",
+                        "egg_weight_grams_norm": "Norm eigewicht g",
+                        "feed_intake_grams_per_day_actual": "Voeropname g/dag",
+                        "feed_intake_grams_per_day_norm": "Norm voeropname g/dag",
+                        "fcr": "FCR",
+                        "feed_conversion_ratio_norm": "Norm FCR",
+                        "liveability_percentage": "Leefbaarheid %",
+                        "liveability_percentage_norm": "Norm leefbaarheid %",
+                        "cumulative_eggs_per_placed_hen": "Cum. eieren / opgezette hen",
+                        "cumulative_eggs_per_placed_hen_norm": "Norm cum. eieren/hen",
+                    }
+                )
             )
-            .with_columns(
-                pl.col("registration_date").cast(pl.String),
-                pl.col("curve_day").cast(pl.Int64),
-                pl.col("lay_percentage").round(2),
-                pl.col("lay_percentage_norm").round(2),
-                pl.col("egg_weight_grams_filled").round(1),
-                pl.col("egg_weight_grams_norm").round(1),
-                pl.col("feed_intake_grams_per_day_actual").round(0).cast(pl.Int64),
-                pl.col("feed_intake_grams_per_day_norm").round(0).cast(pl.Int64),
-                pl.col("fcr").round(2),
-                pl.col("feed_conversion_ratio_norm").round(2),
-                pl.col("liveability_percentage").round(2),
-                pl.col("liveability_percentage_norm").round(2),
-                pl.col("cumulative_eggs_per_placed_hen").round(1),
-                pl.col("cumulative_eggs_per_placed_hen_norm").round(1),
-            )
-            .rename(
-                {
-                    "registration_date": "Datum",
-                    "flock_week": "Week",
-                    "curve_day": "Curve dag",
-                    "lay_percentage": "Legpercentage %",
-                    "lay_percentage_norm": "Norm legpercentage %",
-                    "egg_weight_grams_filled": "Eigewicht g",
-                    "egg_weight_grams_norm": "Norm eigewicht g",
-                    "feed_intake_grams_per_day_actual": "Voeropname g/dag",
-                    "feed_intake_grams_per_day_norm": "Norm voeropname g/dag",
-                    "fcr": "FCR",
-                    "feed_conversion_ratio_norm": "Norm FCR",
-                    "liveability_percentage": "Leefbaarheid %",
-                    "liveability_percentage_norm": "Norm leefbaarheid %",
-                    "cumulative_eggs_per_placed_hen": "Cum. eieren / opgezette hen",
-                    "cumulative_eggs_per_placed_hen_norm": "Norm cum. eieren/hen",
-                }
-            )
-        )
+
+        table_df = _format_overview_table(df_daily_overview)
+        weekly_overview_df = transforms.weekly_overview_from_daily(df_daily_overview)
+        weekly_table_df = _format_overview_table(weekly_overview_df)
 
         csv_download = mo.download(
             data=df_daily_overview.write_csv().encode("utf-8"),
@@ -754,6 +760,12 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
             selection=None,
             page_size=20,
             label="Per-dag overzicht met werkelijke en normwaarden",
+        )
+        weekly_table = mo.ui.table(
+            weekly_table_df.to_pandas(),
+            selection=None,
+            page_size=20,
+            label="Per-week overzicht met werkelijke en normwaarden",
         )
         outside_nest_chart_df = (
             df_daily_overview.select(["registration_date", "outside_nest_eggs"])
@@ -795,7 +807,7 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
             )
 
         daily_table_section = mo.vstack(
-            [csv_download, daily_table, outside_nest_chart],
+            [csv_download, daily_table, weekly_table, outside_nest_chart],
             gap=1,
         )
 
