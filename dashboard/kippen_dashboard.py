@@ -510,7 +510,7 @@ def _(
             .rename({"round_date": "registration_date"})
             if not df_outside_nest.is_empty()
             else base_df.select("registration_date").with_columns(
-                pl.lit(0).alias("outside_nest_eggs")
+                pl.lit(None).cast(pl.Int64).alias("outside_nest_eggs")
             )
         )
 
@@ -549,7 +549,6 @@ def _(
             .with_columns(
                 pl.col("first_quality_eggs").fill_null(0),
                 pl.col("second_quality_eggs").fill_null(0),
-                pl.col("outside_nest_eggs").fill_null(0),
                 pl.col("pallet_count").fill_null(0),
                 pl.col("is_measured").fill_null(False),
             )
@@ -612,6 +611,14 @@ def _(
             .then(100.0 - pl.col("cum_dead_pct"))
             .otherwise(pl.lit(None))
             .alias("liveability_percentage"),
+            pl.when(
+                pl.col("outside_nest_eggs").is_not_null()
+                & pl.col("total_eggs").is_not_null()
+                & (pl.col("total_eggs") > 0)
+            )
+            .then(pl.col("outside_nest_eggs") / pl.col("total_eggs") * 100.0)
+            .otherwise(pl.lit(None))
+            .alias("outside_nest_egg_percentage"),
             pl.col("total_eggs").fill_null(0).cum_sum().alias("cumulative_total_eggs"),
         ).with_columns(
             pl.when(pl.lit(bird_count) > 0)
@@ -676,6 +683,7 @@ def _(
                 "liveability_percentage_norm",
                 "cumulative_eggs_per_placed_hen",
                 "cumulative_eggs_per_placed_hen_norm",
+                "outside_nest_egg_percentage",
                 "cumulative_egg_kg_per_placed_hen_norm",
                 "cumulative_feed_kg_per_placed_hen_norm",
                 "cumulative_feed_conversion_ratio_norm",
@@ -745,6 +753,7 @@ def _(
                         "liveability_percentage_norm",
                         "cumulative_eggs_per_placed_hen",
                         "cumulative_eggs_per_placed_hen_norm",
+                        "outside_nest_egg_percentage",
                     ]
                 )
                 .with_columns(
@@ -762,6 +771,7 @@ def _(
                     pl.col("liveability_percentage_norm").round(2),
                     pl.col("cumulative_eggs_per_placed_hen").round(1),
                     pl.col("cumulative_eggs_per_placed_hen_norm").round(1),
+                    pl.col("outside_nest_egg_percentage").round(2),
                 )
                 .rename(
                     {
@@ -780,6 +790,7 @@ def _(
                         "liveability_percentage_norm": "Norm leefbaarheid %",
                         "cumulative_eggs_per_placed_hen": "Cum. eieren / opgezette hen",
                         "cumulative_eggs_per_placed_hen_norm": "Norm cum. eieren/hen",
+                        "outside_nest_egg_percentage": "Buitennest eieren %",
                     }
                 )
             )
@@ -825,6 +836,7 @@ def _(
                 "Norm leefbaarheid %": 20,
                 "Cum. eieren / opgezette hen": 24,
                 "Norm cum. eieren/hen": 20,
+                "Buitennest eieren %": 19,
             }
             col_widths = [
                 column_widths_mm.get(column, 16) * mm for column in df.columns
@@ -887,6 +899,7 @@ def _(
                 "fcr_actual",
                 "liveability_percentage",
                 "cumulative_eggs_per_placed_hen",
+                "outside_nest_egg_percentage",
             ]
         )
         weekly_norm_scaffold_df = df_norms.select(
@@ -979,7 +992,7 @@ def _(
         )
         outside_nest_chart_df = (
             df_daily_overview.select(["registration_date", "outside_nest_eggs"])
-            .filter(pl.col("outside_nest_eggs") > 0)
+            .filter(pl.col("outside_nest_eggs").fill_null(0) > 0)
             .with_columns(
                 pl.col("registration_date").dt.strftime("%d-%m-%Y").alias("date_label")
             )

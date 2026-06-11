@@ -418,6 +418,30 @@ def weekly_overview_from_daily(
         for column in last_norm_cols
         if column in df_daily_overview.columns
     )
+    if {
+        "outside_nest_eggs",
+        "total_eggs",
+    }.issubset(df_daily_overview.columns):
+        agg_expressions.extend(
+            [
+                pl.when(
+                    pl.col("outside_nest_eggs").is_not_null()
+                    & pl.col("total_eggs").is_not_null()
+                )
+                .then(pl.col("outside_nest_eggs"))
+                .otherwise(pl.lit(None))
+                .sum()
+                .alias("outside_nest_eggs_sum"),
+                pl.when(
+                    pl.col("outside_nest_eggs").is_not_null()
+                    & pl.col("total_eggs").is_not_null()
+                )
+                .then(pl.col("total_eggs"))
+                .otherwise(pl.lit(None))
+                .sum()
+                .alias("total_eggs_for_outside_nest_sum"),
+            ]
+        )
 
     weekly = (
         df_daily_overview.group_by("flock_week").agg(agg_expressions).sort("flock_week")
@@ -443,6 +467,20 @@ def weekly_overview_from_daily(
         on="flock_week",
         how="left",
     )
+    if {
+        "outside_nest_eggs_sum",
+        "total_eggs_for_outside_nest_sum",
+    }.issubset(weekly.columns):
+        weekly = weekly.with_columns(
+            pl.when(pl.col("total_eggs_for_outside_nest_sum") > 0)
+            .then(
+                pl.col("outside_nest_eggs_sum")
+                / pl.col("total_eggs_for_outside_nest_sum")
+                * 100.0
+            )
+            .otherwise(pl.lit(None))
+            .alias("outside_nest_egg_percentage")
+        ).drop(["outside_nest_eggs_sum", "total_eggs_for_outside_nest_sum"])
 
     ordered_cols = ["registration_date", "flock_week"]
     ordered_cols.extend(
@@ -453,6 +491,7 @@ def weekly_overview_from_daily(
             *last_norm_cols,
             "cumulative_eggs_per_placed_hen",
             "cumulative_eggs_per_placed_hen_norm",
+            "outside_nest_egg_percentage",
         ]
         if column in weekly.columns
     )
