@@ -499,7 +499,27 @@ def _(
         )
 
         _lay_pct_df = transforms.daily_lay_percentage(df_eggs, daily_birds)
-        _fcr_df = transforms.daily_fcr(df_feed_water, df_pallets, df_eggs)
+        fcr_feed_df = (
+            df_feed_water.join(
+                daily_birds.select(["registration_date", "bird_count"]),
+                on="registration_date",
+                how="left",
+            )
+            .with_columns(
+                pl.when(pl.col("bird_count") > 0)
+                .then(pl.col("feed_grams") * pl.col("bird_count"))
+                .otherwise(pl.lit(None))
+                .alias("total_feed_grams")
+            )
+            .select(
+                [
+                    "registration_date",
+                    "total_feed_grams",
+                ]
+            )
+            .rename({"total_feed_grams": "feed_grams"})
+        )
+        _fcr_df = transforms.daily_fcr(fcr_feed_df, df_pallets, df_eggs)
         _weight_filled_df = transforms.join_forward_filled_weight(
             base_df,
             df_pallets,
@@ -561,6 +581,10 @@ def _(
                 "egg_mass_grams"
             ),
             pl.col("feed_grams").alias("feed_intake_grams_per_day_actual"),
+            pl.when(pl.col("bird_count") > 0)
+            .then(pl.col("feed_grams") * pl.col("bird_count"))
+            .otherwise(pl.lit(None))
+            .alias("total_feed_grams"),
             pl.when(pl.lit(bird_count) > 0)
             .then(100.0 - pl.col("cum_dead_pct"))
             .otherwise(pl.lit(None))
@@ -612,6 +636,7 @@ def _(
                 "water_ml",
                 "feed_grams",
                 "feed_intake_grams_per_day_actual",
+                "total_feed_grams",
                 "feed_intake_grams_per_day_norm",
                 "egg_weight_avg_measured",
                 "egg_weight_grams_filled",
@@ -675,7 +700,21 @@ def _(alt, df_daily_overview, mo, pl, selected_flock):
                     "cumulative_eggs_per_placed_hen_norm",
                 ]
             )
-            .with_columns(pl.col("registration_date").cast(pl.String))
+            .with_columns(
+                pl.col("registration_date").cast(pl.String),
+                pl.col("lay_percentage").round(2),
+                pl.col("lay_percentage_norm").round(2),
+                pl.col("egg_weight_grams_filled").round(1),
+                pl.col("egg_weight_grams_norm").round(1),
+                pl.col("feed_intake_grams_per_day_actual").round(0).cast(pl.Int64),
+                pl.col("feed_intake_grams_per_day_norm").round(0).cast(pl.Int64),
+                pl.col("fcr").round(2),
+                pl.col("feed_conversion_ratio_norm").round(2),
+                pl.col("liveability_percentage").round(2),
+                pl.col("liveability_percentage_norm").round(2),
+                pl.col("cumulative_eggs_per_placed_hen").round(1),
+                pl.col("cumulative_eggs_per_placed_hen_norm").round(1),
+            )
             .rename(
                 {
                     "registration_date": "Datum",
