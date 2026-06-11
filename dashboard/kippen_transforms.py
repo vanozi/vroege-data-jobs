@@ -365,6 +365,101 @@ def cumulative_kpis_per_placed_hen(
 
 
 # ---------------------------------------------------------------------------
+# Weekly overview aggregation
+# ---------------------------------------------------------------------------
+
+
+def weekly_overview_from_daily(
+    df_daily_overview: pl.DataFrame,
+) -> pl.DataFrame:
+    """Aggregate daily overview rows into one row per flock week.
+
+    Expected input is the dashboard daily overview dataset. Output keeps one row
+    per `flock_week`, using the last available day in that week as the row date
+    and curve day.
+
+    Aggregation rules:
+    - weekly averages for day-level KPIs
+    - last non-null norm values per week
+    - last-day snapshot for cumulative KPI values
+    """
+    if df_daily_overview.is_empty():
+        return df_daily_overview
+
+    average_cols = [
+        "lay_percentage",
+        "egg_weight_grams_filled",
+        "feed_intake_grams_per_day_actual",
+        "fcr",
+        "liveability_percentage",
+    ]
+    last_norm_cols = [
+        "lay_percentage_norm",
+        "egg_weight_grams_norm",
+        "feed_intake_grams_per_day_norm",
+        "feed_conversion_ratio_norm",
+        "liveability_percentage_norm",
+    ]
+    snapshot_cols = [
+        "registration_date",
+        "curve_day",
+        "cumulative_eggs_per_placed_hen",
+        "cumulative_eggs_per_placed_hen_norm",
+    ]
+
+    agg_expressions: list[pl.Expr] = [pl.col("registration_date").max()]
+    agg_expressions.extend(
+        pl.col(column).mean().alias(column)
+        for column in average_cols
+        if column in df_daily_overview.columns
+    )
+    agg_expressions.extend(
+        pl.col(column).drop_nulls().last().alias(column)
+        for column in last_norm_cols
+        if column in df_daily_overview.columns
+    )
+
+    weekly = (
+        df_daily_overview.group_by("flock_week").agg(agg_expressions).sort("flock_week")
+    )
+
+    snapshot_df = (
+        df_daily_overview.select(["flock_week", *snapshot_cols])
+        .sort(["flock_week", "registration_date"])
+        .group_by("flock_week")
+        .agg(
+            pl.col("registration_date").last().alias("snapshot_registration_date"),
+            *[
+                pl.col(column).last().alias(column)
+                for column in snapshot_cols
+                if column != "registration_date"
+            ],
+        )
+        .rename({"snapshot_registration_date": "registration_date"})
+    )
+
+    weekly = weekly.drop("registration_date").join(
+        snapshot_df,
+        on="flock_week",
+        how="left",
+    )
+
+    ordered_cols = ["registration_date", "flock_week"]
+    ordered_cols.extend(
+        column
+        for column in [
+            "curve_day",
+            *average_cols,
+            *last_norm_cols,
+            "cumulative_eggs_per_placed_hen",
+            "cumulative_eggs_per_placed_hen_norm",
+        ]
+        if column in weekly.columns
+    )
+    return weekly.select(ordered_cols).sort("registration_date")
+
+
+# ---------------------------------------------------------------------------
 # Norm curve helpers
 # ---------------------------------------------------------------------------
 
