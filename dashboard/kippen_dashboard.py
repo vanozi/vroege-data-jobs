@@ -10,6 +10,7 @@ app = marimo.App(width="full")
 def _():
     """Imports en configuratie."""
     import importlib.util
+    from io import BytesIO
     import os
     from datetime import date, datetime
     from pathlib import Path
@@ -18,6 +19,16 @@ def _():
     import marimo as mo
     import polars as pl
     from dotenv import load_dotenv
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph
+    from reportlab.platypus import SimpleDocTemplate
+    from reportlab.platypus import Spacer
+    from reportlab.platypus import Table
+    from reportlab.platypus import TableStyle
 
     _repo_root = Path(__file__).parent.parent
     _env_path = _repo_root / ".env"
@@ -32,7 +43,26 @@ def _():
 
     transforms = importlib.util.module_from_spec(_transforms_spec)
     _transforms_spec.loader.exec_module(transforms)
-    return alt, date, datetime, mo, os, pl, transforms
+    return (
+        A4,
+        BytesIO,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+        alt,
+        colors,
+        date,
+        datetime,
+        getSampleStyleSheet,
+        landscape,
+        mm,
+        mo,
+        os,
+        pl,
+        transforms,
+    )
 
 
 @app.cell
@@ -667,17 +697,28 @@ def _(
 
 @app.cell
 def _(
+    A4,
+    BytesIO,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
     alt,
+    colors,
     date,
     df_daily_overview,
     df_norms,
     flock_dob,
+    getSampleStyleSheet,
+    landscape,
+    mm,
     mo,
     pl,
     selected_flock,
     transforms,
 ):
-    """Datatabel, CSV-download en buitennest-grafiek onderaan de pagina."""
+    """Datatabel, PDF-downloads en buitennest-grafiek onderaan de pagina."""
     if selected_flock is None or df_daily_overview.is_empty():
         daily_table_section = mo.callout(
             mo.md("Geen dagoverzicht beschikbaar voor de huidige selectie."),
@@ -743,6 +784,98 @@ def _(
                 )
             )
 
+        def _pdf_bytes_for_table(title: str, df: pl.DataFrame) -> bytes:
+            styles = getSampleStyleSheet()
+            header_style = styles["BodyText"].clone("pdf_header")
+            header_style.fontName = "Helvetica-Bold"
+            header_style.fontSize = 7
+            header_style.leading = 8
+            header_style.textColor = colors.whitesmoke
+
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=landscape(A4),
+                leftMargin=10 * mm,
+                rightMargin=10 * mm,
+                topMargin=10 * mm,
+                bottomMargin=10 * mm,
+            )
+
+            def _format_pdf_value(value) -> str:
+                if value is None:
+                    return ""
+                if isinstance(value, float) and value != value:
+                    return ""
+                return str(value)
+
+            column_widths_mm = {
+                "Datum": 20,
+                "Week": 10,
+                "Curve dag": 13,
+                "Legpercentage %": 16,
+                "Norm legpercentage %": 18,
+                "Eigewicht g": 14,
+                "Norm eigewicht g": 18,
+                "Voeropname g/dag": 19,
+                "Norm voeropname g/dag": 24,
+                "FCR": 12,
+                "Norm FCR": 12,
+                "Leefbaarheid %": 17,
+                "Norm leefbaarheid %": 20,
+                "Cum. eieren / opgezette hen": 24,
+                "Norm cum. eieren/hen": 20,
+            }
+            col_widths = [
+                column_widths_mm.get(column, 16) * mm for column in df.columns
+            ]
+            header_row = [Paragraph(column, header_style) for column in df.columns]
+            body_rows = [
+                [_format_pdf_value(value) for value in row] for row in df.rows()
+            ]
+            table_data = [header_row, *body_rows]
+            table = Table(
+                table_data,
+                colWidths=col_widths,
+                repeatRows=1,
+                splitByRow=True,
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4f4f4f")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, 0), 7),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                        ("TOPPADDING", (0, 0), (-1, 0), 6),
+                        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cfcfcf")),
+                        ("FONTSIZE", (0, 1), (-1, -1), 7),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                        ("ALIGN", (0, 0), (2, -1), "LEFT"),
+                    ]
+                )
+            )
+
+            story = [
+                Paragraph(title, styles["Title"]),
+                Spacer(1, 4 * mm),
+                Paragraph(
+                    (
+                        f"Koppel: {selected_flock['flock_name']}<br/>"
+                        f"Stal: {selected_flock['house_id']}<br/>"
+                        f"Exportdatum: {date.today().isoformat()}"
+                    ),
+                    styles["Normal"],
+                ),
+                Spacer(1, 4 * mm),
+                table,
+            ]
+            doc.build(story)
+            return buffer.getvalue()
+
         table_df = _format_overview_table(df_daily_overview)
         weekly_overview_df = transforms.weekly_overview_from_daily(df_daily_overview)
         weekly_actual_df = weekly_overview_df.select(
@@ -780,6 +913,7 @@ def _(
         )
         weekly_table_df = _format_overview_table(weekly_table_source_df)
         current_flock_week = transforms.calculate_flock_week(date.today(), flock_dob)
+        export_max_week = current_flock_week + 1
         weekly_quality_df = (
             df_daily_overview.group_by("flock_week")
             .agg(
@@ -808,18 +942,26 @@ def _(
             pl.col("is_incomplete_week").fill_null(False),
             (pl.col("Week") == current_flock_week).alias("is_active_week"),
         )
+        day_export_df = table_df.filter(pl.col("Week") <= export_max_week)
+        week_export_df = weekly_table_df.filter(pl.col("Week") <= export_max_week)
 
-        csv_download = mo.download(
-            data=df_daily_overview.write_csv().encode("utf-8"),
-            filename="kippen-dagoverzicht.csv",
-            mimetype="text/csv",
-            label="Download CSV",
+        daily_pdf_download = mo.download(
+            data=_pdf_bytes_for_table(
+                "Kippen dagoverzicht",
+                day_export_df,
+            ),
+            filename="kippen-dagoverzicht.pdf",
+            mimetype="application/pdf",
+            label="Download dag PDF",
         )
-        weekly_csv_download = mo.download(
-            data=weekly_table_df.write_csv().encode("utf-8"),
-            filename="kippen-weekoverzicht.csv",
-            mimetype="text/csv",
-            label="Download week CSV",
+        weekly_pdf_download = mo.download(
+            data=_pdf_bytes_for_table(
+                "Kippen weekoverzicht",
+                week_export_df,
+            ),
+            filename="kippen-weekoverzicht.pdf",
+            mimetype="application/pdf",
+            label="Download week PDF",
         )
         daily_table = mo.ui.table(
             table_df.to_pandas(),
@@ -876,9 +1018,9 @@ def _(
 
         daily_table_section = mo.vstack(
             [
-                weekly_csv_download,
+                weekly_pdf_download,
                 weekly_table,
-                csv_download,
+                daily_pdf_download,
                 daily_table,
                 outside_nest_chart,
             ],
