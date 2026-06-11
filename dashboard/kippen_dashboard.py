@@ -560,10 +560,7 @@ def _(
             (pl.col("total_eggs") * pl.col("egg_weight_grams_filled")).alias(
                 "egg_mass_grams"
             ),
-            pl.when(pl.col("bird_count") > 0)
-            .then(pl.col("feed_grams") / pl.col("bird_count"))
-            .otherwise(pl.lit(None))
-            .alias("feed_intake_grams_per_day_actual"),
+            pl.col("feed_grams").alias("feed_intake_grams_per_day_actual"),
             pl.when(pl.lit(bird_count) > 0)
             .then(100.0 - pl.col("cum_dead_pct"))
             .otherwise(pl.lit(None))
