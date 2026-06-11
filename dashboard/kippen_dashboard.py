@@ -776,7 +776,7 @@ def _(
         weekly_table_source_df = (
             weekly_norm_scaffold_df.drop("age_weeks")
             .join(weekly_actual_df, on="flock_week", how="left")
-            .sort("flock_week", descending=True)
+            .sort("flock_week")
         )
         weekly_table_df = _format_overview_table(weekly_table_source_df)
         current_flock_week = transforms.calculate_flock_week(date.today(), flock_dob)
@@ -827,28 +827,13 @@ def _(
             page_size=20,
             label="Per-dag overzicht met werkelijke en normwaarden",
         )
-        weekly_table_pd = weekly_table_with_flags.drop(
-            ["is_active_week", "is_incomplete_week"]
-        ).to_pandas()
-        style_flags_pd = weekly_table_with_flags.select(
-            ["Week", "is_active_week", "is_incomplete_week"]
-        ).to_pandas()
-
-        def _style_week_row(row):
-            match = style_flags_pd[style_flags_pd["Week"] == row["Week"]]
-            if match.empty:
-                return [""] * len(row)
-            flag_row = match.iloc[0]
-            if bool(flag_row["is_active_week"]):
-                color = "background-color: #fff3b0;"
-            elif bool(flag_row["is_incomplete_week"]):
-                color = "background-color: #f5f5f0;"
-            else:
-                color = ""
-            return [color] * len(row)
-
-        weekly_table = mo.as_html(
-            weekly_table_pd.style.apply(_style_week_row, axis=1).hide(axis="index")
+        weekly_table = mo.ui.table(
+            weekly_table_with_flags.drop(
+                ["is_active_week", "is_incomplete_week"]
+            ).to_pandas(),
+            selection=None,
+            page_size=100,
+            label="Per-week overzicht met werkelijke en normwaarden",
         )
         outside_nest_chart_df = (
             df_daily_overview.select(["registration_date", "outside_nest_eggs"])

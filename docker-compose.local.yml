@@ -13,7 +13,7 @@ services:
       PORTAL_COOKIE_SECURE: "false"
     labels: !override
       - traefik.enable=true
-      - traefik.http.routers.dashboard-portal.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && PathPrefix(`/`)
+      - traefik.http.routers.dashboard-portal.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && PathPrefix(`/`)
       - traefik.http.routers.dashboard-portal.entrypoints=web
       - traefik.http.routers.dashboard-portal.priority=1
       - traefik.http.routers.dashboard-portal.service=dashboard-portal
@@ -39,7 +39,7 @@ services:
       KIPPEN_APP_COOKIE_SECURE: "false"
     labels: !override
       - traefik.enable=true
-      - traefik.http.routers.kippen-app.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && (Path(`/kippen`) || PathPrefix(`/kippen/`))
+      - traefik.http.routers.kippen-app.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && (Path(`/kippen`) || PathPrefix(`/kippen/`))
       - traefik.http.routers.kippen-app.entrypoints=web
       - traefik.http.routers.kippen-app.priority=110
       - traefik.http.routers.kippen-app.service=kippen-app
@@ -63,7 +63,7 @@ services:
       - --no-token
     labels: !override
       - traefik.enable=true
-      - traefik.http.routers.marimo-klauwgezondheid.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && PathPrefix(`/klauwgezondheid`)
+      - traefik.http.routers.marimo-klauwgezondheid.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && PathPrefix(`/klauwgezondheid`)
       - traefik.http.routers.marimo-klauwgezondheid.entrypoints=web
       - traefik.http.routers.marimo-klauwgezondheid.middlewares=portal-auth
       - traefik.http.routers.marimo-klauwgezondheid.priority=100
@@ -71,7 +71,7 @@ services:
       - traefik.http.services.marimo-klauwgezondheid.loadbalancer.server.port=2718
       - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
-      - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && Path(`/klauwgezondheid/manifest.json`)
+      - traefik.http.routers.marimo-klauwgezondheid-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && Path(`/klauwgezondheid/manifest.json`)
       - traefik.http.routers.marimo-klauwgezondheid-manifest.entrypoints=web
       - traefik.http.routers.marimo-klauwgezondheid-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-klauwgezondheid-manifest.priority=200
@@ -99,17 +99,20 @@ services:
       - --no-token
     labels: !override
       - traefik.enable=true
-      - traefik.http.routers.marimo-kippen-dashboard.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && PathPrefix(`/kippen-dashboard`)
+      - traefik.http.routers.marimo-kippen-dashboard.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && PathPrefix(`/kippen-dashboard`)
       - traefik.http.routers.marimo-kippen-dashboard.entrypoints=web
-      - traefik.http.routers.marimo-kippen-dashboard.middlewares=portal-auth
+      - traefik.http.routers.marimo-kippen-dashboard.middlewares=portal-auth,marimo-kippen-dashboard-no-cache
       - traefik.http.routers.marimo-kippen-dashboard.priority=100
       - traefik.http.routers.marimo-kippen-dashboard.service=marimo-kippen-dashboard
       - traefik.http.services.marimo-kippen-dashboard.loadbalancer.server.port=2720
       - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
-      - traefik.http.routers.marimo-kippen-dashboard-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && Path(`/kippen-dashboard/manifest.json`)
+      - traefik.http.middlewares.marimo-kippen-dashboard-no-cache.headers.customresponseheaders.Cache-Control=no-store
+      - traefik.http.middlewares.marimo-kippen-dashboard-no-cache.headers.customresponseheaders.Pragma=no-cache
+      - traefik.http.middlewares.marimo-kippen-dashboard-no-cache.headers.customresponseheaders.Expires=0
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && Path(`/kippen-dashboard/manifest.json`)
       - traefik.http.routers.marimo-kippen-dashboard-manifest.entrypoints=web
-      - traefik.http.routers.marimo-kippen-dashboard-manifest.middlewares=portal-auth
+      - traefik.http.routers.marimo-kippen-dashboard-manifest.middlewares=portal-auth,marimo-kippen-dashboard-no-cache
       - traefik.http.routers.marimo-kippen-dashboard-manifest.priority=200
       - traefik.http.routers.marimo-kippen-dashboard-manifest.service=marimo-kippen-dashboard
 
@@ -135,7 +138,7 @@ services:
       - --no-token
     labels: !override
       - traefik.enable=true
-      - traefik.http.routers.marimo-tank-terminal.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && PathPrefix(`/tank-terminal`)
+      - traefik.http.routers.marimo-tank-terminal.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && PathPrefix(`/tank-terminal`)
       - traefik.http.routers.marimo-tank-terminal.entrypoints=web
       - traefik.http.routers.marimo-tank-terminal.middlewares=portal-auth
       - traefik.http.routers.marimo-tank-terminal.priority=100
@@ -143,7 +146,7 @@ services:
       - traefik.http.services.marimo-tank-terminal.loadbalancer.server.port=2719
       - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
       - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
-      - traefik.http.routers.marimo-tank-terminal-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`)) && Path(`/tank-terminal/manifest.json`)
+      - traefik.http.routers.marimo-tank-terminal-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && Path(`/tank-terminal/manifest.json`)
       - traefik.http.routers.marimo-tank-terminal-manifest.entrypoints=web
       - traefik.http.routers.marimo-tank-terminal-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-tank-terminal-manifest.priority=200
