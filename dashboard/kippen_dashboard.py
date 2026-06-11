@@ -678,7 +678,16 @@ def _(
 
 
 @app.cell
-def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
+def _(
+    alt,
+    df_daily_overview,
+    df_norms,
+    flock_dob,
+    mo,
+    pl,
+    selected_flock,
+    transforms,
+):
     """Datatabel, CSV-download en buitennest-grafiek onderaan de pagina."""
     if selected_flock is None or df_daily_overview.is_empty():
         daily_table_section = mo.callout(
@@ -747,7 +756,40 @@ def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
 
         table_df = _format_overview_table(df_daily_overview)
         weekly_overview_df = transforms.weekly_overview_from_daily(df_daily_overview)
-        weekly_table_df = _format_overview_table(weekly_overview_df)
+        weekly_actual_df = weekly_overview_df.select(
+            [
+                "flock_week",
+                "lay_percentage",
+                "egg_weight_grams_filled",
+                "feed_intake_grams_per_day_actual",
+                "fcr",
+                "liveability_percentage",
+                "cumulative_eggs_per_placed_hen",
+            ]
+        )
+        weekly_norm_scaffold_df = df_norms.select(
+            [
+                "age_weeks",
+                "lay_percentage_norm",
+                "egg_weight_grams_norm",
+                "feed_intake_grams_per_day_norm",
+                "feed_conversion_ratio_norm",
+                "liveability_percentage_norm",
+                "cumulative_eggs_per_placed_hen_norm",
+            ]
+        ).with_columns(
+            (pl.lit(flock_dob) + pl.duration(days=pl.col("age_weeks") * 7 + 7)).alias(
+                "registration_date"
+            ),
+            pl.col("age_weeks").alias("flock_week"),
+            (pl.col("age_weeks") * 7 + 6).alias("curve_day"),
+        )
+        weekly_table_source_df = (
+            weekly_norm_scaffold_df.drop("age_weeks")
+            .join(weekly_actual_df, on="flock_week", how="left")
+            .sort("flock_week", descending=True)
+        )
+        weekly_table_df = _format_overview_table(weekly_table_source_df)
 
         csv_download = mo.download(
             data=df_daily_overview.write_csv().encode("utf-8"),
@@ -770,7 +812,7 @@ def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
         weekly_table = mo.ui.table(
             weekly_table_df.to_pandas(),
             selection=None,
-            page_size=20,
+            page_size=100,
             label="Per-week overzicht met werkelijke en normwaarden",
         )
         outside_nest_chart_df = (
@@ -814,10 +856,10 @@ def _(alt, df_daily_overview, mo, pl, selected_flock, transforms):
 
         daily_table_section = mo.vstack(
             [
-                csv_download,
-                daily_table,
                 weekly_csv_download,
                 weekly_table,
+                csv_download,
+                daily_table,
                 outside_nest_chart,
             ],
             gap=1,
