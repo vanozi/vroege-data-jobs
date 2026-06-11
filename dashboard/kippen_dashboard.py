@@ -828,7 +828,7 @@ def _(
             label="Per-dag overzicht met werkelijke en normwaarden",
         )
         weekly_table_pd = weekly_table_with_flags.drop(
-            ["flock_week", "is_active_week", "is_incomplete_week"]
+            ["is_active_week", "is_incomplete_week"]
         ).to_pandas()
         style_flags_pd = weekly_table_with_flags.select(
             ["Week", "is_active_week", "is_incomplete_week"]
