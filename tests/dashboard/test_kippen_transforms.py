@@ -21,6 +21,7 @@ from dashboard.kippen_transforms import (
     join_norms_by_age_week,
     norm_dates_for_flock,
     normalize_breed_key,
+    weekly_overview_from_daily,
 )
 
 DOB = date(2025, 10, 1)
@@ -405,6 +406,131 @@ class TestCumulativeKpisPerPlacedHen:
         assert result["egg_kg_per_placed_hen"] is None
         assert result["cum_fcr"] is None
         assert result["eggs_per_placed_hen"] == pytest.approx(9700 / 10_000)
+
+
+# ---------------------------------------------------------------------------
+# weekly_overview_from_daily
+# ---------------------------------------------------------------------------
+
+
+class TestWeeklyOverviewFromDaily:
+    def test_groups_to_one_row_per_flock_week(self):
+        df = pl.DataFrame(
+            {
+                "registration_date": [
+                    date(2026, 1, 10),
+                    date(2026, 1, 11),
+                    date(2026, 1, 17),
+                ],
+                "flock_week": [20, 20, 21],
+                "curve_day": [140, 141, 147],
+                "lay_percentage": [94.0, 96.0, 97.0],
+                "lay_percentage_norm": [95.0, 95.0, 96.0],
+                "egg_weight_grams_filled": [61.0, 63.0, 64.0],
+                "egg_weight_grams_norm": [62.0, 62.0, 63.0],
+                "feed_intake_grams_per_day_actual": [118.0, 122.0, 124.0],
+                "feed_intake_grams_per_day_norm": [120.0, 120.0, 121.0],
+                "fcr": [1.95, 2.05, 1.91],
+                "feed_conversion_ratio_norm": [2.0, 2.0, 1.98],
+                "liveability_percentage": [99.7, 99.5, 99.4],
+                "liveability_percentage_norm": [99.8, 99.8, 99.7],
+                "cumulative_eggs_per_placed_hen": [10.5, 10.9, 11.6],
+                "cumulative_eggs_per_placed_hen_norm": [10.7, 10.7, 11.4],
+            }
+        )
+
+        result = weekly_overview_from_daily(df)
+
+        assert result["flock_week"].to_list() == [20, 21]
+        assert result["registration_date"].to_list() == [
+            date(2026, 1, 11),
+            date(2026, 1, 17),
+        ]
+        assert result["curve_day"].to_list() == [141, 147]
+
+    def test_averages_weekly_kpis_and_keeps_last_day_snapshot(self):
+        df = pl.DataFrame(
+            {
+                "registration_date": [
+                    date(2026, 1, 10),
+                    date(2026, 1, 11),
+                ],
+                "flock_week": [20, 20],
+                "curve_day": [140, 141],
+                "lay_percentage": [94.0, 96.0],
+                "lay_percentage_norm": [95.0, 95.0],
+                "egg_weight_grams_filled": [61.0, 63.0],
+                "egg_weight_grams_norm": [62.0, 62.0],
+                "feed_intake_grams_per_day_actual": [118.0, 122.0],
+                "feed_intake_grams_per_day_norm": [120.0, 120.0],
+                "fcr": [1.95, 2.05],
+                "feed_conversion_ratio_norm": [2.0, 2.0],
+                "liveability_percentage": [99.7, 99.5],
+                "liveability_percentage_norm": [99.8, 99.8],
+                "cumulative_eggs_per_placed_hen": [10.5, 10.9],
+                "cumulative_eggs_per_placed_hen_norm": [10.7, 10.7],
+            }
+        )
+
+        result = weekly_overview_from_daily(df)
+
+        assert len(result) == 1
+        assert result["lay_percentage"][0] == pytest.approx(95.0)
+        assert result["egg_weight_grams_filled"][0] == pytest.approx(62.0)
+        assert result["feed_intake_grams_per_day_actual"][0] == pytest.approx(120.0)
+        assert result["fcr"][0] == pytest.approx(2.0)
+        assert result["liveability_percentage"][0] == pytest.approx(99.6)
+        assert result["cumulative_eggs_per_placed_hen"][0] == pytest.approx(10.9)
+        assert result["cumulative_eggs_per_placed_hen_norm"][0] == pytest.approx(10.7)
+
+    def test_keeps_last_non_null_norm_values(self):
+        df = pl.DataFrame(
+            {
+                "registration_date": [
+                    date(2026, 1, 10),
+                    date(2026, 1, 11),
+                ],
+                "flock_week": [20, 20],
+                "curve_day": [140, 141],
+                "lay_percentage": [94.0, 96.0],
+                "lay_percentage_norm": [None, 95.0],
+                "egg_weight_grams_filled": [61.0, 63.0],
+                "egg_weight_grams_norm": [None, 62.0],
+                "feed_intake_grams_per_day_actual": [118.0, 122.0],
+                "feed_intake_grams_per_day_norm": [None, 120.0],
+                "fcr": [1.95, 2.05],
+                "feed_conversion_ratio_norm": [None, 2.0],
+                "liveability_percentage": [99.7, 99.5],
+                "liveability_percentage_norm": [None, 99.8],
+                "cumulative_eggs_per_placed_hen": [10.5, 10.9],
+                "cumulative_eggs_per_placed_hen_norm": [10.6, 10.7],
+            },
+            schema_overrides={
+                "lay_percentage_norm": pl.Float64,
+                "egg_weight_grams_norm": pl.Float64,
+                "feed_intake_grams_per_day_norm": pl.Float64,
+                "feed_conversion_ratio_norm": pl.Float64,
+                "liveability_percentage_norm": pl.Float64,
+            },
+        )
+
+        result = weekly_overview_from_daily(df)
+
+        assert result["lay_percentage_norm"][0] == pytest.approx(95.0)
+        assert result["egg_weight_grams_norm"][0] == pytest.approx(62.0)
+        assert result["feed_intake_grams_per_day_norm"][0] == pytest.approx(120.0)
+        assert result["feed_conversion_ratio_norm"][0] == pytest.approx(2.0)
+        assert result["liveability_percentage_norm"][0] == pytest.approx(99.8)
+
+    def test_empty_input_returns_empty(self):
+        df = pl.DataFrame(
+            {
+                "registration_date": pl.Series([], dtype=pl.Date),
+                "flock_week": pl.Series([], dtype=pl.Int32),
+            }
+        )
+        result = weekly_overview_from_daily(df)
+        assert result.is_empty()
 
 
 # ---------------------------------------------------------------------------
