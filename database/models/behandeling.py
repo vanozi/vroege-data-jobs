@@ -11,6 +11,7 @@ KlauwBehandeling model using SQLModel.
 
 from datetime import date
 from typing import Optional
+from uuid import UUID
 
 from sqlmodel import Field, SQLModel
 
@@ -44,6 +45,22 @@ class KlauwBehandeling(CreatedTimestampMixin, TimestampMixin, SQLModel, table=Tr
         description="Kort oormerknummer van de koe die behandeld is - koppeling naar koeien.eartag_short",
         sa_column_kwargs={
             "comment": "Kort oormerknummer van de koe die behandeld is - koppeling naar koeien.eartag_short"
+        },
+    )
+    animal_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="koeien.animal_id",
+        index=True,
+        description="Animal ID van de gekoppelde koe wanneer deze bepaald kon worden",
+        sa_column_kwargs={
+            "comment": "Animal ID van de gekoppelde koe wanneer deze bepaald kon worden"
+        },
+    )
+    eartag: Optional[str] = Field(
+        default=None,
+        description="Volledig oormerknummer van de gekoppelde koe wanneer deze bepaald kon worden",
+        sa_column_kwargs={
+            "comment": "Volledig oormerknummer van de gekoppelde koe wanneer deze bepaald kon worden"
         },
     )
 

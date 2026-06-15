@@ -49,9 +49,10 @@ def test_cli_summary_dry_run_collects_and_does_not_create_repository(
 ):
     captured = {}
 
-    def fake_save(rows, repository, dry_run=False, logger=None):
+    def fake_save(rows, repository, koe_repository=None, dry_run=False, logger=None):
         captured["rows"] = rows
         captured["repository"] = repository
+        captured["koe_repository"] = koe_repository
         captured["dry_run"] = dry_run
         return len(rows)
 
@@ -81,6 +82,7 @@ def test_cli_summary_dry_run_collects_and_does_not_create_repository(
     assert "saved_klauw_behandelingen=1" in output
     assert "dry_run=True" in output
     assert captured["repository"] is None
+    assert captured["koe_repository"] is None
     assert captured["dry_run"] is True
 
 
@@ -91,9 +93,14 @@ def test_cli_flat_persists_deduped_rows_but_outputs_raw_rows(capsys, monkeypatch
         def __init__(self, session_factory):
             captured["session_factory"] = session_factory
 
-    def fake_save(rows, repository, dry_run=False, logger=None):
+    class FakeKoeRepository:
+        def __init__(self, session_factory):
+            captured["koe_session_factory"] = session_factory
+
+    def fake_save(rows, repository, koe_repository=None, dry_run=False, logger=None):
         captured["rows"] = rows
         captured["repository"] = repository
+        captured["koe_repository"] = koe_repository
         captured["dry_run"] = dry_run
         return len(rows)
 
@@ -113,6 +120,11 @@ def test_cli_flat_persists_deduped_rows_but_outputs_raw_rows(capsys, monkeypatch
         FakeRepository,
     )
     monkeypatch.setattr(
+        collect_klauwscore,
+        "KoeRepository",
+        FakeKoeRepository,
+    )
+    monkeypatch.setattr(
         collect_klauwscore.klauwscore_persistence,
         "save_klauw_behandelingen",
         fake_save,
@@ -126,6 +138,7 @@ def test_cli_flat_persists_deduped_rows_but_outputs_raw_rows(capsys, monkeypatch
     assert '"notatie": "Dubbel"' in output
     assert captured["rows"] == [build_row("Bekapt")]
     assert isinstance(captured["repository"], FakeRepository)
+    assert isinstance(captured["koe_repository"], FakeKoeRepository)
     assert captured["dry_run"] is False
 
 
@@ -150,7 +163,9 @@ def test_cli_applies_runtime_overrides(monkeypatch):
     monkeypatch.setattr(
         collect_klauwscore.klauwscore_persistence,
         "save_klauw_behandelingen",
-        lambda rows, repository, dry_run=False, logger=None: len(rows),
+        lambda rows, repository, koe_repository=None, dry_run=False, logger=None: len(
+            rows
+        ),
     )
     monkeypatch.setattr(
         "sys.argv",

@@ -5,6 +5,7 @@ from typing import Optional
 from database import database
 from database.persistence import klauwscore as klauwscore_persistence
 from database.repositories.behandelingen_repository import KlauwBehandelingenRepository
+from database.repositories.koe_repository import KoeRepository
 from data_jobs import logger as job_logger
 from data_jobs.klauwscore import collectors
 from data_jobs.klauwscore import config as klauwscore_config
@@ -130,12 +131,15 @@ def _persist_rows(
     dry_run: bool,
 ) -> int:
     repository: Optional[KlauwBehandelingenRepository] = None
+    koe_repository: Optional[KoeRepository] = None
     if not dry_run:
         repository = KlauwBehandelingenRepository(database.get_session)
+        koe_repository = KoeRepository(database.get_session)
 
     return klauwscore_persistence.save_klauw_behandelingen(
         rows,
         repository,
+        koe_repository,
         dry_run=dry_run,
         logger=logger,
     )

@@ -1,5 +1,7 @@
 from datetime import date
 import logging
+from typing import Optional
+from uuid import UUID
 
 import pytest
 
@@ -13,6 +15,22 @@ class FakeKlauwBehandelingenRepository:
 
     def upsert_klauw_behandeling(self, item):
         self.saved_items.append(item)
+
+
+class FakeKoe:
+    def __init__(self, animal_id: UUID, eartag: str):
+        self.animal_id = animal_id
+        self.eartag = eartag
+
+
+class FakeKoeRepository:
+    def __init__(self, koe: Optional[FakeKoe] = None):
+        self.koe = koe
+        self.calls = []
+
+    def get_by_eartag_short_for_treatment_date(self, eartag_short, behandeldatum):
+        self.calls.append((eartag_short, behandeldatum))
+        return self.koe
 
 
 def test_save_klauw_behandelingen_returns_saved_count_and_logs(caplog):
@@ -41,6 +59,52 @@ def test_save_klauw_behandelingen_returns_saved_count_and_logs(caplog):
         },
     ]
     assert "Saved 2 klauw behandelingen." in caplog.text
+
+
+def test_save_klauw_behandelingen_enriches_with_matching_koe():
+    animal_id = UUID("12345678-1234-5678-1234-567812345678")
+    repository = FakeKlauwBehandelingenRepository()
+    koe_repository = FakeKoeRepository(FakeKoe(animal_id, "NL123456789"))
+    rows = [build_row(101, "Bekapt")]
+
+    saved_count = klauwscore.save_klauw_behandelingen(
+        rows,
+        repository,
+        koe_repository,
+    )
+
+    assert saved_count == 1
+    assert koe_repository.calls == [("101", date(2026, 5, 19))]
+    assert repository.saved_items == [
+        {
+            "eartag_short": "101",
+            "behandeldatum": date(2026, 5, 19),
+            "notatie": "Bekapt",
+            "animal_id": animal_id,
+            "eartag": "NL123456789",
+        }
+    ]
+
+
+def test_save_klauw_behandelingen_skips_enrichment_without_matching_koe():
+    repository = FakeKlauwBehandelingenRepository()
+    koe_repository = FakeKoeRepository()
+    rows = [build_row(101, "Bekapt")]
+
+    saved_count = klauwscore.save_klauw_behandelingen(
+        rows,
+        repository,
+        koe_repository,
+    )
+
+    assert saved_count == 1
+    assert repository.saved_items == [
+        {
+            "eartag_short": "101",
+            "behandeldatum": date(2026, 5, 19),
+            "notatie": "Bekapt",
+        }
+    ]
 
 
 def test_save_klauw_behandelingen_dry_run_returns_count_without_writes(caplog):

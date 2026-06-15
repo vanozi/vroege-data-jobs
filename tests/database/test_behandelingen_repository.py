@@ -1,4 +1,5 @@
 from datetime import date
+from uuid import UUID
 
 from database.models.behandeling import KlauwBehandeling
 from database.repositories.behandelingen_repository import KlauwBehandelingenRepository
@@ -19,6 +20,8 @@ def test_upsert_klauw_behandeling_preserves_unique_fields_for_dict():
             "eartag_short": "101",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Bekapt",
+            "animal_id": UUID("12345678-1234-5678-1234-567812345678"),
+            "eartag": "NL123456789",
         }
     )
 
@@ -29,6 +32,8 @@ def test_upsert_klauw_behandeling_preserves_unique_fields_for_dict():
                 "eartag_short": "101",
                 "behandeldatum": date(2026, 5, 19),
                 "notatie": "Bekapt",
+                "animal_id": UUID("12345678-1234-5678-1234-567812345678"),
+                "eartag": "NL123456789",
             },
             ["eartag_short", "behandeldatum", "notatie"],
         )
