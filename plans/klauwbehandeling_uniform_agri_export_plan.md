@@ -10,6 +10,7 @@ CSV in Uniform Agri worden geimporteerd.
 De tab is bedoeld als controle- en exportweergave:
 
 - laat per klauwbehandeling zien hoe de rij naar Uniform Agri wordt vertaald;
+- groepeer vertaalde notities per koe en behandeldatum tot een CSV-regel;
 - toon welke rijen exporteerbaar zijn en welke validatiefouten hebben;
 - maak het mogelijk om dezelfde gegevens als CSV te downloaden voor import in
   Uniform Agri.
@@ -24,7 +25,6 @@ De tab is bedoeld als controle- en exportweergave:
 - Specificatiebestand: `C:\Users\woute\Downloads\Hooftrim.docx`
 - Mapping uit aangeleverde afbeelding:
   - pootpositie;
-  - hoofzone;
   - conditions;
   - action codes;
   - trim type.
@@ -136,19 +136,6 @@ Uniform-code op basis van de positie in onze `notatie`:
 
 Bron: aangeleverde afbeelding.
 
-### Hoofzone
-
-Er is geen zone-informatie in de huidige klauwbekappernotatie. Daarom:
-
-| Zone | Uniform code |
-| --- | ---: |
-| Niet bekend | 0 |
-
-Regel:
-
-- zet zone altijd op `0`;
-- leg dit expliciet vast in de exportkolom `hoof_zone_code`.
-
 ### Conditions
 
 Vertaling van diagnose/probleem naar Uniform condition-code:
@@ -213,24 +200,24 @@ Interpretatie voor implementatie:
 - per condition wordt een blok gemaakt van:
   - condition-code;
   - pootpositie-code;
-  - hoofzone-code;
 - voorbeeld met Mortellaro op Linksachter:
 
 ```text
-D70
+D7
 ```
 
-Omdat de aangeleverde afbeelding zegt dat hoofzone onbekend is en alles op `0`
-moet, gebruiken we dus altijd zone `0`.
+Hoofzone wordt niet meegenomen in de export. De huidige klauwbekappernotatie
+bevat geen betrouwbare zone-informatie en Uniform Agri mag deze import zonder
+zonecomponent ontvangen.
 
 Voor meerdere conditions op dezelfde notatie:
 
 - concateneer conditionblokken zonder separator;
-- voorbeeld: Mortellaro en Stinkpoot op Linksachter zou `D70F70` worden.
+- voorbeeld: Mortellaro en Stinkpoot op Linksachter zou `D7F7` worden.
 
-In de huidige data lijkt iedere `klauw_behandelingen`-rij meestal 1 notatie te
-hebben, dus fase 1 ondersteunt 1 condition of 1 action per rij. Multi-condition
-kan als latere uitbreiding.
+In de huidige database staat iedere notatie als aparte `klauw_behandelingen`-rij.
+Voor Uniform Agri moeten die notities worden samengevoegd per koe en
+behandeldatum. Daardoor kunnen meerdere conditionblokken in 1 CSV-veld komen.
 
 ## Treatment Veld Opbouw
 
@@ -252,14 +239,48 @@ Voorbeeldrijen:
 
 | Notatie | Health conditions/location | Treatment |
 | --- | --- | --- |
-| Linksachter Mortellaro | D70 |  |
+| Linksachter Mortellaro | D7 |  |
 | Linksachter Verband |  | W |
 | Linksachter Klos |  | B |
-| Linksachter Wittelijndefect | W70 |  |
+| Linksachter Wittelijndefect | W7 |  |
 | Vierkant |  | R |
 
 Voor `Vierkant` toont de controletabel daarnaast `trim_type_code = R`, en het
 CSV-veld `treatment` krijgt dezelfde code `R`.
+
+## Groepering Naar CSV-Regels
+
+De dashboardtabel mag de onderliggende notitieregels blijven tonen, maar de
+CSV-download moet groeperen per:
+
+- `animal_no`;
+- `behandeldatum`.
+
+Groeperingsregels:
+
+- concateneer alle `health_conditions_location`-codes van dezelfde koe en datum
+  zonder separator;
+- concateneer alle `treatment`-codes van dezelfde koe en datum zonder separator;
+- behoud de volgorde van `klauw_behandelingen.id`, zodat de export stabiel en
+  herleidbaar blijft;
+- dedupliceer binnen een groep alleen als exact dezelfde code door exact
+  dubbele bronregels ontstaat; deduplicatie moet in de controletabel zichtbaar
+  zijn als warning.
+
+Voorbeeld op basis van drie bronregels:
+
+```csv
+animal no.,date,health conditions and location,treatment
+70,26.5.26,K5D7,R
+```
+
+Bronregels:
+
+| Notatie | Health conditions/location | Treatment |
+| --- | --- | --- |
+| Rechtsachter Tyloom | K5 |  |
+| Linksachter Mortellaro | D7 |  |
+| Vierkant |  | R |
 
 ## Nieuwe Transformfuncties
 
@@ -277,11 +298,16 @@ def build_uniform_agri_export_rows(
 ) -> list[dict[str, object]]:
     ...
 
+def build_uniform_agri_csv_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    ...
+
 def format_uniform_agri_date(value: date) -> str:
     ...
 ```
 
-Outputvelden voor dashboardcontrole:
+Outputvelden voor dashboardcontrole per bronnotitie:
 
 - `behandeling_id`;
 - `animal_no`;
@@ -290,7 +316,6 @@ Outputvelden voor dashboardcontrole:
 - `health_conditions_location`;
 - `treatment`;
 - `uniform_position_code`;
-- `hoof_zone_code`;
 - `condition_code`;
 - `action_code`;
 - `trim_type_code`;
@@ -301,6 +326,20 @@ Outputvelden voor dashboardcontrole:
 - `validation_status`;
 - `validation_message`;
 - `exportable`.
+
+Outputvelden voor gegroepeerde CSV-controle:
+
+- `animal_no`;
+- `date`;
+- `health_conditions_location`;
+- `treatment`;
+- `behandeldatum`;
+- `behandeling_ids`;
+- `notities`;
+- `row_count`;
+- `exportable`;
+- `validation_status`;
+- `validation_message`.
 
 Outputvelden voor CSV-download:
 
@@ -340,7 +379,27 @@ Toon boven de tabel:
 
 ### Tabel
 
-Kolommen in de dashboardtabel:
+Toon bij voorkeur twee tabellen of twee views binnen de tab:
+
+1. `CSV exportregels`: 1 rij per koe en behandeldatum, exact zoals de CSV wordt
+   gedownload.
+2. `Bronnotities`: onderliggende `klauw_behandelingen`-regels voor controle en
+   foutopsporing.
+
+Kolommen in de primaire dashboardtabel `CSV exportregels`:
+
+- `Exporteerbaar`;
+- `Status`;
+- `Diernummer`;
+- `Datum`;
+- `Health conditions/location`;
+- `Treatment`;
+- `Aantal bronnotities`;
+- `Behandeling IDs`;
+- `Notities`;
+- `Validatiemelding`.
+
+Kolommen in de controletabel `Bronnotities`:
 
 - `Exporteerbaar`;
 - `Status`;
@@ -361,7 +420,7 @@ Sorteer standaard op:
 1. `exportable` oplopend, zodat fouten bovenaan staan;
 2. `behandeldatum` aflopend;
 3. `animal_no`;
-4. `notatie`.
+4. `behandeling_ids` of `notatie`.
 
 ### CSV Download
 
@@ -383,9 +442,11 @@ Plan voor implementatie:
 
 1. bouw de export-DataFrame in Polars;
 2. filter op `exportable = true`;
-3. selecteer alleen de 4 CSV-kolommen;
-4. serialize naar CSV met header;
-5. bied download aan via Marimo.
+3. groepeer per `animal_no` en `behandeldatum`;
+4. concateneer condition/location- en treatment-codes;
+5. selecteer alleen de 4 CSV-kolommen;
+6. serialize naar CSV met header;
+7. bied download aan via Marimo.
 
 Tijdens implementatie controleren welke Marimo download-API beschikbaar is in
 de geinstalleerde versie.
@@ -416,22 +477,24 @@ Niet exporteerbaar:
 Warnings:
 
 - notatie zonder positie waarbij export toch mogelijk is;
-- meerdere codes uit 1 notatie als dat later wordt ondersteund.
+- deduplicatie van exact dubbele codes binnen dezelfde koe/datumgroep.
 
 ## Tests
 
 Breid `tests/dashboard/test_transforms.py` uit met tests voor:
 
 - `format_uniform_agri_date(date(2026, 5, 26)) == "26.5.26"`;
-- `Linksachter Mortellaro` -> condition `D`, positie `7`, zone `0`,
-  health field `D70`;
-- `Rechtsvoor Wittelijndefect` -> `W10`;
-- `Linksvoor Zoolzweer` -> `U30`;
-- `Rechtsachter Tyloom` -> `K50`;
+- `Linksachter Mortellaro` -> condition `D`, positie `7`,
+  health field `D7`;
+- `Rechtsvoor Wittelijndefect` -> `W1`;
+- `Linksvoor Zoolzweer` -> `U3`;
+- `Rechtsachter Tyloom` -> `K5`;
 - `Linksachter Verband` -> treatment `W`;
 - `Linksachter Klos` -> treatment `B`;
 - `Linksachter Mortellaro` heeft geen default treatment `T`;
 - `Vierkant` -> trim type `R` en treatment `R`;
+- drie bronregels voor dezelfde koe/datum worden 1 CSV-regel, bijvoorbeeld
+  `K5`, `D7` en `R` -> `K5D7,R`;
 - onbekende notatie geeft `exportable = false`;
 - rij zonder gekoppelde koe geeft `exportable = false`;
 - rij zonder `collar_number` geeft `exportable = false`;
@@ -442,8 +505,7 @@ Breid `tests/dashboard/test_transforms.py` uit met tests voor:
 
 ### Fase 1. Transformlaag
 
-1. Maak mappingconstanten voor positie, hoofzone, conditions, actions en trim
-   type.
+1. Maak mappingconstanten voor positie, conditions, actions en trim type.
 2. Voeg pure transformfuncties toe.
 3. Voeg tests toe voor alle mappings uit de afbeelding.
 4. Houd de bestaande Mortellaro-transforms stabiel.

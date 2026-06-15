@@ -48,6 +48,42 @@ PROBLEEM_CATEGORIES = {
     "Behandelingen": ["Bont", "Verband", "Vierkant"],
 }
 
+UNIFORM_AGRI_POSITION_CODES = {
+    "RV": "1",
+    "LV": "3",
+    "RA": "5",
+    "LA": "7",
+}
+
+UNIFORM_AGRI_CONDITION_CODES = {
+    "mortellaro": "D",
+    "mortelaro": "D",
+    "tussenklauwontsteking": "I",
+    "zoolzweer": "U",
+    "wittelijndefect": "W",
+    "tyloom": "K",
+    "stinkpoot": "F",
+    "bont": "H",
+    "chronisch bevangen": "O",
+}
+
+UNIFORM_AGRI_ACTION_CODES = {
+    "verband": "W",
+    "klos": "B",
+    "behandeling": "T",
+}
+
+UNIFORM_AGRI_TRIM_TYPE_CODES = {
+    "vierkant": "R",
+}
+
+UNIFORM_AGRI_CSV_COLUMNS = [
+    "animal no.",
+    "date",
+    "health conditions and location",
+    "treatment",
+]
+
 
 def parse_notatie(notatie: Optional[str]) -> ParsedNotatie:
     """Parse klauwbehandeling notatie naar gestructureerde velden."""
@@ -289,6 +325,193 @@ def build_mortellaro_followup_status(
     )
 
 
+def format_uniform_agri_date(value: object) -> str:
+    """Format a date for Uniform Agri Hoof Supervisor CSV import."""
+    parsed_date = _parse_date(value)
+    if parsed_date is None:
+        return ""
+
+    return f"{parsed_date.day}.{parsed_date.month}.{parsed_date:%y}"
+
+
+def parse_uniform_agri_export_row(row: dict[str, object]) -> dict[str, object]:
+    """Transform one klauwbehandeling row to a Uniform Agri control row."""
+    parsed_row = _ensure_parsed_fields(row)
+    parsed = parse_notatie(_optional_str(parsed_row.get("notatie")))
+    behandeldatum = _parse_date(parsed_row.get("behandeldatum"))
+    animal_no = _optional_str(parsed_row.get("collar_number"))
+    normalized_problem = _normalize_text(parsed.probleem)
+    position_code = UNIFORM_AGRI_POSITION_CODES.get(parsed.positie_code)
+    condition_code = _lookup_uniform_agri_code(
+        normalized_problem,
+        UNIFORM_AGRI_CONDITION_CODES,
+    )
+    action_code = _lookup_uniform_agri_code(
+        normalized_problem,
+        UNIFORM_AGRI_ACTION_CODES,
+    )
+    trim_type_code = _lookup_uniform_agri_code(
+        normalized_problem,
+        UNIFORM_AGRI_TRIM_TYPE_CODES,
+    )
+    health_conditions_location = ""
+    treatment = ""
+
+    validation_messages = []
+    validation_status = "ok"
+
+    if parsed_row.get("animal_id") is None:
+        validation_messages.append("Geen gekoppelde koe")
+
+    if parsed_row.get("in_current_herd") is False:
+        validation_messages.append("Koe is niet onderdeel van de huidige kudde")
+
+    if not animal_no:
+        validation_messages.append("Geen werknummer/collar_number voor animal no.")
+
+    if behandeldatum is None:
+        validation_messages.append("Geen behandeldatum")
+
+    if condition_code:
+        if position_code:
+            health_conditions_location = f"{condition_code}{position_code}"
+        else:
+            validation_messages.append("Geen pootpositie voor condition")
+
+    if action_code:
+        treatment = action_code
+
+    if trim_type_code:
+        treatment = f"{treatment}{trim_type_code}"
+
+    has_known_mapping = bool(condition_code or action_code or trim_type_code)
+    if not has_known_mapping:
+        validation_messages.append("Onbekende of niet vertaalbare notatie")
+
+    if validation_messages:
+        validation_status = "error"
+
+    return {
+        **parsed_row,
+        "behandeling_id": parsed_row.get("behandeling_id") or parsed_row.get("id"),
+        "animal_no": animal_no,
+        "animal_no_source": "koeien.collar_number",
+        "date": format_uniform_agri_date(behandeldatum),
+        "health_conditions_location": health_conditions_location,
+        "treatment": treatment,
+        "uniform_position_code": position_code,
+        "condition_code": condition_code,
+        "action_code": action_code,
+        "trim_type_code": trim_type_code,
+        "notatie": parsed_row.get("notatie"),
+        "eartag": parsed_row.get("eartag"),
+        "eartag_short": parsed_row.get("eartag_short"),
+        "cow_name": parsed_row.get("name") or parsed_row.get("cow_name"),
+        "validation_status": validation_status,
+        "validation_message": "; ".join(validation_messages),
+        "exportable": not validation_messages,
+    }
+
+
+def build_uniform_agri_export_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Transform klauwbehandeling rows to Uniform Agri control rows."""
+    return [parse_uniform_agri_export_row(row) for row in rows]
+
+
+def build_uniform_agri_csv_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Group Uniform Agri control rows into CSV-shaped rows per cow/date."""
+    export_rows = build_uniform_agri_export_rows(rows)
+    grouped_rows: dict[tuple[str, date], dict[str, object]] = {}
+
+    for index, row in enumerate(export_rows):
+        behandeldatum = _parse_date(row.get("behandeldatum"))
+        animal_no = _optional_str(row.get("animal_no"))
+        if animal_no is None or behandeldatum is None:
+            continue
+
+        key = (animal_no, behandeldatum)
+        group = grouped_rows.setdefault(
+            key,
+            {
+                "animal_no": animal_no,
+                "date": row["date"],
+                "health_conditions_location": "",
+                "treatment": "",
+                "behandeldatum": behandeldatum,
+                "behandeling_ids": [],
+                "notities": [],
+                "row_count": 0,
+                "exportable": True,
+                "validation_status": "ok",
+                "validation_message": "",
+                "_first_index": index,
+            },
+        )
+        group["health_conditions_location"] = (
+            f"{group['health_conditions_location']}{row['health_conditions_location']}"
+        )
+        group["treatment"] = f"{group['treatment']}{row['treatment']}"
+        group["row_count"] = int(group["row_count"]) + 1
+        group["exportable"] = bool(group["exportable"]) and bool(row["exportable"])
+
+        behandeling_id = row.get("behandeling_id")
+        if behandeling_id is not None:
+            group["behandeling_ids"].append(behandeling_id)
+
+        notatie = row.get("notatie")
+        if notatie:
+            group["notities"].append(notatie)
+
+        if row["validation_message"]:
+            messages = [
+                message
+                for message in str(group["validation_message"]).split("; ")
+                if message
+            ]
+            messages.append(str(row["validation_message"]))
+            group["validation_message"] = "; ".join(messages)
+            group["validation_status"] = "error"
+
+    return [
+        _format_uniform_agri_grouped_row(row)
+        for row in sorted(
+            grouped_rows.values(),
+            key=lambda item: (
+                item["behandeldatum"],
+                item["animal_no"],
+                item["_first_index"],
+            ),
+        )
+    ]
+
+
+def build_uniform_agri_csv_download_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    """Return only the four CSV columns for exportable grouped rows."""
+    csv_rows = []
+    for row in build_uniform_agri_csv_rows(rows):
+        if not row["exportable"]:
+            continue
+
+        csv_rows.append(
+            {
+                "animal no.": str(row["animal_no"]),
+                "date": str(row["date"]),
+                "health conditions and location": str(
+                    row["health_conditions_location"]
+                ),
+                "treatment": str(row["treatment"]),
+            }
+        )
+
+    return csv_rows
+
+
 def _ensure_parsed_fields(row: dict[str, object]) -> dict[str, object]:
     copied_row = dict(row)
     parsed = parse_notatie(_optional_str(copied_row.get("notatie")))
@@ -301,6 +524,26 @@ def _ensure_parsed_fields(row: dict[str, object]) -> dict[str, object]:
     copied_row.setdefault("is_mortellaro", parsed.is_mortellaro)
     copied_row.setdefault("is_vierkant", parsed.is_vierkant)
     return copied_row
+
+
+def _lookup_uniform_agri_code(
+    normalized_problem: str,
+    mappings: dict[str, str],
+) -> Optional[str]:
+    for problem, code in mappings.items():
+        if problem in normalized_problem:
+            return code
+
+    return None
+
+
+def _format_uniform_agri_grouped_row(row: dict[str, object]) -> dict[str, object]:
+    formatted_row = _strip_private_columns(row)
+    formatted_row["behandeling_ids"] = ", ".join(
+        str(behandeling_id) for behandeling_id in row["behandeling_ids"]
+    )
+    formatted_row["notities"] = ", ".join(str(notatie) for notatie in row["notities"])
+    return formatted_row
 
 
 def _is_mortellaro_text(value: str) -> bool:

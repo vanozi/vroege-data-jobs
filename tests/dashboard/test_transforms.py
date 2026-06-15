@@ -4,8 +4,12 @@ from datetime import date
 
 from dashboard.transforms import (
     add_mortellaro_case_columns,
+    build_uniform_agri_csv_download_rows,
+    build_uniform_agri_csv_rows,
+    build_uniform_agri_export_rows,
     build_mortellaro_case_key,
     build_mortellaro_followup_status,
+    format_uniform_agri_date,
     get_position_sort_key,
     get_probleem_categorie,
     parse_notatie,
@@ -341,3 +345,166 @@ class TestMortellaroCases:
         result = build_mortellaro_followup_status(rows)
 
         assert result[0]["opvolgstatus"] == "Open/onbekend"
+
+
+class TestUniformAgriExport:
+    """Tests voor Uniform Agri Hoof Supervisor exporttransforms."""
+
+    def test_format_uniform_agri_date(self):
+        assert format_uniform_agri_date(date(2026, 5, 26)) == "26.5.26"
+        assert format_uniform_agri_date(None) == ""
+
+    def test_condition_mappings_include_position_without_hoof_zone(self):
+        rows = build_uniform_agri_export_rows(
+            [
+                build_uniform_row("Linksachter Mortellaro"),
+                build_uniform_row("Rechtsvoor Wittelijndefect"),
+                build_uniform_row("Linksvoor Zoolzweer"),
+                build_uniform_row("Rechtsachter Tyloom"),
+                build_uniform_row("Rechtsvoor Tussenklauwontsteking"),
+                build_uniform_row("Rechtsachter Stinkpoot"),
+                build_uniform_row("Linksachter Chronisch bevangen"),
+            ]
+        )
+
+        assert [row["health_conditions_location"] for row in rows] == [
+            "D7",
+            "W1",
+            "U3",
+            "K5",
+            "I1",
+            "F5",
+            "O7",
+        ]
+        assert [row["treatment"] for row in rows] == ["", "", "", "", "", "", ""]
+        assert all(row["exportable"] for row in rows)
+
+    def test_action_and_trim_mappings(self):
+        rows = build_uniform_agri_export_rows(
+            [
+                build_uniform_row("Linksachter Verband"),
+                build_uniform_row("Linksachter Klos"),
+                build_uniform_row("Behandeling"),
+                build_uniform_row("Vierkant"),
+            ]
+        )
+
+        assert [row["health_conditions_location"] for row in rows] == ["", "", "", ""]
+        assert [row["treatment"] for row in rows] == ["W", "B", "T", "R"]
+        assert rows[3]["trim_type_code"] == "R"
+        assert all(row["exportable"] for row in rows)
+
+    def test_condition_without_action_does_not_get_default_treatment(self):
+        row = build_uniform_agri_export_rows(
+            [build_uniform_row("Linksachter Mortellaro")]
+        )[0]
+
+        assert row["health_conditions_location"] == "D7"
+        assert row["treatment"] == ""
+        assert row["exportable"] is True
+
+    def test_unknown_notatie_is_not_exportable(self):
+        row = build_uniform_agri_export_rows([build_uniform_row("Onbekend probleem")])[
+            0
+        ]
+
+        assert row["exportable"] is False
+        assert row["validation_status"] == "error"
+        assert "Onbekende" in row["validation_message"]
+
+    def test_condition_without_position_is_not_exportable(self):
+        row = build_uniform_agri_export_rows([build_uniform_row("Mortellaro")])[0]
+
+        assert row["exportable"] is False
+        assert row["condition_code"] == "D"
+        assert row["health_conditions_location"] == ""
+        assert "Geen pootpositie" in row["validation_message"]
+
+    def test_missing_cow_link_is_not_exportable(self):
+        row = build_uniform_agri_export_rows(
+            [build_uniform_row("Vierkant", animal_id=None)]
+        )[0]
+
+        assert row["exportable"] is False
+        assert "Geen gekoppelde koe" in row["validation_message"]
+
+    def test_missing_collar_number_is_not_exportable(self):
+        row = build_uniform_agri_export_rows(
+            [build_uniform_row("Vierkant", collar_number=None)]
+        )[0]
+
+        assert row["exportable"] is False
+        assert "Geen werknummer" in row["validation_message"]
+
+    def test_cow_outside_current_herd_is_not_exportable(self):
+        row = build_uniform_agri_export_rows(
+            [build_uniform_row("Vierkant", in_current_herd=False)]
+        )[0]
+
+        assert row["exportable"] is False
+        assert "huidige kudde" in row["validation_message"]
+
+    def test_group_csv_rows_by_animal_no_and_treatment_date(self):
+        grouped_rows = build_uniform_agri_csv_rows(
+            [
+                build_uniform_row(
+                    "Rechtsachter Tyloom",
+                    behandeling_id=1,
+                    collar_number=70,
+                ),
+                build_uniform_row(
+                    "Linksachter Mortellaro",
+                    behandeling_id=2,
+                    collar_number=70,
+                ),
+                build_uniform_row("Vierkant", behandeling_id=3, collar_number=70),
+            ]
+        )
+
+        assert len(grouped_rows) == 1
+        assert grouped_rows[0]["animal_no"] == "70"
+        assert grouped_rows[0]["date"] == "26.5.26"
+        assert grouped_rows[0]["health_conditions_location"] == "K5D7"
+        assert grouped_rows[0]["treatment"] == "R"
+        assert grouped_rows[0]["behandeling_ids"] == "1, 2, 3"
+        assert grouped_rows[0]["row_count"] == 3
+        assert grouped_rows[0]["exportable"] is True
+
+    def test_csv_download_rows_include_only_four_header_columns(self):
+        csv_rows = build_uniform_agri_csv_download_rows(
+            [
+                build_uniform_row("Rechtsachter Tyloom", collar_number=70),
+                build_uniform_row("Vierkant", collar_number=70),
+                build_uniform_row("Onbekend probleem", collar_number=71),
+            ]
+        )
+
+        assert csv_rows == [
+            {
+                "animal no.": "70",
+                "date": "26.5.26",
+                "health conditions and location": "K5",
+                "treatment": "R",
+            }
+        ]
+
+
+def build_uniform_row(
+    notatie: str,
+    *,
+    animal_id: object = "animal-1",
+    behandeling_id: int = 1,
+    collar_number: object = 70,
+    in_current_herd: bool = True,
+) -> dict[str, object]:
+    return {
+        "behandeling_id": behandeling_id,
+        "animal_id": animal_id,
+        "collar_number": collar_number,
+        "in_current_herd": in_current_herd,
+        "behandeldatum": date(2026, 5, 26),
+        "notatie": notatie,
+        "eartag": "NL 123",
+        "eartag_short": "0123",
+        "name": "Koe 1",
+    }
