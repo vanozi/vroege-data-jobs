@@ -1383,42 +1383,64 @@ def _(
         in de huidige kudde en waarvoor een werknummer beschikbaar is.
         `animal no.` is het werknummer uit `koeien.collar_number`.
         Meerdere Klauwscore-regels van dezelfde koe op dezelfde behandeldatum worden
-        samengevoegd tot één Uniform-Agri-regel.
+        samengevoegd tot een Uniform-Agri-regel.
 
-        | Uniform-Agri veld | Transformatie |
-        | --- | --- |
-        | `animal no.` | `koeien.collar_number` van de gekoppelde koe |
-        | `date` | `klauw_behandelingen.behandeldatum` als `d.M.yy` |
-        | `health conditions and location` | condition-code + pootpositie-code, achter elkaar gezet per bronregel |
-        | `treatment` | action-code en trim-type-code, achter elkaar gezet per bronregel |
-
-        | Pootpositie in Klauwscore | Uniform-Agri locatiecode |
-        | --- | ---: |
-        | Rechtsvoor | `1` |
-        | Linksvoor | `3` |
-        | Rechtsachter | `5` |
-        | Linksachter | `7` |
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; align-items: start;">
+        <div>
+        <table>
+        <thead><tr><th>Uniform-Agri veld</th><th>Transformatie</th></tr></thead>
+        <tbody>
+        <tr><td><code>animal no.</code></td><td><code>koeien.collar_number</code> van de gekoppelde koe</td></tr>
+        <tr><td><code>date</code></td><td><code>klauw_behandelingen.behandeldatum</code> als <code>d.M.yy</code></td></tr>
+        <tr><td><code>health conditions and location</code></td><td>condition-code + pootpositie-code, achter elkaar gezet per bronregel</td></tr>
+        <tr><td><code>treatment</code></td><td>action-code en trim-type-code, achter elkaar gezet per bronregel</td></tr>
+        </tbody>
+        </table>
+        </div>
+        <div>
+        <table>
+        <thead><tr><th>Pootpositie in Klauwscore</th><th>Uniform-Agri locatiecode</th></tr></thead>
+        <tbody>
+        <tr><td>Rechtsvoor</td><td><code>1</code></td></tr>
+        <tr><td>Linksvoor</td><td><code>3</code></td></tr>
+        <tr><td>Rechtsachter</td><td><code>5</code></td></tr>
+        <tr><td>Linksachter</td><td><code>7</code></td></tr>
+        </tbody>
+        </table>
+        </div>
+        </div>
 
         Hoofzones worden niet geexporteerd. De oude hoofzone `0` wordt dus niet in
         de CSV gezet; de CSV bevat alleen condition/location en treatment.
 
-        | Klauwscore notatie | Uniform-Agri condition |
-        | --- | --- |
-        | Mortellaro / Mortelaro | `D` |
-        | Tussenklauwontsteking | `I` |
-        | Zoolzweer | `U` |
-        | Wittelijndefect | `W` |
-        | Tyloom | `K` |
-        | Stinkpoot | `F` |
-        | Bont | `H` |
-        | Chronisch bevangen | `O` |
-
-        | Klauwscore behandeling | Uniform-Agri treatment |
-        | --- | --- |
-        | Verband | `W` |
-        | Klos | `B` |
-        | Behandeling | `T` |
-        | Vierkant | `R` |
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; align-items: start;">
+        <div>
+        <table>
+        <thead><tr><th>Klauwscore notatie</th><th>Uniform-Agri condition</th></tr></thead>
+        <tbody>
+        <tr><td>Mortellaro / Mortelaro</td><td><code>D</code></td></tr>
+        <tr><td>Tussenklauwontsteking</td><td><code>I</code></td></tr>
+        <tr><td>Zoolzweer</td><td><code>U</code></td></tr>
+        <tr><td>Wittelijndefect</td><td><code>W</code></td></tr>
+        <tr><td>Tyloom</td><td><code>K</code></td></tr>
+        <tr><td>Stinkpoot</td><td><code>F</code></td></tr>
+        <tr><td>Bont</td><td><code>H</code></td></tr>
+        <tr><td>Chronisch bevangen</td><td><code>O</code></td></tr>
+        </tbody>
+        </table>
+        </div>
+        <div>
+        <table>
+        <thead><tr><th>Klauwscore behandeling</th><th>Uniform-Agri treatment</th></tr></thead>
+        <tbody>
+        <tr><td>Verband</td><td><code>W</code></td></tr>
+        <tr><td>Klos</td><td><code>B</code></td></tr>
+        <tr><td>Behandeling</td><td><code>T</code></td></tr>
+        <tr><td>Vierkant</td><td><code>R</code></td></tr>
+        </tbody>
+        </table>
+        </div>
+        </div>
 
         Een condition zonder pootpositie, een onbekende notatie, een ontbrekende
         koppeling met `koeien`, een koe buiten de huidige kudde of een ontbrekend
