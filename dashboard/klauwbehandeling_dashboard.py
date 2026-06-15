@@ -1150,27 +1150,277 @@ def _(
 
 
 @app.cell
+def _(df_uniform_agri_csv_rows, mo):
+    """Uniform-Agri tab - filter controls."""
+    if df_uniform_agri_csv_rows.height > 0:
+        min_uniform_agri_datum = df_uniform_agri_csv_rows["behandeldatum"].min()
+        max_uniform_agri_datum = df_uniform_agri_csv_rows["behandeldatum"].max()
+    else:
+        min_uniform_agri_datum = None
+        max_uniform_agri_datum = None
+
+    uniform_agri_datum_van_filter = mo.ui.date(
+        label="Van datum",
+        value=str(min_uniform_agri_datum) if min_uniform_agri_datum else None,
+        start=str(min_uniform_agri_datum) if min_uniform_agri_datum else None,
+        stop=str(max_uniform_agri_datum) if max_uniform_agri_datum else None,
+    )
+    uniform_agri_datum_tot_filter = mo.ui.date(
+        label="Tot datum",
+        value=str(max_uniform_agri_datum) if max_uniform_agri_datum else None,
+        start=str(min_uniform_agri_datum) if min_uniform_agri_datum else None,
+        stop=str(max_uniform_agri_datum) if max_uniform_agri_datum else None,
+    )
+    uniform_agri_status_filter = mo.ui.dropdown(
+        options=["Alles", "Exporteerbaar", "Fouten"],
+        value="Alles",
+        label="Status",
+    )
+    uniform_agri_zoek_filter = mo.ui.text(
+        label="Zoek",
+        placeholder="Animal no., notatie, behandeling-id of foutmelding",
+    )
+    return (
+        uniform_agri_datum_tot_filter,
+        uniform_agri_datum_van_filter,
+        uniform_agri_status_filter,
+        uniform_agri_zoek_filter,
+    )
+
+
+@app.cell
 def _(
-    df_uniform_agri_download_rows,
+    df_uniform_agri_csv_rows,
+    df_uniform_agri_validation_rows,
+    pl,
+    uniform_agri_datum_tot_filter,
+    uniform_agri_datum_van_filter,
+    uniform_agri_status_filter,
+    uniform_agri_zoek_filter,
+):
+    """Uniform-Agri tab - pas filters toe op tabel en downloaddata."""
+    df_uniform_agri_filtered_rows = df_uniform_agri_csv_rows
+
+    if df_uniform_agri_filtered_rows.height > 0 and uniform_agri_datum_van_filter.value:
+        df_uniform_agri_filtered_rows = df_uniform_agri_filtered_rows.filter(
+            pl.col("behandeldatum") >= uniform_agri_datum_van_filter.value
+        )
+
+    if df_uniform_agri_filtered_rows.height > 0 and uniform_agri_datum_tot_filter.value:
+        df_uniform_agri_filtered_rows = df_uniform_agri_filtered_rows.filter(
+            pl.col("behandeldatum") <= uniform_agri_datum_tot_filter.value
+        )
+
+    if df_uniform_agri_filtered_rows.height > 0:
+        if uniform_agri_status_filter.value == "Exporteerbaar":
+            df_uniform_agri_filtered_rows = df_uniform_agri_filtered_rows.filter(
+                pl.col("exportable")
+            )
+        if uniform_agri_status_filter.value == "Fouten":
+            df_uniform_agri_filtered_rows = df_uniform_agri_filtered_rows.filter(
+                ~pl.col("exportable")
+            )
+
+    if (
+        df_uniform_agri_filtered_rows.height > 0
+        and uniform_agri_zoek_filter.value
+        and uniform_agri_zoek_filter.value.strip()
+    ):
+        zoek_term = uniform_agri_zoek_filter.value.strip().lower()
+        df_uniform_agri_filtered_rows = df_uniform_agri_filtered_rows.filter(
+            pl.col("animal_no").cast(pl.Utf8).str.to_lowercase().str.contains(zoek_term)
+            | pl.col("notities")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(zoek_term)
+            | pl.col("behandeling_ids")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(zoek_term)
+            | pl.col("validation_message")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(zoek_term)
+        )
+
+    if df_uniform_agri_filtered_rows.height > 0:
+        df_uniform_agri_filtered_rows = df_uniform_agri_filtered_rows.sort(
+            ["exportable", "behandeldatum", "animal_no"],
+            descending=[False, True, False],
+        )
+
+    df_uniform_agri_filtered_validation_rows = df_uniform_agri_validation_rows
+    if (
+        df_uniform_agri_filtered_validation_rows.height > 0
+        and uniform_agri_datum_van_filter.value
+    ):
+        df_uniform_agri_filtered_validation_rows = (
+            df_uniform_agri_filtered_validation_rows.filter(
+                pl.col("behandeldatum") >= uniform_agri_datum_van_filter.value
+            )
+        )
+
+    if (
+        df_uniform_agri_filtered_validation_rows.height > 0
+        and uniform_agri_datum_tot_filter.value
+    ):
+        df_uniform_agri_filtered_validation_rows = (
+            df_uniform_agri_filtered_validation_rows.filter(
+                pl.col("behandeldatum") <= uniform_agri_datum_tot_filter.value
+            )
+        )
+
+    if (
+        df_uniform_agri_filtered_validation_rows.height > 0
+        and uniform_agri_zoek_filter.value
+        and uniform_agri_zoek_filter.value.strip()
+    ):
+        zoek_term = uniform_agri_zoek_filter.value.strip().lower()
+        df_uniform_agri_filtered_validation_rows = (
+            df_uniform_agri_filtered_validation_rows.filter(
+                pl.col("notatie")
+                .cast(pl.Utf8)
+                .str.to_lowercase()
+                .str.contains(zoek_term)
+                | pl.col("behandeling_id")
+                .cast(pl.Utf8)
+                .str.to_lowercase()
+                .str.contains(zoek_term)
+                | pl.col("animal_id")
+                .cast(pl.Utf8)
+                .str.to_lowercase()
+                .str.contains(zoek_term)
+                | pl.col("collar_number")
+                .cast(pl.Utf8)
+                .str.to_lowercase()
+                .str.contains(zoek_term)
+                | pl.col("validation_message")
+                .cast(pl.Utf8)
+                .str.to_lowercase()
+                .str.contains(zoek_term)
+            )
+        )
+
+    if df_uniform_agri_filtered_rows.height > 0:
+        df_uniform_agri_filtered_export_rows = df_uniform_agri_filtered_rows.filter(
+            pl.col("exportable")
+        )
+    else:
+        df_uniform_agri_filtered_export_rows = pl.DataFrame()
+
+    if df_uniform_agri_filtered_export_rows.height > 0:
+        df_uniform_agri_filtered_download_rows = (
+            df_uniform_agri_filtered_export_rows.select(
+                [
+                    "animal_no",
+                    "date",
+                    "health_conditions_location",
+                    "treatment",
+                ]
+            ).rename(
+                {
+                    "animal_no": "animal no.",
+                    "health_conditions_location": "health conditions and location",
+                }
+            )
+        )
+    else:
+        df_uniform_agri_filtered_download_rows = pl.DataFrame(
+            {
+                "animal no.": [],
+                "date": [],
+                "health conditions and location": [],
+                "treatment": [],
+            }
+        )
+
+    return (
+        df_uniform_agri_filtered_export_rows,
+        df_uniform_agri_filtered_rows,
+        df_uniform_agri_filtered_validation_rows,
+        df_uniform_agri_filtered_download_rows,
+    )
+
+
+@app.cell
+def _(
     df_uniform_agri_export_dataset,
+    df_uniform_agri_filtered_download_rows,
+    df_uniform_agri_filtered_export_rows,
+    df_uniform_agri_filtered_rows,
+    df_uniform_agri_filtered_validation_rows,
     df_uniform_agri_validation_rows,
     mo,
+    pl,
+    uniform_agri_datum_tot_filter,
+    uniform_agri_datum_van_filter,
+    uniform_agri_status_filter,
+    uniform_agri_zoek_filter,
 ):
-    """Uniform-Agri tab - exportdataset en validatieoverzicht."""
-    if df_uniform_agri_download_rows.height > 0:
+    """Uniform-Agri tab - KPI's, tabel en CSV-download."""
+    uniform_agri_export_csv = df_uniform_agri_filtered_download_rows.write_csv()
+    uniform_agri_export_download = mo.download(
+        data=uniform_agri_export_csv.encode("utf-8-sig"),
+        filename="uniform-agri-klauwbehandelingen.csv",
+        mimetype="text/csv",
+        label="Download CSV",
+    )
+
+    filter_controls = mo.hstack(
+        [
+            uniform_agri_datum_van_filter,
+            uniform_agri_datum_tot_filter,
+            uniform_agri_status_filter,
+            uniform_agri_zoek_filter,
+        ],
+        justify="start",
+    )
+
+    if df_uniform_agri_filtered_rows.height > 0:
+        uniform_agri_table_data = (
+            df_uniform_agri_filtered_rows.with_columns(
+                pl.when(pl.col("exportable"))
+                .then(pl.lit("OK"))
+                .otherwise(pl.lit("Fout"))
+                .alias("Status")
+            )
+            .select(
+                [
+                    "Status",
+                    "animal_no",
+                    "date",
+                    "health_conditions_location",
+                    "treatment",
+                    "row_count",
+                    "notities",
+                    "behandeling_ids",
+                    "validation_message",
+                ]
+            )
+            .rename(
+                {
+                    "animal_no": "animal no.",
+                    "health_conditions_location": "health conditions and location",
+                    "row_count": "Aantal bronregels",
+                    "notities": "Notaties",
+                    "behandeling_ids": "Behandeling IDs",
+                    "validation_message": "Validatie",
+                }
+            )
+        )
         uniform_agri_export_table = mo.ui.table(
-            df_uniform_agri_download_rows.to_pandas(),
+            uniform_agri_table_data.to_pandas(),
             selection=None,
             page_size=20,
-            label="Uniform-Agri CSV exportdataset",
+            label="Uniform-Agri regels",
         )
     else:
         uniform_agri_export_table = mo.callout(
-            mo.md("Er zijn geen exporteerbare Uniform-Agri regels gevonden."),
+            mo.md("Geen Uniform-Agri regels gevonden voor deze filters."),
             kind="warn",
         )
 
-    if df_uniform_agri_validation_rows.height > 0:
+    if df_uniform_agri_filtered_validation_rows.height > 0:
         validation_columns = [
             column
             for column in [
@@ -1185,17 +1435,19 @@ def _(
                 "eartag",
                 "validation_message",
             ]
-            if column in df_uniform_agri_validation_rows.columns
+            if column in df_uniform_agri_filtered_validation_rows.columns
         ]
         uniform_agri_validation_table = mo.ui.table(
-            df_uniform_agri_validation_rows.select(validation_columns).to_pandas(),
+            df_uniform_agri_filtered_validation_rows.select(
+                validation_columns
+            ).to_pandas(),
             selection=None,
             page_size=20,
-            label="Niet-exporteerbare klauwbehandelingen",
+            label="Niet-exporteerbare bronregels",
         )
     else:
         uniform_agri_validation_table = mo.callout(
-            mo.md("Alle Uniform-Agri bronregels zijn exporteerbaar."),
+            mo.md("Geen niet-exporteerbare bronregels gevonden voor deze filters."),
             kind="success",
         )
 
@@ -1206,18 +1458,30 @@ def _(
                 [
                     mo.stat(
                         value=str(df_uniform_agri_export_dataset.height),
-                        label="Exportregels",
+                        label="Exportregels totaal",
                         caption="huidige kudde met werknummer",
                     ),
                     mo.stat(
+                        value=str(df_uniform_agri_filtered_export_rows.height),
+                        label="Exportregels gefilterd",
+                        caption="worden opgenomen in CSV",
+                    ),
+                    mo.stat(
                         value=str(df_uniform_agri_validation_rows.height),
-                        label="Validatieregels",
-                        caption="niet opgenomen in exportdataset",
+                        label="Fouten totaal",
+                        caption="niet opgenomen in CSV",
+                    ),
+                    mo.stat(
+                        value=str(df_uniform_agri_filtered_validation_rows.height),
+                        label="Fouten gefilterd",
+                        caption="bronregels met validatiemelding",
                     ),
                 ],
-                justify="start",
+                justify="space-between",
             ),
-            mo.md("### Exportdataset"),
+            filter_controls,
+            uniform_agri_export_download,
+            mo.md("### Regels"),
             uniform_agri_export_table,
             mo.md("### Validatieoverzicht"),
             uniform_agri_validation_table,
