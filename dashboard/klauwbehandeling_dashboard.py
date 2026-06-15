@@ -107,6 +107,89 @@ def _(connectorx_database_url, pl):
 
 
 @app.cell
+def _(connectorx_database_url, pl):
+    """Data laden: Uniform-Agri exportbron met validatiecontext."""
+    uniform_agri_query = """
+    SELECT
+        kb.id AS behandeling_id,
+        kb.animal_id,
+        k.animal_id AS koe_animal_id,
+        kb.eartag AS klauw_eartag,
+        COALESCE(k.eartag, kb.eartag) AS eartag,
+        kb.eartag_short,
+        kb.behandeldatum,
+        kb.notatie,
+        kb.created_at,
+        kb.updated_at,
+        k.name,
+        k.collar_number,
+        k.birth_date,
+        k.in_current_herd
+    FROM klauw_behandelingen kb
+    LEFT JOIN koeien k
+        ON k.animal_id = kb.animal_id
+    ORDER BY kb.behandeldatum DESC NULLS LAST, kb.id
+    """
+
+    df_uniform_agri_raw = pl.read_database_uri(
+        query=uniform_agri_query,
+        uri=connectorx_database_url,
+    )
+    return (df_uniform_agri_raw,)
+
+
+@app.cell
+def _(df_uniform_agri_raw, pl, transforms):
+    """Transformeer Uniform-Agri brondata en splits export/validatie."""
+    uniform_agri_source_rows = df_uniform_agri_raw.to_dicts()
+    uniform_agri_notitie_rows = transforms.build_uniform_agri_export_rows(
+        uniform_agri_source_rows
+    )
+    uniform_agri_csv_rows = transforms.build_uniform_agri_csv_rows(
+        uniform_agri_source_rows
+    )
+    uniform_agri_download_rows = transforms.build_uniform_agri_csv_download_rows(
+        uniform_agri_source_rows
+    )
+
+    df_uniform_agri_notitie_rows = (
+        pl.DataFrame(uniform_agri_notitie_rows)
+        if uniform_agri_notitie_rows
+        else pl.DataFrame()
+    )
+    df_uniform_agri_csv_rows = (
+        pl.DataFrame(uniform_agri_csv_rows) if uniform_agri_csv_rows else pl.DataFrame()
+    )
+    df_uniform_agri_download_rows = (
+        pl.DataFrame(uniform_agri_download_rows)
+        if uniform_agri_download_rows
+        else pl.DataFrame()
+    )
+
+    if df_uniform_agri_notitie_rows.height > 0:
+        df_uniform_agri_validation_rows = df_uniform_agri_notitie_rows.filter(
+            ~pl.col("exportable")
+        )
+    else:
+        df_uniform_agri_validation_rows = pl.DataFrame()
+
+    if df_uniform_agri_csv_rows.height > 0:
+        df_uniform_agri_export_dataset = df_uniform_agri_csv_rows.filter(
+            pl.col("exportable")
+        )
+    else:
+        df_uniform_agri_export_dataset = pl.DataFrame()
+
+    return (
+        df_uniform_agri_csv_rows,
+        df_uniform_agri_download_rows,
+        df_uniform_agri_export_dataset,
+        df_uniform_agri_notitie_rows,
+        df_uniform_agri_validation_rows,
+    )
+
+
+@app.cell
 def _(df_raw, pl, transforms):
     """Parse notaties en voeg gestructureerde velden toe."""
     df_behandelingen = df_raw.filter(pl.col("behandeling_id").is_not_null())
@@ -1068,10 +1151,88 @@ def _(
 
 @app.cell
 def _(
+    df_uniform_agri_download_rows,
+    df_uniform_agri_export_dataset,
+    df_uniform_agri_validation_rows,
+    mo,
+):
+    """Uniform-Agri tab - exportdataset en validatieoverzicht."""
+    if df_uniform_agri_download_rows.height > 0:
+        uniform_agri_export_table = mo.ui.table(
+            df_uniform_agri_download_rows.to_pandas(),
+            selection=None,
+            page_size=20,
+            label="Uniform-Agri CSV exportdataset",
+        )
+    else:
+        uniform_agri_export_table = mo.callout(
+            mo.md("Er zijn geen exporteerbare Uniform-Agri regels gevonden."),
+            kind="warn",
+        )
+
+    if df_uniform_agri_validation_rows.height > 0:
+        validation_columns = [
+            column
+            for column in [
+                "behandeling_id",
+                "animal_id",
+                "koe_animal_id",
+                "collar_number",
+                "in_current_herd",
+                "behandeldatum",
+                "notatie",
+                "eartag_short",
+                "eartag",
+                "validation_message",
+            ]
+            if column in df_uniform_agri_validation_rows.columns
+        ]
+        uniform_agri_validation_table = mo.ui.table(
+            df_uniform_agri_validation_rows.select(validation_columns).to_pandas(),
+            selection=None,
+            page_size=20,
+            label="Niet-exporteerbare klauwbehandelingen",
+        )
+    else:
+        uniform_agri_validation_table = mo.callout(
+            mo.md("Alle Uniform-Agri bronregels zijn exporteerbaar."),
+            kind="success",
+        )
+
+    uniform_agri_content = mo.vstack(
+        [
+            mo.md("## Uniform-Agri"),
+            mo.hstack(
+                [
+                    mo.stat(
+                        value=str(df_uniform_agri_export_dataset.height),
+                        label="Exportregels",
+                        caption="huidige kudde met werknummer",
+                    ),
+                    mo.stat(
+                        value=str(df_uniform_agri_validation_rows.height),
+                        label="Validatieregels",
+                        caption="niet opgenomen in exportdataset",
+                    ),
+                ],
+                justify="start",
+            ),
+            mo.md("### Exportdataset"),
+            uniform_agri_export_table,
+            mo.md("### Validatieoverzicht"),
+            uniform_agri_validation_table,
+        ]
+    )
+    return (uniform_agri_content,)
+
+
+@app.cell
+def _(
     algemeen_overzicht_content,
     mo,
     mortellaro_overzicht_content,
     per_koe_content,
+    uniform_agri_content,
 ):
     """Tab navigatie - hoofdstructuur."""
     tabs = mo.ui.tabs(
@@ -1079,6 +1240,7 @@ def _(
             "Overzicht": algemeen_overzicht_content,
             "Mortellaro": mortellaro_overzicht_content,
             "Individuele koeien": per_koe_content,
+            "Uniform-Agri": uniform_agri_content,
         }
     )
 

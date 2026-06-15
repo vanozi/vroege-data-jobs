@@ -363,7 +363,17 @@ def parse_uniform_agri_export_row(row: dict[str, object]) -> dict[str, object]:
     if parsed_row.get("animal_id") is None:
         validation_messages.append("Geen gekoppelde koe")
 
-    if parsed_row.get("in_current_herd") is False:
+    if (
+        parsed_row.get("animal_id") is not None
+        and "koe_animal_id" in parsed_row
+        and parsed_row.get("koe_animal_id") is None
+    ):
+        validation_messages.append("Gekoppelde koe niet gevonden in koeien")
+
+    if (
+        "in_current_herd" in parsed_row
+        and parsed_row.get("in_current_herd") is not True
+    ):
         validation_messages.append("Koe is niet onderdeel van de huidige kudde")
 
     if not animal_no:

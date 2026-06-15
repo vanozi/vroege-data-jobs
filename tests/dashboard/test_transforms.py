@@ -444,6 +444,14 @@ class TestUniformAgriExport:
         assert row["exportable"] is False
         assert "huidige kudde" in row["validation_message"]
 
+    def test_missing_joined_koe_record_is_not_exportable(self):
+        row = build_uniform_agri_export_rows(
+            [build_uniform_row("Vierkant", koe_animal_id=None)]
+        )[0]
+
+        assert row["exportable"] is False
+        assert "niet gevonden" in row["validation_message"]
+
     def test_group_csv_rows_by_animal_no_and_treatment_date(self):
         grouped_rows = build_uniform_agri_csv_rows(
             [
@@ -493,6 +501,7 @@ def build_uniform_row(
     notatie: str,
     *,
     animal_id: object = "animal-1",
+    koe_animal_id: object = "animal-1",
     behandeling_id: int = 1,
     collar_number: object = 70,
     in_current_herd: bool = True,
@@ -500,6 +509,7 @@ def build_uniform_row(
     return {
         "behandeling_id": behandeling_id,
         "animal_id": animal_id,
+        "koe_animal_id": koe_animal_id,
         "collar_number": collar_number,
         "in_current_herd": in_current_herd,
         "behandeldatum": date(2026, 5, 26),
