@@ -1375,6 +1375,56 @@ def _(
         ],
         justify="start",
     )
+    uniform_agri_transformatie_uitleg = mo.md(
+        """
+        ### Transformatie Klauwscore naar Uniform-Agri
+
+        De export gebruikt alleen klauwbehandelingen die gekoppeld zijn aan een koe
+        in de huidige kudde en waarvoor een werknummer beschikbaar is.
+        `animal no.` is het werknummer uit `koeien.collar_number`.
+        Meerdere Klauwscore-regels van dezelfde koe op dezelfde behandeldatum worden
+        samengevoegd tot één Uniform-Agri-regel.
+
+        | Uniform-Agri veld | Transformatie |
+        | --- | --- |
+        | `animal no.` | `koeien.collar_number` van de gekoppelde koe |
+        | `date` | `klauw_behandelingen.behandeldatum` als `d.M.yy` |
+        | `health conditions and location` | condition-code + pootpositie-code, achter elkaar gezet per bronregel |
+        | `treatment` | action-code en trim-type-code, achter elkaar gezet per bronregel |
+
+        | Pootpositie in Klauwscore | Uniform-Agri locatiecode |
+        | --- | ---: |
+        | Rechtsvoor | `1` |
+        | Linksvoor | `3` |
+        | Rechtsachter | `5` |
+        | Linksachter | `7` |
+
+        Hoofzones worden niet geexporteerd. De oude hoofzone `0` wordt dus niet in
+        de CSV gezet; de CSV bevat alleen condition/location en treatment.
+
+        | Klauwscore notatie | Uniform-Agri condition |
+        | --- | --- |
+        | Mortellaro / Mortelaro | `D` |
+        | Tussenklauwontsteking | `I` |
+        | Zoolzweer | `U` |
+        | Wittelijndefect | `W` |
+        | Tyloom | `K` |
+        | Stinkpoot | `F` |
+        | Bont | `H` |
+        | Chronisch bevangen | `O` |
+
+        | Klauwscore behandeling | Uniform-Agri treatment |
+        | --- | --- |
+        | Verband | `W` |
+        | Klos | `B` |
+        | Behandeling | `T` |
+        | Vierkant | `R` |
+
+        Een condition zonder pootpositie, een onbekende notatie, een ontbrekende
+        koppeling met `koeien`, een koe buiten de huidige kudde of een ontbrekend
+        `collar_number` komt niet in de CSV en staat in het validatieoverzicht.
+        """
+    )
 
     if df_uniform_agri_filtered_rows.height > 0:
         uniform_agri_table_data = (
@@ -1481,6 +1531,7 @@ def _(
             ),
             filter_controls,
             uniform_agri_export_download,
+            uniform_agri_transformatie_uitleg,
             mo.md("### Regels"),
             uniform_agri_export_table,
             mo.md("### Validatieoverzicht"),
