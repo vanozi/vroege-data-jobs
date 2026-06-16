@@ -36,18 +36,6 @@ POSITION_ORDER = {
     "Onbekend": 6,
 }
 
-PROBLEEM_CATEGORIES = {
-    "Infecties": ["Mortellaro", "Mortelaro", "Stinkpoot", "Tussenklauwontsteking"],
-    "Structurele problemen": [
-        "Wittelijndefect",
-        "Zoolzweer",
-        "Chronisch bevangen",
-        "Klos",
-    ],
-    "Tumoren": ["Tyloom"],
-    "Behandelingen": ["Bont", "Verband", "Vierkant"],
-}
-
 UNIFORM_AGRI_POSITION_CODES = {
     "RV": "1",
     "LV": "3",
@@ -132,16 +120,6 @@ def parse_notatie(notatie: Optional[str]) -> ParsedNotatie:
         is_mortellaro=is_mortellaro,
         is_vierkant=is_vierkant,
     )
-
-
-def get_probleem_categorie(probleem: str) -> str:
-    """Geef de categorie van een probleem."""
-    normalized_problem = _normalize_text(probleem)
-    for categorie, problemen in PROBLEEM_CATEGORIES.items():
-        if any(_normalize_text(item) in normalized_problem for item in problemen):
-            return categorie
-
-    return "Overig"
 
 
 def get_position_sort_key(positie_code: Optional[str]) -> int:
@@ -530,7 +508,6 @@ def _ensure_parsed_fields(row: dict[str, object]) -> dict[str, object]:
     copied_row.setdefault("zijde", parsed.zijde)
     copied_row.setdefault("poot", parsed.poot)
     copied_row.setdefault("probleem", parsed.probleem)
-    copied_row.setdefault("categorie", get_probleem_categorie(parsed.probleem))
     copied_row.setdefault("is_mortellaro", parsed.is_mortellaro)
     copied_row.setdefault("is_vierkant", parsed.is_vierkant)
     return copied_row

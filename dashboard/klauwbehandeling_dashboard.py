@@ -199,7 +199,6 @@ def _(df_raw, pl, transforms):
         "zijde": pl.String,
         "poot": pl.String,
         "probleem": pl.String,
-        "categorie": pl.String,
         "is_mortellaro": pl.Boolean,
         "is_vierkant": pl.Boolean,
     }
@@ -212,7 +211,6 @@ def _(df_raw, pl, transforms):
             "zijde": parsed.zijde,
             "poot": parsed.poot,
             "probleem": parsed.probleem,
-            "categorie": transforms.get_probleem_categorie(parsed.probleem),
             "is_mortellaro": parsed.is_mortellaro,
             "is_vierkant": parsed.is_vierkant,
         }
@@ -999,7 +997,6 @@ def _(alt, koe_data, mo, pl, transforms):
                     "Originele notatie": row.get("notatie"),
                     "Positie": parsed.positie_volledig,
                     "Probleem": parsed.probleem,
-                    "Categorie": transforms.get_probleem_categorie(parsed.probleem),
                 }
             )
         koe_tijdlijn_data = pl.DataFrame(tijdlijn_rows)
@@ -1019,12 +1016,10 @@ def _(alt, koe_data, mo, pl, transforms):
                 color=alt.Color(
                     "Probleem:N", title="Probleem", scale=alt.Scale(scheme="category20")
                 ),
-                shape=alt.Shape("Categorie:N", title="Categorie"),
                 tooltip=[
                     alt.Tooltip("Behandeldatum:T", title="Datum", format="%d-%m-%Y"),
                     alt.Tooltip("Positie:N", title="Positie"),
                     alt.Tooltip("Probleem:N", title="Probleem"),
-                    alt.Tooltip("Categorie:N", title="Categorie"),
                     alt.Tooltip("Originele notatie:N", title="Originele notatie"),
                 ],
             )
@@ -1052,7 +1047,6 @@ def _(koe_data, mo, pl):
                     "behandeldatum",
                     "positie",
                     "probleem",
-                    "categorie",
                     "notatie",
                 ]
             )
@@ -1061,7 +1055,6 @@ def _(koe_data, mo, pl):
                     "behandeldatum": "Behandeldatum",
                     "positie": "Positie",
                     "probleem": "Probleem",
-                    "categorie": "Categorie",
                     "notatie": "Originele notatie",
                 }
             )

@@ -11,7 +11,6 @@ from dashboard.transforms import (
     build_mortellaro_followup_status,
     format_uniform_agri_date,
     get_position_sort_key,
-    get_probleem_categorie,
     parse_notatie,
 )
 
@@ -151,65 +150,6 @@ class TestParseNotatie:
             result = parse_notatie(notatie)
             assert result.positie_code == expected_code, f"Failed for: {notatie}"
             assert result.probleem == expected_probleem, f"Failed for: {notatie}"
-
-
-class TestGetProbleemCategorie:
-    """Tests voor get_probleem_categorie functie."""
-
-    def test_categorie_mortellaro(self):
-        """Test categorie voor Mortellaro."""
-        assert get_probleem_categorie("Mortellaro") == "Infecties"
-
-    def test_categorie_stinkpoot(self):
-        """Test categorie voor Stinkpoot."""
-        assert get_probleem_categorie("Stinkpoot") == "Infecties"
-
-    def test_categorie_tussenklauwontsteking(self):
-        """Test categorie voor Tussenklauwontsteking."""
-        assert get_probleem_categorie("Tussenklauwontsteking") == "Infecties"
-
-    def test_categorie_wittelijndefect(self):
-        """Test categorie voor Wittelijndefect."""
-        assert get_probleem_categorie("Wittelijndefect") == "Structurele problemen"
-
-    def test_categorie_zoolzweer(self):
-        """Test categorie voor Zoolzweer."""
-        assert get_probleem_categorie("Zoolzweer") == "Structurele problemen"
-
-    def test_categorie_chronisch_bevangen(self):
-        """Test categorie voor Chronisch bevangen."""
-        assert get_probleem_categorie("Chronisch bevangen") == "Structurele problemen"
-
-    def test_categorie_klos(self):
-        """Test categorie voor Klos."""
-        assert get_probleem_categorie("Klos") == "Structurele problemen"
-
-    def test_categorie_tyloom(self):
-        """Test categorie voor Tyloom."""
-        assert get_probleem_categorie("Tyloom") == "Tumoren"
-
-    def test_categorie_bont(self):
-        """Test categorie voor Bont."""
-        assert get_probleem_categorie("Bont") == "Behandelingen"
-
-    def test_categorie_verband(self):
-        """Test categorie voor Verband."""
-        assert get_probleem_categorie("Verband") == "Behandelingen"
-
-    def test_categorie_vierkant(self):
-        """Test categorie voor Vierkant."""
-        assert get_probleem_categorie("Vierkant") == "Behandelingen"
-
-    def test_categorie_case_insensitive(self):
-        """Test dat categorie bepaling case-insensitive is."""
-        assert get_probleem_categorie("MORTELLARO") == "Infecties"
-        assert get_probleem_categorie("mortellaro") == "Infecties"
-        assert get_probleem_categorie("Mortelaro") == "Infecties"
-
-    def test_categorie_onbekend(self):
-        """Test categorie voor onbekend probleem."""
-        assert get_probleem_categorie("Onbekend probleem") == "Overig"
-        assert get_probleem_categorie("") == "Overig"
 
 
 class TestMortellaroCases:

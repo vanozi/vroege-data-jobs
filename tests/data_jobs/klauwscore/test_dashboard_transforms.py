@@ -17,7 +17,6 @@ def test_classify_mortellaro_with_position_prefix() -> None:
     assert classification["poot"] == "Achter"
     assert classification["diagnose_tekst"] == "Mortellaro"
     assert classification["probleem"] == "Mortellaro"
-    assert classification["categorie"] == "Diagnose"
     assert classification["ernst"] == "Hoog"
     assert classification["ernst_score"] == 3
 
@@ -50,7 +49,6 @@ def test_classify_non_mortellaro_notitie() -> None:
     assert classification["positie"] == "Rechtsvoor"
     assert classification["diagnose_tekst"] == "Klos"
     assert classification["probleem"] == "Klos"
-    assert classification["categorie"] == "Behandeling / actie"
     assert classification["ernst"] == "Actie"
     assert classification["ernst_score"] == 0
 
@@ -62,7 +60,6 @@ def test_classify_unknown_notitie_keeps_text_available() -> None:
     assert classification["positie"] == "Onbekende positie"
     assert classification["diagnose_tekst"] == "Losse opmerking"
     assert classification["probleem"] == "Losse opmerking"
-    assert classification["categorie"] == "Overig / onbekend"
 
 
 def test_add_mortellaro_case_columns_marks_new_and_repeated_cases() -> None:

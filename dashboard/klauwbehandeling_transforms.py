@@ -15,7 +15,6 @@ FOLLOWUP_UNKNOWN = "Onzeker"
 def classify_notatie(notatie: Optional[str]) -> dict[str, object]:
     """Classify a hoof-treatment note into the legacy dashboard shape."""
     parsed = transforms.parse_notatie(notatie)
-    category = _legacy_category(parsed.probleem, parsed.is_mortellaro)
     severity, severity_score = _legacy_severity(parsed.probleem, parsed.is_mortellaro)
     return {
         "is_mortellaro": parsed.is_mortellaro,
@@ -28,7 +27,6 @@ def classify_notatie(notatie: Optional[str]) -> dict[str, object]:
         "poot": parsed.poot,
         "diagnose_tekst": parsed.probleem,
         "probleem": "Mortellaro" if parsed.is_mortellaro else parsed.probleem,
-        "categorie": category,
         "ernst": severity,
         "ernst_score": severity_score,
     }
@@ -100,16 +98,6 @@ def summarize_mortellaro_cases(klauw_df: pd.DataFrame) -> pd.DataFrame:
         )
 
     return pd.DataFrame(summaries)
-
-
-def _legacy_category(probleem: str, is_mortellaro: bool) -> str:
-    if is_mortellaro:
-        return "Diagnose"
-    if transforms.get_probleem_categorie(probleem) == "Overig":
-        return "Overig / onbekend"
-    if probleem:
-        return "Behandeling / actie"
-    return "Diagnose"
 
 
 def _legacy_severity(probleem: str, is_mortellaro: bool) -> tuple[str, int]:
