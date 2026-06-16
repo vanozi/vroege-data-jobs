@@ -216,6 +216,98 @@ def add_mortellaro_case_columns(
     return [_strip_private_columns(row) for row in enriched_rows]
 
 
+def build_open_mortellaro_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Bouw tabelrijen voor koeien met Mortellaro zonder latere Vierkant."""
+    rows_by_animal: dict[str, list[dict[str, object]]] = {}
+
+    for row in rows:
+        parsed_row = _ensure_parsed_fields(row)
+        animal_identifier = _animal_identifier(parsed_row)
+        if animal_identifier is None:
+            continue
+
+        rows_by_animal.setdefault(animal_identifier, []).append(parsed_row)
+
+    for animal_rows in rows_by_animal.values():
+        animal_rows.sort(
+            key=lambda row: _parse_date(row.get("behandeldatum")) or date.min
+        )
+
+    open_rows = []
+    for animal_rows in rows_by_animal.values():
+        mortellaro_rows = [row for row in animal_rows if row.get("is_mortellaro")]
+        if not mortellaro_rows:
+            continue
+
+        laatste_mortellaro_datum = max(
+            _parse_date(row.get("behandeldatum")) or date.min for row in mortellaro_rows
+        )
+        if laatste_mortellaro_datum == date.min:
+            continue
+
+        behandelingen_na_mortellaro = [
+            row
+            for row in animal_rows
+            if (_parse_date(row.get("behandeldatum")) or date.min)
+            > laatste_mortellaro_datum
+        ]
+
+        if any(row.get("is_vierkant") for row in behandelingen_na_mortellaro):
+            continue
+
+        laatste_behandeling_na_mortellaro = None
+        laatste_notatie_rows = [
+            row
+            for row in animal_rows
+            if (_parse_date(row.get("behandeldatum")) or date.min)
+            == laatste_mortellaro_datum
+        ]
+        if behandelingen_na_mortellaro:
+            laatste_behandeling_na_mortellaro = max(
+                _parse_date(row.get("behandeldatum")) or date.min
+                for row in behandelingen_na_mortellaro
+            )
+            laatste_notatie_rows = [
+                row
+                for row in behandelingen_na_mortellaro
+                if (_parse_date(row.get("behandeldatum")) or date.min)
+                == laatste_behandeling_na_mortellaro
+            ]
+
+        latest_context_row = laatste_notatie_rows[0]
+        open_rows.append(
+            {
+                "animal_id": latest_context_row.get("animal_id"),
+                "Koe / naam": latest_context_row.get("name"),
+                "Halsbandnummer": latest_context_row.get("collar_number"),
+                "Oormerk kort": latest_context_row.get("eartag_short"),
+                "Oormerk": latest_context_row.get("eartag"),
+                "Laatste Mortellaro-datum": laatste_mortellaro_datum,
+                "Laatste behandeling na Mortellaro": (
+                    None
+                    if laatste_behandeling_na_mortellaro is None
+                    else laatste_behandeling_na_mortellaro
+                ),
+                "Laatste notatie(s)": ", ".join(
+                    str(row.get("notatie"))
+                    for row in laatste_notatie_rows
+                    if row.get("notatie")
+                ),
+                "Voergroep": latest_context_row.get("feeding_group_name"),
+            }
+        )
+
+    return sorted(
+        open_rows,
+        key=lambda row: (
+            -(row.get("Laatste Mortellaro-datum") or date.min).toordinal(),
+            str(row.get("Halsbandnummer") or ""),
+        ),
+    )
+
+
 def build_mortellaro_followup_status(
     rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:

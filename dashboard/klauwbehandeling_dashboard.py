@@ -228,55 +228,28 @@ def _(df_raw, pl, transforms):
 
 @app.cell
 def _(df_behandelingen_parsed, pl, transforms):
-    """Bereken Mortellaro-cases over de volledige actieve-koppel-historie."""
+    """Bereken open Mortellaro-koeien over de volledige actieve-koppel-historie."""
     source_schema = dict(df_behandelingen_parsed.schema)
-    mortellaro_case_schema = {
-        **source_schema,
-        "positie_sort_key": pl.Int64,
-        "mortellaro_case_key": pl.Object,
-        "nieuwe_case": pl.Boolean,
-        "herhaalde_case": pl.Boolean,
-        "eerste_datum": pl.Date,
-        "vorige_mortellaro_datum": pl.Date,
-        "dagen_sinds_vorige": pl.Int64,
-        "dagen_sinds_eerste": pl.Int64,
-        "herhaling_nummer": pl.Int64,
-    }
-    mortellaro_followup_schema = {
-        "mortellaro_case_key": pl.Object,
+    open_mortellaro_schema = {
         "animal_id": source_schema.get("animal_id", pl.String),
-        "eartag_short": source_schema.get("eartag_short", pl.String),
-        "name": source_schema.get("name", pl.String),
-        "positie_code": pl.String,
-        "positie": pl.String,
-        "eerste_datum": pl.Date,
-        "laatste_mortellaro_datum": pl.Date,
-        "herhaling_nummer": pl.Int64,
-        "opvolgstatus": pl.String,
-        "volgende_inspectie": pl.Date,
-        "opgelost_op": pl.Date,
+        "Koe / naam": pl.String,
+        "Halsbandnummer": source_schema.get("collar_number", pl.Int64),
+        "Oormerk kort": source_schema.get("eartag_short", pl.String),
+        "Oormerk": source_schema.get("eartag", pl.String),
+        "Laatste Mortellaro-datum": pl.Date,
+        "Laatste behandeling na Mortellaro": pl.Date,
+        "Laatste notatie(s)": pl.String,
+        "Voergroep": source_schema.get("feeding_group_name", pl.String),
     }
 
-    case_rows = transforms.add_mortellaro_case_columns(
+    open_mortellaro_rows = transforms.build_open_mortellaro_rows(
         df_behandelingen_parsed.to_dicts()
     )
-    followup_rows = transforms.build_mortellaro_followup_status(
-        df_behandelingen_parsed.to_dicts()
+    df_open_mortellaro_rows = pl.DataFrame(
+        open_mortellaro_rows,
+        schema=open_mortellaro_schema,
     )
-
-    df_case_columns_all = pl.DataFrame(
-        case_rows,
-        schema=mortellaro_case_schema,
-    )
-    df_mortellaro_cases_all = df_case_columns_all.filter(
-        pl.col("mortellaro_case_key").is_not_null()
-    )
-
-    df_mortellaro_followup_all = pl.DataFrame(
-        followup_rows,
-        schema=mortellaro_followup_schema,
-    )
-    return df_mortellaro_cases_all, df_mortellaro_followup_all
+    return (df_open_mortellaro_rows,)
 
 
 @app.cell
@@ -381,255 +354,36 @@ def _(
 
 
 @app.cell
-def _(
-    df_behandelingen_parsed,
-    df_mortellaro_cases_all,
-    df_mortellaro_followup_all,
-    df_raw,
-    mo,
-    pl,
-):
-    """Mortellaro overzicht - KPI cards."""
-    totaal_actieve_koeien_mortellaro = df_raw.select("animal_id").n_unique()
-    koeien_op_opvolglijst = (
-        df_mortellaro_followup_all.filter(
-            pl.col("opvolgstatus").is_in(
-                ["Open/onbekend", "Actief/herhaald", "Onzeker"]
-            )
-        )
-        .select("animal_id")
-        .n_unique()
-    )
-    koeien_met_open_mortellaro = koeien_op_opvolglijst
-
-    if df_behandelingen_parsed.height > 0:
-        laatste_bekapdatum = df_behandelingen_parsed["behandeldatum"].max()
-    else:
-        laatste_bekapdatum = None
-
-    if laatste_bekapdatum is not None and df_mortellaro_cases_all.height > 0:
-        mortellaro_cases_laatste_bezoek = df_mortellaro_cases_all.filter(
-            pl.col("behandeldatum") == laatste_bekapdatum
-        )
-        nieuwe_cases_laatste_bekapdatum = mortellaro_cases_laatste_bezoek.filter(
-            pl.col("nieuwe_case")
-        ).height
-        herhalingen_laatste_bekapdatum = mortellaro_cases_laatste_bezoek.filter(
-            pl.col("herhaalde_case")
-        ).height
-    else:
-        nieuwe_cases_laatste_bekapdatum = 0
-        herhalingen_laatste_bekapdatum = 0
-
-    laatste_bekapdatum_caption = f"Laatste bekapdatum: {laatste_bekapdatum}"
-    if laatste_bekapdatum is None:
-        laatste_bekapdatum_caption = "Geen bekapdatum gevonden"
-
-    mortellaro_kpi_cards = mo.hstack(
-        [
-            mo.stat(
-                value=str(totaal_actieve_koeien_mortellaro),
-                label="Actieve koeien",
-                caption="in huidige koppel",
-            ),
-            mo.stat(
-                value=str(koeien_met_open_mortellaro),
-                label="Koeien met open Mortellaro",
-                caption="nog geen latere Vierkant-notatie",
-            ),
-            mo.stat(
-                value=str(nieuwe_cases_laatste_bekapdatum),
-                label="Nieuwe cases laatste bezoek",
-                caption=laatste_bekapdatum_caption,
-            ),
-            mo.stat(
-                value=str(herhalingen_laatste_bekapdatum),
-                label="Herhalingen laatste bezoek",
-                caption=(f"{laatste_bekapdatum_caption}; zelfde koe en pootpositie"),
-            ),
-        ],
-        justify="space-between",
-    )
-    return (mortellaro_kpi_cards,)
-
-
-@app.cell
-def _(datetime, df_mortellaro_followup_all, df_raw, mo, pl):
-    """Mortellaro overzicht - open cases per koe."""
-    open_statussen = ["Open/onbekend", "Actief/herhaald", "Onzeker"]
-
-    if df_mortellaro_followup_all.height > 0:
-        df_open_mortellaro_cases = df_mortellaro_followup_all.filter(
-            pl.col("opvolgstatus").is_in(open_statussen)
-        )
-    else:
-        df_open_mortellaro_cases = pl.DataFrame()
-
-    if df_open_mortellaro_cases.height > 0:
-        koe_details_by_animal = {}
-        for _koe_detail_row in df_raw.unique(
-            subset=["animal_id"], keep="first"
-        ).to_dicts():
-            koe_details_by_animal[str(_koe_detail_row["animal_id"])] = _koe_detail_row
-
-        open_koeien_rows = []
-        for animal_id, cases in df_open_mortellaro_cases.group_by("animal_id"):
-            animal_id_value = (
-                animal_id[0] if isinstance(animal_id, tuple) else animal_id
-            )
-            _case_rows = cases.to_dicts()
-            koe_details = koe_details_by_animal.get(str(animal_id_value), {})
-            posities = {str(_case_row.get("positie_code")) for _case_row in _case_rows}
-            eerste_constatering = min(
-                _case_row.get("eerste_datum") for _case_row in _case_rows
-            )
-            laatste_constatering = max(
-                _case_row.get("laatste_mortellaro_datum") for _case_row in _case_rows
-            )
-            geboorte_datum = koe_details.get("birth_date")
-            _leeftijd_jaren = None
-            if geboorte_datum is not None:
-                _leeftijd_jaren = round(
-                    (datetime.now().date() - geboorte_datum).days / 365.25, 1
-                )
-
-            open_koeien_rows.append(
-                {
-                    "Koe": koe_details.get("name") or _case_rows[0].get("name"),
-                    "Halsband": koe_details.get("collar_number"),
-                    "Oormerk kort": koe_details.get("eartag_short")
-                    or _case_rows[0].get("eartag_short"),
-                    "Oormerk": koe_details.get("eartag"),
-                    "Aantal open posities": len(posities),
-                    "Linksvoor": "Ja" if "LV" in posities else "",
-                    "Rechtsvoor": "Ja" if "RV" in posities else "",
-                    "Linksachter": "Ja" if "LA" in posities else "",
-                    "Rechtsachter": "Ja" if "RA" in posities else "",
-                    "Eerste constatering": eerste_constatering,
-                    "Laatste constatering": laatste_constatering,
-                    "Totaal herhalingen": sum(
-                        int(_case_row.get("herhaling_nummer") or 0)
-                        for _case_row in _case_rows
-                    ),
-                    "Statussen": ", ".join(
-                        sorted(
-                            {
-                                str(_case_row.get("opvolgstatus"))
-                                for _case_row in _case_rows
-                            }
-                        )
-                    ),
-                    "Lactatie": koe_details.get("lactation_number"),
-                    "DIM": koe_details.get("current_dim"),
-                    "Voergroep": koe_details.get("feeding_group_name"),
-                    "Stalgroep": koe_details.get("barn_group_name"),
-                    "Leeftijd jaren": _leeftijd_jaren,
-                }
-            )
-
-        df_open_mortellaro_koeien = pl.DataFrame(open_koeien_rows).sort(
-            ["Aantal open posities", "Laatste constatering", "Totaal herhalingen"],
-            descending=[True, True, True],
-        )
-        open_mortellaro_koeien_table = mo.ui.table(
-            df_open_mortellaro_koeien.to_pandas(),
+def _(df_open_mortellaro_rows, mo):
+    """Mortellaro overzicht - nieuwe open Mortellaro tabel."""
+    if df_open_mortellaro_rows.height > 0:
+        open_mortellaro_table = mo.ui.table(
+            df_open_mortellaro_rows.drop("animal_id").to_pandas(),
             selection=None,
-            page_size=20,
+            page_size=25,
             label="Koeien met open Mortellaro",
         )
     else:
-        open_mortellaro_koeien_table = mo.callout(
-            mo.md("Er zijn geen koeien met open Mortellaro-cases."),
+        open_mortellaro_table = mo.callout(
+            mo.md("Er zijn geen koeien met open Mortellaro."),
             kind="success",
         )
 
-    open_mortellaro_koeien_ui = mo.vstack(
-        [
-            mo.md("### Koeien met open Mortellaro"),
-            mo.md(
-                "Deze tabel toont koeien met een Mortellaro-notatie waarvoor nog "
-                "geen latere Vierkant-notatie voor is gevonden."
-            ),
-            open_mortellaro_koeien_table,
-        ]
-    )
-    return (open_mortellaro_koeien_ui,)
-
-
-@app.cell
-def _(alt, df_behandelingen_parsed, mo, pl):
-    """Mortellaro overzicht - distributie over tijd."""
-    df_mortellaro_notities = df_behandelingen_parsed.filter(pl.col("is_mortellaro"))
-
-    if df_mortellaro_notities.height > 0:
-        mortellaro_per_datum = (
-            df_mortellaro_notities.group_by("behandeldatum")
-            .agg(pl.len().alias("Aantal Mortellaro-notaties"))
-            .sort("behandeldatum")
-        )
-
-        mortellaro_distributie_chart = (
-            alt.Chart(mortellaro_per_datum.to_pandas())
-            .mark_bar(color="#2f855a")
-            .encode(
-                x=alt.X("behandeldatum:T", title="Behandeldatum"),
-                y=alt.Y(
-                    "Aantal Mortellaro-notaties:Q",
-                    title="Aantal Mortellaro-notaties",
-                ),
-                tooltip=[
-                    alt.Tooltip(
-                        "behandeldatum:T",
-                        title="Behandeldatum",
-                        format="%d-%m-%Y",
-                    ),
-                    alt.Tooltip(
-                        "Aantal Mortellaro-notaties:Q",
-                        title="Aantal Mortellaro-notaties",
-                    ),
-                ],
-            )
-            .properties(
-                width=900,
-                height=320,
-                title="Mortellaro-notaties door de tijd heen",
-            )
-        )
-        mortellaro_distributie_ui = mo.vstack(
-            [
-                mo.md("### Mortellaro door de tijd heen"),
-                mo.ui.altair_chart(mortellaro_distributie_chart),
-            ]
-        )
-    else:
-        mortellaro_distributie_ui = mo.callout(
-            mo.md("Geen Mortellaro-notaties gevonden in de actieve-koppeldata."),
-            kind="neutral",
-        )
-    return (mortellaro_distributie_ui,)
-
-
-@app.cell
-def _(
-    mo,
-    mortellaro_distributie_ui,
-    mortellaro_kpi_cards,
-    open_mortellaro_koeien_ui,
-):
-    """Mortellaro overzicht - verzamel content."""
     mortellaro_overzicht_content = mo.vstack(
         [
-            mo.md("## Mortellaro"),
-            mortellaro_kpi_cards,
-            open_mortellaro_koeien_ui,
-            mortellaro_distributie_ui,
+            mo.md("## Koeien met open Mortellaro"),
+            mo.md(
+                "Een koe staat in deze tabel wanneer er een Mortellaro-notatie is "
+                "geweest en er daarna geen behandeling met notatie Vierkant is geweest."
+            ),
+            open_mortellaro_table,
         ]
     )
     return (mortellaro_overzicht_content,)
 
 
 @app.cell
-def _(df_behandelingen_parsed, df_mortellaro_followup_all, df_raw, mo, pl):
+def _(df_behandelingen_parsed, df_open_mortellaro_rows, df_raw, mo, pl):
     """Algemeen overzicht boven de tabs."""
     df_actieve_koeien = df_raw.unique(subset=["animal_id"], keep="first")
 
@@ -640,6 +394,7 @@ def _(df_behandelingen_parsed, df_mortellaro_followup_all, df_raw, mo, pl):
         how="anti",
     )
     aantal_koeien_zonder_notitie = df_koeien_zonder_notitie.height
+
     koeien_met_actief_probleem = set()
     koeien_met_actief_probleem_rows = []
 
@@ -749,15 +504,7 @@ def _(df_behandelingen_parsed, df_mortellaro_followup_all, df_raw, mo, pl):
         meest_voorkomend_probleem = "N.v.t."
         meest_voorkomend_aantal = 0
 
-    open_mortellaro_koeien = (
-        df_mortellaro_followup_all.filter(
-            pl.col("opvolgstatus").is_in(
-                ["Open/onbekend", "Actief/herhaald", "Onzeker"]
-            )
-        )
-        .select("animal_id")
-        .n_unique()
-    )
+    open_mortellaro_koeien = df_open_mortellaro_rows.height
 
     if df_koeien_zonder_notitie.height > 0:
         koeien_zonder_notitie_tabel_data = (

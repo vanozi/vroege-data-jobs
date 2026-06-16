@@ -4,6 +4,7 @@ from datetime import date
 
 from dashboard.transforms import (
     add_mortellaro_case_columns,
+    build_open_mortellaro_rows,
     build_uniform_agri_csv_download_rows,
     build_uniform_agri_csv_rows,
     build_uniform_agri_export_rows,
@@ -287,6 +288,104 @@ class TestMortellaroCases:
         assert result[0]["opvolgstatus"] == "Open/onbekend"
 
 
+class TestOpenMortellaroRows:
+    """Tests voor de nieuwe open-Mortellaro tabeldefinitie."""
+
+    def test_mortellaro_without_later_vierkant_is_open(self):
+        result = build_open_mortellaro_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+            ]
+        )
+
+        assert len(result) == 1
+        assert result[0]["Koe / naam"] == "Koe 1"
+        assert result[0]["Laatste Mortellaro-datum"] == date(2026, 1, 1)
+        assert result[0]["Laatste behandeling na Mortellaro"] is None
+        assert result[0]["Laatste notatie(s)"] == "Linksachter Mortellaro"
+
+    def test_later_vierkant_closes_mortellaro(self):
+        result = build_open_mortellaro_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Vierkant",
+                ),
+            ]
+        )
+
+        assert result == []
+
+    def test_vierkant_before_mortellaro_does_not_close_mortellaro(self):
+        result = build_open_mortellaro_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Vierkant",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Rechtsachter Mortellaro",
+                ),
+            ]
+        )
+
+        assert len(result) == 1
+        assert result[0]["Laatste Mortellaro-datum"] == date(2026, 2, 1)
+
+    def test_mortellaro_on_multiple_feet_is_one_open_cow(self):
+        result = build_open_mortellaro_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 15),
+                    notatie="Rechtsachter Mortelaro",
+                ),
+            ]
+        )
+
+        assert len(result) == 1
+        assert result[0]["Laatste Mortellaro-datum"] == date(2026, 1, 15)
+        assert result[0]["Laatste notatie(s)"] == "Rechtsachter Mortelaro"
+
+    def test_last_treatment_after_mortellaro_is_shown_when_not_vierkant(self):
+        result = build_open_mortellaro_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 20),
+                    notatie="Linksachter Verband",
+                ),
+            ]
+        )
+
+        assert len(result) == 1
+        assert result[0]["Laatste behandeling na Mortellaro"] == date(2026, 1, 20)
+        assert result[0]["Laatste notatie(s)"] == "Linksachter Verband"
+
+
 class TestUniformAgriExport:
     """Tests voor Uniform Agri Hoof Supervisor exporttransforms."""
 
@@ -458,4 +557,27 @@ def build_uniform_row(
         "eartag": "NL 123",
         "eartag_short": "0123",
         "name": "Koe 1",
+    }
+
+
+def build_klauw_row(
+    *,
+    animal_id: str,
+    behandeldatum: date,
+    notatie: str,
+    name: str = "Koe 1",
+    collar_number: int = 70,
+    eartag_short: str = "0123",
+    eartag: str = "NL 123",
+    feeding_group_name: str = "Groep 1",
+) -> dict[str, object]:
+    return {
+        "animal_id": animal_id,
+        "name": name,
+        "collar_number": collar_number,
+        "eartag_short": eartag_short,
+        "eartag": eartag,
+        "feeding_group_name": feeding_group_name,
+        "behandeldatum": behandeldatum,
+        "notatie": notatie,
     }
