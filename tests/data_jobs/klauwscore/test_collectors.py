@@ -31,19 +31,24 @@ def test_collect_klauwscore_documents_parses_pdf_documents(monkeypatch):
 def test_collect_klauwscore_rows_flattens_dedupes_and_summarizes(monkeypatch):
     monkeypatch.setattr(
         collectors.scraper,
-        "scrape_stallijst_rows",
-        fake_scrape_stallijst_rows,
+        "scrape_zoekresultaten_rows_for_cows",
+        fake_scrape_zoekresultaten_rows_for_cows,
     )
 
-    result = collectors.collect_klauwscore_rows(build_config())
+    result = collectors.collect_klauwscore_rows(
+        build_config(),
+        cows=[{"eartag_short": "101"}, {"eartag_short": "102"}],
+    )
 
     assert result.notitie_row_count == 3
     assert result.deduped_notitie_row_count == 2
     assert result.duplicate_row_count == 1
+    assert result.searched_cow_count == 2
     assert result.summary_counts() == {
         "documents": 0,
         "cow_records": 0,
         "stallijst_cows": 2,
+        "searched_cows": 2,
         "notitie_rows": 3,
         "deduped_notitie_rows": 2,
         "duplicate_rows": 1,
@@ -188,11 +193,13 @@ def fake_scrape_pdfs_with_mismatch(
     return [document]
 
 
-def fake_scrape_stallijst_rows(
+def fake_scrape_zoekresultaten_rows_for_cows(
     config,
-    limit=None,
+    cows,
     progress_callback=None,
+    failure_callback=None,
 ):
+    assert cows == [{"eartag_short": "101"}, {"eartag_short": "102"}]
     return [
         {
             "behandeldatum": date(2026, 5, 19),

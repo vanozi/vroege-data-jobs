@@ -11,6 +11,7 @@ DEFAULT_BASE_URL = "http://klauwscore.nl"
 DEFAULT_LOGIN_PATH = "/login"
 DEFAULT_AGENDA_PATH = "/veehouder/agenda"
 DEFAULT_STALLIJST_PATH = "/veepedicure/stallijst"
+DEFAULT_ZOEKEN_PATH = "/veepedicure/zoeken"
 DEFAULT_DOWNLOAD_ATTEMPTS = 3
 DEFAULT_DOWNLOAD_TIMEOUT_MS = 120_000
 
@@ -27,6 +28,7 @@ class KlauwscoreConfig:
     login_path: str = DEFAULT_LOGIN_PATH
     agenda_path: str = DEFAULT_AGENDA_PATH
     stallijst_path: str = DEFAULT_STALLIJST_PATH
+    zoeken_path: str = DEFAULT_ZOEKEN_PATH
     headless: bool = True
     download_attempts: int = DEFAULT_DOWNLOAD_ATTEMPTS
     download_timeout_ms: int = DEFAULT_DOWNLOAD_TIMEOUT_MS
@@ -43,6 +45,10 @@ class KlauwscoreConfig:
     @property
     def stallijst_url(self) -> str:
         return urljoin(self.base_url, self.stallijst_path)
+
+    @property
+    def zoeken_url(self) -> str:
+        return urljoin(self.base_url, self.zoeken_path)
 
 
 def load_klauwscore_config(
@@ -69,6 +75,7 @@ def load_klauwscore_config(
         login_path=os.getenv("KLAUWSCORE_LOGIN_PATH", DEFAULT_LOGIN_PATH),
         agenda_path=os.getenv("KLAUWSCORE_AGENDA_PATH", DEFAULT_AGENDA_PATH),
         stallijst_path=os.getenv("KLAUWSCORE_STALLIJST_PATH", DEFAULT_STALLIJST_PATH),
+        zoeken_path=os.getenv("KLAUWSCORE_ZOEKEN_PATH", DEFAULT_ZOEKEN_PATH),
         headless=_get_bool_env("KLAUWSCORE_HEADLESS", True),
         download_attempts=_get_int_env(
             "KLAUWSCORE_DOWNLOAD_ATTEMPTS",

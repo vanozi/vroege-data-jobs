@@ -10,6 +10,15 @@ from data_jobs.klauwscore.transforms import DocumentCountMismatch
 from data_jobs.klauwscore.transforms import ParsedKlauwscoreDocument
 
 
+@pytest.fixture(autouse=True)
+def fake_current_herd_cows(monkeypatch):
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_current_herd_cows",
+        lambda limit: [{"eartag_short": "101"}],
+    )
+
+
 def test_cli_help_works(capsys, monkeypatch):
     monkeypatch.setattr("sys.argv", ["collect_klauwscore", "--help"])
 

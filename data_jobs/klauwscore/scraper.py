@@ -1,10 +1,12 @@
 from typing import Callable, Optional
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from data_jobs import logger as job_logger
 from data_jobs.klauwscore import agenda_parser
 from data_jobs.klauwscore import stallijst_parser
+from data_jobs.klauwscore import zoekresultaten_parser
 from data_jobs.klauwscore.agenda_parser import AgendaPdfLink
 from data_jobs.klauwscore.config import KlauwscoreConfig
 
@@ -52,6 +54,14 @@ def load_stallijst_html(page, config: KlauwscoreConfig) -> str:
     """Load the Klauwscore stallijst and return the full page HTML."""
     page.goto(config.stallijst_url)
     page.wait_for_load_state("networkidle")
+    return page.content()
+
+
+def load_zoeken_html(page, config: KlauwscoreConfig) -> str:
+    """Load the Klauwscore cow search page and return the full page HTML."""
+    page.goto(config.zoeken_url)
+    page.wait_for_load_state("networkidle")
+    page.wait_for_selector("#veehouderZoeken", timeout=10_000)
     return page.content()
 
 
@@ -211,6 +221,121 @@ def scrape_stallijst_rows(
     return rows
 
 
+def scrape_zoekresultaten_rows_for_cows(
+    config: KlauwscoreConfig,
+    cows: list[dict[str, object]],
+    progress_callback: Optional[Callable[[str], None]] = None,
+    failure_callback: Optional[Callable[[dict[str, object], Exception], None]] = None,
+) -> list[dict[str, object]]:
+    """Scrape Klauwscore treatment rows by searching current-herd cows."""
+    rows: list[dict[str, object]] = []
+
+    with sync_playwright() as playwright:
+        _report(progress_callback, "Starting browser and logging in to Klauwscore...")
+        browser = playwright.chromium.launch(headless=config.headless)
+        try:
+            page = browser.new_page()
+            login(page, config)
+
+            _report(progress_callback, "Loading Klauwscore cow search page...")
+            load_zoeken_html(page, config)
+
+            for index, cow in enumerate(cows, start=1):
+                eartag_short = _optional_str(cow.get("eartag_short"))
+                if not eartag_short:
+                    _report(
+                        progress_callback,
+                        f"Skipping cow {index}/{len(cows)} without eartag_short.",
+                    )
+                    continue
+
+                _report(
+                    progress_callback,
+                    f"Searching cow {index}/{len(cows)} with eartag_short "
+                    f"{eartag_short}...",
+                )
+                try:
+                    try:
+                        cow_rows = search_koe_behandelingen(page, eartag_short)
+                    except PlaywrightTimeoutError:
+                        _report(
+                            progress_callback,
+                            "Search results did not load for eartag_short "
+                            f"{eartag_short}; reloading search page and retrying.",
+                        )
+                        load_zoeken_html(page, config)
+                        cow_rows = search_koe_behandelingen(page, eartag_short)
+                except Exception as error:
+                    if failure_callback is not None:
+                        failure_callback(cow, error)
+                    continue
+
+                rows.extend(cow_rows)
+                _report(
+                    progress_callback,
+                    f"Parsed {len(cow_rows)} treatment rows for eartag_short "
+                    f"{eartag_short}.",
+                )
+        finally:
+            browser.close()
+            _report(progress_callback, "Finished Klauwscore cow search scraping.")
+
+    return rows
+
+
+def search_koe_behandelingen(
+    page,
+    eartag_short: str,
+) -> list[dict[str, object]]:
+    """Search one cow on the current Klauwscore search page."""
+    _clear_results_table(page)
+    search_input = page.locator("#veehouderZoeken")
+    search_input.fill("")
+    search_input.fill(eartag_short)
+    search_input.press("Enter")
+    page.wait_for_load_state("networkidle")
+    _wait_for_results_table(page)
+    return zoekresultaten_parser.parse_zoekresultaten_rows(
+        page.content(),
+        eartag_short=eartag_short,
+    )
+
+
+def _clear_results_table(page) -> None:
+    page.evaluate(
+        """
+        () => {
+            for (const table of document.querySelectorAll("table")) {
+                for (const row of table.querySelectorAll("tr")) {
+                    if (!row.querySelector("th")) {
+                        row.remove();
+                    }
+                }
+            }
+        }
+        """
+    )
+
+
+def _wait_for_results_table(page) -> None:
+    page.wait_for_selector("table", timeout=10_000)
+    try:
+        page.wait_for_function(
+            """
+            () => {
+                const table = document.querySelector("table");
+                if (!table) {
+                    return false;
+                }
+                return table.querySelectorAll("td").length > 0;
+            }
+            """,
+            timeout=2_000,
+        )
+    except PlaywrightTimeoutError:
+        return
+
+
 def _report(
     progress_callback: Optional[Callable[[str], None]],
     message: str,
@@ -219,3 +344,10 @@ def _report(
         return
 
     progress_callback(message)
+
+
+def _optional_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+
+    return str(value)

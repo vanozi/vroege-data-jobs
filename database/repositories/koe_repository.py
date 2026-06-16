@@ -59,10 +59,16 @@ class KoeRepository(BaseRepository[Koe]):
         """
         Get the best matching koe for a Klauwscore treatment row.
 
-        Short eartag numbers can be reused. Select the newest cow born before
-        the treatment date so historical rows link to the animal that existed
-        at the time of treatment.
+        Short eartag numbers can be reused. First look up all cows with this
+        short eartag. If exactly one cow exists, only use it when the treatment
+        date is after its birth date. If multiple cows exist, select the cow
+        with the smallest positive delta between birth date and treatment date.
         """
+        koeien = self.get_by_eartag_short(eartag_short)
+        return _select_koe_for_treatment_date(koeien, behandeldatum)
+
+    def get_by_eartag_short(self, eartag_short: str) -> list[Koe]:
+        """Get all koeien matching a short eartag, ignoring leading zeroes."""
         with self.get_session() as session:
             normalized_eartag_short = eartag_short.lstrip("0")
             statement = (
@@ -70,15 +76,13 @@ class KoeRepository(BaseRepository[Koe]):
                 .where(
                     func.ltrim(self.model.eartag_short, "0") == normalized_eartag_short
                 )
-                .where(self.model.birth_date < behandeldatum)
                 .order_by(self.model.birth_date.desc())
             )
-            koe = session.exec(statement).first()
-            if koe is None:
-                return None
+            koeien = list(session.exec(statement).all())
+            for koe in koeien:
+                session.expunge(koe)
 
-            session.expunge(koe)
-            return koe
+            return koeien
 
     def get_living_koeien(self) -> list[Koe]:
         """
@@ -88,6 +92,23 @@ class KoeRepository(BaseRepository[Koe]):
             List of living Koe instances
         """
         return self.get_all(filters={"is_dood": False})
+
+    def get_current_herd_koeien(self, limit: Optional[int] = None) -> list[Koe]:
+        """Get koeien that are currently part of the herd."""
+        with self.get_session() as session:
+            statement = (
+                select(self.model)
+                .where(self.model.in_current_herd.is_(True))
+                .order_by(self.model.eartag_short)
+            )
+            if limit is not None:
+                statement = statement.limit(limit)
+
+            koeien = list(session.exec(statement).all())
+            for koe in koeien:
+                session.expunge(koe)
+
+            return koeien
 
     def get_by_geslacht(self, geslacht: str) -> list[Koe]:
         """
@@ -138,3 +159,14 @@ class KoeRepository(BaseRepository[Koe]):
             )
             result = session.exec(statement)
             return result.rowcount
+
+
+def _select_koe_for_treatment_date(
+    koeien: list[Koe],
+    behandeldatum: date,
+) -> Optional[Koe]:
+    valid_koeien = [koe for koe in koeien if koe.birth_date < behandeldatum]
+    if not valid_koeien:
+        return None
+
+    return min(valid_koeien, key=lambda koe: behandeldatum - koe.birth_date)

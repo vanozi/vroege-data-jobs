@@ -46,6 +46,17 @@ def test_load_stallijst_html_loads_configured_stallijst_url():
     assert stallijst_html == page.stallijst_html
 
 
+def test_load_zoeken_html_loads_configured_zoeken_url():
+    page = FakePage()
+    config = build_config()
+
+    zoeken_html = scraper.load_zoeken_html(page, config)
+
+    assert page.visited_urls == ["http://klauwscore.nl/veepedicure/zoeken"]
+    assert page.waited_states == ["networkidle"]
+    assert zoeken_html == page.zoeken_html
+
+
 def test_download_pdf_retries_failed_responses_and_returns_body(monkeypatch):
     config = build_config(download_attempts=3)
     page = FakePage(
@@ -168,6 +179,61 @@ def test_scrape_stallijst_rows_uses_browser_lifecycle(monkeypatch):
     ]
 
 
+def test_scrape_zoekresultaten_rows_reuses_one_login_and_page(monkeypatch):
+    playwright = FakePlaywright()
+    monkeypatch.setattr(scraper, "sync_playwright", lambda: playwright)
+    cows = [{"eartag_short": "8186"}, {"eartag_short": "8011"}]
+
+    rows = scraper.scrape_zoekresultaten_rows_for_cows(build_config(), cows)
+
+    page = playwright.chromium.browser.page
+    assert playwright.chromium.browser.closed is True
+    assert page.visited_urls == [
+        "http://klauwscore.nl/login",
+        "http://klauwscore.nl/veepedicure/zoeken",
+    ]
+    assert page.filled[-4:] == [
+        ("#veehouderZoeken", ""),
+        ("#veehouderZoeken", "8186"),
+        ("#veehouderZoeken", ""),
+        ("#veehouderZoeken", "8011"),
+    ]
+    assert page.pressed == [
+        ("#veehouderZoeken", "Enter"),
+        ("#veehouderZoeken", "Enter"),
+    ]
+    assert len(page.evaluated_scripts) == 2
+    assert rows == [
+        {
+            "eartag_short": "8186",
+            "behandeldatum": date(2025, 12, 15),
+            "notatie": "Vierkant",
+        },
+        {
+            "eartag_short": "8011",
+            "behandeldatum": date(2025, 6, 2),
+            "notatie": "Rechtsachter Verband",
+        },
+    ]
+
+
+def test_search_koe_behandelingen_clears_old_table_before_search():
+    playwright = FakePlaywright()
+    page = playwright.chromium.browser.page
+    page.goto("http://klauwscore.nl/veepedicure/zoeken")
+
+    rows = scraper.search_koe_behandelingen(page, "8186")
+
+    assert len(page.evaluated_scripts) == 1
+    assert rows == [
+        {
+            "eartag_short": "8186",
+            "behandeldatum": date(2025, 12, 15),
+            "notatie": "Vierkant",
+        }
+    ]
+
+
 def build_config(download_attempts: int = 3) -> KlauwscoreConfig:
     return KlauwscoreConfig(
         username="user",
@@ -220,9 +286,16 @@ class FakeLocator:
 
     def fill(self, value):
         self.page.filled.append((self.selector, value))
+        self.page.current_search_value = value
 
     def click(self):
         self.page.clicked.append(self.selector)
+
+    def press(self, key):
+        self.page.pressed.append((self.selector, key))
+
+    def inner_text(self, timeout):
+        return self.page.table_text()
 
 
 class FakePage:
@@ -231,7 +304,12 @@ class FakePage:
         self.visited_urls = []
         self.filled = []
         self.clicked = []
+        self.pressed = []
         self.waited_states = []
+        self.waited_selectors = []
+        self.waited_functions = []
+        self.evaluated_scripts = []
+        self.current_search_value = ""
         self.agenda_html = """
         <table>
           <tr>
@@ -267,6 +345,21 @@ class FakePage:
           </tr>
         </table>
         """
+        self.zoekresultaten_by_eartag_short = {
+            "8186": """
+            <table>
+              <tr><th>Datum</th><th>Notaties</th></tr>
+              <tr><td>2025-12-15</td><td>- Vierkant</td></tr>
+            </table>
+            """,
+            "8011": """
+            <table>
+              <tr><th>Datum</th><th>Notaties</th></tr>
+              <tr><td>2025-06-02</td><td>- Rechtsachter Verband</td></tr>
+            </table>
+            """,
+        }
+        self.zoeken_html = self.zoekresultaten_by_eartag_short["8186"]
 
     def goto(self, url):
         self.visited_urls.append(url)
@@ -277,12 +370,44 @@ class FakePage:
     def wait_for_load_state(self, state):
         self.waited_states.append(state)
 
+    def wait_for_selector(self, selector, timeout):
+        self.waited_selectors.append((selector, timeout))
+
+    def wait_for_function(self, script, timeout, arg=None):
+        self.waited_functions.append(arg)
+
+    def evaluate(self, script):
+        self.evaluated_scripts.append(script)
+
     def inner_html(self, selector):
         assert selector == "//div[@class='account-wrapper']"
         return self.agenda_html
 
     def content(self):
+        if self.visited_urls and self.visited_urls[-1].endswith("/zoeken"):
+            if not self.current_search_value:
+                return self.zoeken_html
+
+            return self.zoekresultaten_by_eartag_short.get(
+                self.current_search_value,
+                "<table></table>",
+            )
+
         return self.stallijst_html
+
+    def table_text(self):
+        return " ".join(
+            self.content()
+            .replace("<table>", " ")
+            .replace("</table>", " ")
+            .replace("<tr>", " ")
+            .replace("</tr>", " ")
+            .replace("<th>", " ")
+            .replace("</th>", " ")
+            .replace("<td>", " ")
+            .replace("</td>", " ")
+            .split()
+        )
 
 
 class FakeBrowser:

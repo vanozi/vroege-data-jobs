@@ -39,6 +39,7 @@ class KlauwscoreCollectionResult:
     deduped_rows: list[dict[str, object]] = field(default_factory=list)
     count_mismatches: list[DocumentCountMismatch] = field(default_factory=list)
     failures: list[DocumentCollectionFailure] = field(default_factory=list)
+    searched_cow_count: int = 0
 
     @property
     def document_count(self) -> int:
@@ -79,6 +80,7 @@ class KlauwscoreCollectionResult:
             "documents": self.document_count,
             "cow_records": self.cow_record_count,
             "stallijst_cows": self.stallijst_cow_count,
+            "searched_cows": self.searched_cow_count,
             "notitie_rows": self.notitie_row_count,
             "deduped_notitie_rows": self.deduped_notitie_row_count,
             "duplicate_rows": self.duplicate_row_count,
@@ -148,21 +150,35 @@ def collect_klauwscore_documents(
 
 def collect_klauwscore_rows(
     config: KlauwscoreConfig,
+    cows: Optional[list[dict[str, object]]] = None,
     limit: Optional[int] = None,
     continue_on_document_error: bool = False,
     progress_callback: Optional[Callable[[str], None]] = None,
 ) -> KlauwscoreCollectionResult:
-    """Collect Klauwscore stallijst rows and dedupe notitie rows."""
-    rows = scraper.scrape_stallijst_rows(
+    """Collect Klauwscore treatment rows by searching current-herd cows."""
+    del continue_on_document_error
+
+    failures: list[DocumentCollectionFailure] = []
+    cow_rows = list(cows or [])
+    if limit is not None:
+        cow_rows = cow_rows[:limit]
+
+    def record_cow_failure(cow: dict[str, object], error: Exception) -> None:
+        failures.append(_failure_from_cow(cow, error, config.zoeken_url))
+
+    rows = scraper.scrape_zoekresultaten_rows_for_cows(
         config,
-        limit=limit,
+        cows=cow_rows,
         progress_callback=progress_callback,
+        failure_callback=record_cow_failure,
     )
     deduped_rows = transforms.dedupe_klauwbehandeling_rows(rows)
 
     return KlauwscoreCollectionResult(
         rows=rows,
         deduped_rows=deduped_rows,
+        failures=failures,
+        searched_cow_count=len(cow_rows),
     )
 
 
@@ -190,6 +206,19 @@ def _failure_from_pdf_document(
         href=str(pdf_document.get("href", "")),
         behandeldatum=_optional_date(pdf_document.get("behandeldatum")),
         aantal_koeien=_optional_int(pdf_document.get("aantal_koeien")),
+        error=str(error),
+    )
+
+
+def _failure_from_cow(
+    cow: dict[str, object],
+    error: Exception,
+    href: str,
+) -> DocumentCollectionFailure:
+    eartag_short = cow.get("eartag_short") or "unknown"
+    return DocumentCollectionFailure(
+        stage="search_cow",
+        href=f"{href}#{eartag_short}",
         error=str(error),
     )
 

@@ -20,9 +20,11 @@ def main() -> None:
     args = parse_args()
     config = _apply_cli_overrides(klauwscore_config.load_klauwscore_config(), args)
     limit = args.limit if args.limit is not None else config.default_limit
+    cows = _load_current_herd_cows(limit=limit)
 
     result = collectors.collect_klauwscore_rows(
         config,
+        cows=cows,
         limit=limit,
         continue_on_document_error=args.continue_on_document_error,
         progress_callback=logger.info,
@@ -57,7 +59,7 @@ def parse_args() -> argparse.Namespace:
         "--limit",
         type=int,
         default=None,
-        help="Only collect the first N stallijst cows.",
+        help="Only collect the first N current-herd cows.",
     )
     parser.add_argument(
         "--flat",
@@ -145,6 +147,22 @@ def _persist_rows(
     )
 
 
+def _load_current_herd_cows(limit: Optional[int]) -> list[dict[str, object]]:
+    koe_repository = KoeRepository(database.get_session)
+    koeien = koe_repository.get_current_herd_koeien(limit=limit)
+    return [
+        {
+            "animal_id": koe.animal_id,
+            "eartag": koe.eartag,
+            "eartag_short": koe.eartag_short,
+            "name": koe.name,
+            "collar_number": koe.collar_number,
+            "birth_date": koe.birth_date,
+        }
+        for koe in koeien
+    ]
+
+
 def _log_collection_summary(
     result: collectors.KlauwscoreCollectionResult,
     saved_count: int,
@@ -152,10 +170,10 @@ def _log_collection_summary(
 ) -> None:
     counts = result.summary_counts()
     logger.info(
-        "Klauwscore stallijst summary: stallijst_cows=%s flat_notitie_rows=%s "
+        "Klauwscore zoekresultaten summary: searched_cows=%s flat_notitie_rows=%s "
         "deduped_notitie_rows=%s duplicate_notitie_rows=%s failures=%s "
         "saved_klauw_behandelingen=%s dry_run=%s",
-        counts["stallijst_cows"],
+        counts["searched_cows"],
         counts["notitie_rows"],
         counts["deduped_notitie_rows"],
         counts["duplicate_rows"],

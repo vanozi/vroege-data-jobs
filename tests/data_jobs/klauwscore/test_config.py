@@ -14,6 +14,7 @@ KLAUWSCORE_ENV_NAMES = [
     "KLAUWSCORE_LOGIN_PATH",
     "KLAUWSCORE_AGENDA_PATH",
     "KLAUWSCORE_STALLIJST_PATH",
+    "KLAUWSCORE_ZOEKEN_PATH",
     "KLAUWSCORE_HEADLESS",
     "KLAUWSCORE_DOWNLOAD_ATTEMPTS",
     "KLAUWSCORE_DOWNLOAD_TIMEOUT_MS",
@@ -47,6 +48,7 @@ def test_load_klauwscore_config_uses_defaults():
     assert loaded_config.login_url == "http://klauwscore.nl/login"
     assert loaded_config.agenda_url == "http://klauwscore.nl/veehouder/agenda"
     assert loaded_config.stallijst_url == "http://klauwscore.nl/veepedicure/stallijst"
+    assert loaded_config.zoeken_url == "http://klauwscore.nl/veepedicure/zoeken"
     assert loaded_config.headless is True
     assert loaded_config.download_attempts == 3
     assert loaded_config.download_timeout_ms == 120_000

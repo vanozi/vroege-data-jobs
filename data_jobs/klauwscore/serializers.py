@@ -49,8 +49,8 @@ def summary_lines(
     counts = result.summary_counts()
     if counts["documents"] == 0:
         lines = [
-            "source=stallijst",
-            f"stallijst_cows={counts['stallijst_cows']}",
+            "source=zoekresultaten",
+            f"searched_cows={counts['searched_cows']}",
             f"flat_notitie_rows={counts['notitie_rows']}",
             f"deduped_notitie_rows={counts['deduped_notitie_rows']}",
             f"duplicate_notitie_rows={counts['duplicate_rows']}",
