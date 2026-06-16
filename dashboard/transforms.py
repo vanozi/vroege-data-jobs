@@ -331,7 +331,7 @@ def format_uniform_agri_date(value: object) -> str:
     if parsed_date is None:
         return ""
 
-    return f"{parsed_date.day}.{parsed_date.month}.{parsed_date:%y}"
+    return parsed_date.strftime("%d/%m/%Y")
 
 
 def parse_uniform_agri_export_row(row: dict[str, object]) -> dict[str, object]:

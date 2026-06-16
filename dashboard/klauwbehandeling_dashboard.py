@@ -1391,7 +1391,7 @@ def _(
         <thead><tr><th>Uniform-Agri veld</th><th>Transformatie</th></tr></thead>
         <tbody>
         <tr><td><code>animal no.</code></td><td><code>koeien.collar_number</code> van de gekoppelde koe</td></tr>
-        <tr><td><code>date</code></td><td><code>klauw_behandelingen.behandeldatum</code> als <code>d.M.yy</code></td></tr>
+        <tr><td><code>date</code></td><td><code>klauw_behandelingen.behandeldatum</code> als <code>dd/mm/yyyy</code></td></tr>
         <tr><td><code>health conditions and location</code></td><td>condition-code + pootpositie-code, achter elkaar gezet per bronregel</td></tr>
         <tr><td><code>treatment</code></td><td>action-code en trim-type-code, achter elkaar gezet per bronregel</td></tr>
         </tbody>

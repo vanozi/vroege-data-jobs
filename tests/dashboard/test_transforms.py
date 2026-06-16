@@ -351,7 +351,8 @@ class TestUniformAgriExport:
     """Tests voor Uniform Agri Hoof Supervisor exporttransforms."""
 
     def test_format_uniform_agri_date(self):
-        assert format_uniform_agri_date(date(2026, 5, 26)) == "26.5.26"
+        assert format_uniform_agri_date(date(2026, 6, 9)) == "09/06/2026"
+        assert format_uniform_agri_date(date(2026, 5, 26)) == "26/05/2026"
         assert format_uniform_agri_date(None) == ""
 
     def test_condition_mappings_include_position_without_hoof_zone(self):
@@ -471,7 +472,7 @@ class TestUniformAgriExport:
 
         assert len(grouped_rows) == 1
         assert grouped_rows[0]["animal_no"] == "70"
-        assert grouped_rows[0]["date"] == "26.5.26"
+        assert grouped_rows[0]["date"] == "26/05/2026"
         assert grouped_rows[0]["health_conditions_location"] == "K5D7"
         assert grouped_rows[0]["treatment"] == "R"
         assert grouped_rows[0]["behandeling_ids"] == "1, 2, 3"
@@ -490,7 +491,7 @@ class TestUniformAgriExport:
         assert csv_rows == [
             {
                 "animal no.": "70",
-                "date": "26.5.26",
+                "date": "26/05/2026",
                 "health conditions and location": "K5",
                 "treatment": "R",
             }
