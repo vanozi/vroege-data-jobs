@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 
@@ -18,6 +18,8 @@ class ParsedNotatie:
     originele_tekst: str
     is_mortellaro: bool
     is_vierkant: bool
+    is_aandoening: bool
+    is_behandeling: bool
 
 
 POSITIE_PATTERNS = {
@@ -35,6 +37,28 @@ POSITION_ORDER = {
     "Geen": 5,
     "Onbekend": 6,
 }
+
+AANDOENINGEN = {
+    "mortellaro",
+    "mortelaro",
+    "tussenklauwontsteking",
+    "zoolzweer",
+    "wittelijndefect",
+    "tyloom",
+    "stinkpoot",
+    "bont",
+    "chronisch bevangen",
+}
+
+BEHANDELINGEN = {
+    "verband",
+    "klos",
+    "vierkant",
+}
+
+HERCONTROLE_DAGEN = 84
+PREVENTIEF_DAGEN = 183
+MIN_DIM_PREVENTIEF = 30
 
 UNIFORM_AGRI_POSITION_CODES = {
     "RV": "1",
@@ -77,10 +101,11 @@ def parse_notatie(notatie: Optional[str]) -> ParsedNotatie:
     """Parse klauwbehandeling notatie naar gestructureerde velden."""
     if not notatie or not notatie.strip():
         return ParsedNotatie(
-            "Geen", "Geen", None, None, "", notatie or "", False, False
+            "Geen", "Geen", None, None, "", notatie or "", False, False, False, False
         )
 
     notatie_normalized = " ".join(notatie.strip().split())
+    notatie_normalized = notatie_normalized.removeprefix("-").strip()
     positie_code = "Geen"
     positie_volledig = "Geen"
     zijde = None
@@ -109,6 +134,9 @@ def parse_notatie(notatie: Optional[str]) -> ParsedNotatie:
 
     is_mortellaro = _is_mortellaro_text(probleem)
     is_vierkant = _normalize_text(probleem) == "vierkant"
+    normalized_problem = _normalize_text(probleem)
+    is_aandoening = _matches_known_item(normalized_problem, AANDOENINGEN)
+    is_behandeling = _matches_known_item(normalized_problem, BEHANDELINGEN)
 
     return ParsedNotatie(
         positie_code=positie_code,
@@ -119,6 +147,8 @@ def parse_notatie(notatie: Optional[str]) -> ParsedNotatie:
         originele_tekst=notatie_normalized,
         is_mortellaro=is_mortellaro,
         is_vierkant=is_vierkant,
+        is_aandoening=is_aandoening,
+        is_behandeling=is_behandeling,
     )
 
 
@@ -395,6 +425,88 @@ def build_mortellaro_followup_status(
     )
 
 
+def is_droogstaand(row: dict[str, object]) -> bool:
+    """Bepaal of een koe droog staat op basis van Uniform status."""
+    return _normalize_text(_optional_str(row.get("status"))) == "droog"
+
+
+def build_klauwbekap_protocol_rows(
+    rows: list[dict[str, object]],
+    *,
+    reference_date: Optional[date] = None,
+) -> list[dict[str, object]]:
+    """Bouw protocolbeslissingen per actieve koe."""
+    peildatum = reference_date or date.today()
+    rows_by_animal = _rows_by_animal(rows)
+    protocol_rows = []
+
+    for animal_rows in rows_by_animal.values():
+        context_row = _latest_context_row(animal_rows)
+        treatment_date_groups = _treatment_date_groups(animal_rows)
+        row = _build_base_protocol_row(context_row, peildatum)
+
+        if not treatment_date_groups:
+            protocol_rows.append(
+                _classify_cow_without_treatments(row, context_row, peildatum)
+            )
+            continue
+
+        latest_group = treatment_date_groups[-1]
+        latest_treatment_date = latest_group["behandeldatum"]
+        latest_notes = latest_group["notities"]
+        last_healthy_date = _last_healthy_date(treatment_date_groups)
+        last_condition_group = _last_condition_group(treatment_date_groups)
+        last_mortellaro_group = _last_mortellaro_group(treatment_date_groups)
+
+        row.update(
+            {
+                "Laatste klauwdatum": latest_treatment_date,
+                "Laatste notatie(s)": ", ".join(latest_notes),
+                "Laatste gezonde datum": last_healthy_date,
+                "Dagen sinds laatste behandeling": _days_between(
+                    latest_treatment_date,
+                    peildatum,
+                ),
+            }
+        )
+
+        if _has_active_mortellaro(treatment_date_groups, last_mortellaro_group):
+            row.update(
+                {
+                    "Aanbiedcategorie": "Actieve Mortellaro",
+                    "Aanbiedreden": "Mortellaro direct opvolgen",
+                    "Moet aangeboden worden": True,
+                    "Volgende actiedatum": peildatum,
+                    "Urgentie": 1,
+                }
+            )
+            protocol_rows.append(row)
+            continue
+
+        active_condition_group = _active_non_mortellaro_condition_group(
+            treatment_date_groups,
+            last_condition_group,
+        )
+        if active_condition_group is not None:
+            protocol_rows.append(
+                _classify_active_condition(row, active_condition_group, peildatum)
+            )
+            continue
+
+        protocol_rows.append(
+            _classify_preventive_status(row, context_row, last_healthy_date, peildatum)
+        )
+
+    return sorted(
+        protocol_rows,
+        key=lambda row: (
+            int(row.get("Urgentie") or 99),
+            row.get("Volgende actiedatum") or date.max,
+            str(row.get("Halsbandnummer") or ""),
+        ),
+    )
+
+
 def format_uniform_agri_date(value: object) -> str:
     """Format a date for Uniform Agri Hoof Supervisor CSV import."""
     parsed_date = _parse_date(value)
@@ -602,7 +714,345 @@ def _ensure_parsed_fields(row: dict[str, object]) -> dict[str, object]:
     copied_row.setdefault("probleem", parsed.probleem)
     copied_row.setdefault("is_mortellaro", parsed.is_mortellaro)
     copied_row.setdefault("is_vierkant", parsed.is_vierkant)
+    copied_row.setdefault("is_aandoening", parsed.is_aandoening)
+    copied_row.setdefault("is_behandeling", parsed.is_behandeling)
     return copied_row
+
+
+def _rows_by_animal(
+    rows: list[dict[str, object]],
+) -> dict[str, list[dict[str, object]]]:
+    rows_by_animal: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        animal_identifier = _animal_identifier(row)
+        if animal_identifier is None:
+            continue
+
+        rows_by_animal.setdefault(animal_identifier, []).append(
+            _ensure_parsed_fields(row)
+        )
+
+    return rows_by_animal
+
+
+def _latest_context_row(rows: list[dict[str, object]]) -> dict[str, object]:
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: _parse_date(row.get("behandeldatum")) or date.min,
+        reverse=True,
+    )
+    for row in sorted_rows:
+        if row.get("name") or row.get("collar_number") or row.get("eartag_short"):
+            return row
+
+    return sorted_rows[0] if sorted_rows else {}
+
+
+def _treatment_date_groups(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    groups_by_date: dict[date, list[dict[str, object]]] = {}
+    for row in rows:
+        if row.get("behandeling_id") is None and row.get("notatie") is None:
+            continue
+
+        treated_on = _parse_date(row.get("behandeldatum"))
+        if treated_on is None:
+            continue
+
+        groups_by_date.setdefault(treated_on, []).append(row)
+
+    groups = []
+    for treated_on, group_rows in groups_by_date.items():
+        note_rows = [row for row in group_rows if row.get("notatie")]
+        notes = [str(row.get("notatie")) for row in note_rows if row.get("notatie")]
+        has_mortellaro = any(row.get("is_mortellaro") for row in note_rows)
+        has_condition = any(row.get("is_aandoening") for row in note_rows)
+        has_other_condition = any(
+            row.get("is_aandoening") and not row.get("is_mortellaro")
+            for row in note_rows
+        )
+        has_vierkant = any(row.get("is_vierkant") for row in note_rows)
+        groups.append(
+            {
+                "behandeldatum": treated_on,
+                "rows": note_rows,
+                "notities": notes,
+                "has_mortellaro": has_mortellaro,
+                "has_condition": has_condition,
+                "has_other_condition": has_other_condition,
+                "has_vierkant": has_vierkant,
+                "is_healthy": has_vierkant and not has_condition,
+            }
+        )
+
+    return sorted(groups, key=lambda group: group["behandeldatum"])
+
+
+def _build_base_protocol_row(
+    context_row: dict[str, object],
+    peildatum: date,
+) -> dict[str, object]:
+    return {
+        "Peildatum": peildatum,
+        "animal_id": context_row.get("animal_id"),
+        "Koe / naam": context_row.get("name"),
+        "Halsbandnummer": context_row.get("collar_number"),
+        "Oormerk kort": context_row.get("eartag_short"),
+        "Oormerk": context_row.get("eartag"),
+        "DIM": context_row.get("current_dim"),
+        "Lactatie": context_row.get("lactation_number"),
+        "Voergroep": context_row.get("feeding_group_name") or "Onbekend",
+        "Status": context_row.get("status") or "Onbekend",
+        "Status dagen": context_row.get("status_days"),
+        "Laatste klauwdatum": None,
+        "Laatste notatie(s)": "",
+        "Laatste gezonde datum": None,
+        "Dagen sinds laatste behandeling": None,
+        "Volgende actiedatum": None,
+        "Aanbiedcategorie": "Geen actie",
+        "Aanbiedreden": "Geen actie volgens protocol",
+        "Moet aangeboden worden": False,
+        "Urgentie": 50,
+    }
+
+
+def _classify_cow_without_treatments(
+    row: dict[str, object],
+    context_row: dict[str, object],
+    peildatum: date,
+) -> dict[str, object]:
+    if bool(context_row.get("is_young_stock")):
+        row.update(
+            {
+                "Aanbiedcategorie": "Onvoldoende data",
+                "Aanbiedreden": "Jongvee zonder klauwdata",
+                "Urgentie": 90,
+            }
+        )
+        return row
+
+    current_dim = _optional_int(context_row.get("current_dim"))
+    if current_dim is None:
+        row.update(
+            {
+                "Aanbiedcategorie": "Onvoldoende data",
+                "Aanbiedreden": "Geen klauwdata en DIM ontbreekt",
+                "Urgentie": 90,
+            }
+        )
+        return row
+
+    if is_droogstaand(context_row):
+        row.update(
+            {
+                "Aanbiedcategorie": "Tijdelijk niet aanbieden",
+                "Aanbiedreden": "Geen klauwdata, maar koe staat droog",
+                "Urgentie": 60,
+            }
+        )
+        return row
+
+    if current_dim < MIN_DIM_PREVENTIEF:
+        row.update(
+            {
+                "Aanbiedcategorie": "Tijdelijk niet aanbieden",
+                "Aanbiedreden": f"Geen klauwdata; preventief vanaf {MIN_DIM_PREVENTIEF} DIM",
+                "Volgende actiedatum": peildatum
+                + timedelta(days=MIN_DIM_PREVENTIEF - current_dim),
+                "Urgentie": 60,
+            }
+        )
+        return row
+
+    row.update(
+        {
+            "Aanbiedcategorie": "Preventief bekappen",
+            "Aanbiedreden": "Geen klauwdata en koe voldoet aan preventieve criteria",
+            "Moet aangeboden worden": True,
+            "Volgende actiedatum": peildatum,
+            "Urgentie": 3,
+        }
+    )
+    return row
+
+
+def _last_healthy_date(groups: list[dict[str, object]]) -> Optional[date]:
+    for group in reversed(groups):
+        if group["is_healthy"]:
+            return group["behandeldatum"]
+
+    return None
+
+
+def _last_condition_group(
+    groups: list[dict[str, object]],
+) -> Optional[dict[str, object]]:
+    for group in reversed(groups):
+        if group["has_condition"]:
+            return group
+
+    return None
+
+
+def _last_mortellaro_group(
+    groups: list[dict[str, object]],
+) -> Optional[dict[str, object]]:
+    for group in reversed(groups):
+        if group["has_mortellaro"]:
+            return group
+
+    return None
+
+
+def _has_active_mortellaro(
+    groups: list[dict[str, object]],
+    last_mortellaro_group: Optional[dict[str, object]],
+) -> bool:
+    if last_mortellaro_group is None:
+        return False
+
+    last_mortellaro_date = last_mortellaro_group["behandeldatum"]
+    later_groups = [
+        group for group in groups if group["behandeldatum"] > last_mortellaro_date
+    ]
+    return not any(not group["has_mortellaro"] for group in later_groups)
+
+
+def _active_non_mortellaro_condition_group(
+    groups: list[dict[str, object]],
+    last_condition_group: Optional[dict[str, object]],
+) -> Optional[dict[str, object]]:
+    if last_condition_group is None or not last_condition_group["has_other_condition"]:
+        return None
+
+    last_condition_date = last_condition_group["behandeldatum"]
+    later_groups = [
+        group for group in groups if group["behandeldatum"] > last_condition_date
+    ]
+    if any(not group["has_condition"] for group in later_groups):
+        return None
+
+    return last_condition_group
+
+
+def _classify_active_condition(
+    row: dict[str, object],
+    active_condition_group: dict[str, object],
+    peildatum: date,
+) -> dict[str, object]:
+    condition_date = active_condition_group["behandeldatum"]
+    due_date = condition_date + timedelta(days=HERCONTROLE_DAGEN)
+    condition_names = _condition_names(active_condition_group)
+    if peildatum >= due_date:
+        row.update(
+            {
+                "Aanbiedcategorie": "Hercontrole aandoening",
+                "Aanbiedreden": (
+                    f"Hercontrole na 12 weken voor {', '.join(condition_names)}"
+                ),
+                "Moet aangeboden worden": True,
+                "Volgende actiedatum": due_date,
+                "Urgentie": 2,
+            }
+        )
+        return row
+
+    row.update(
+        {
+            "Aanbiedcategorie": "Tijdelijk niet aanbieden",
+            "Aanbiedreden": (
+                f"Hercontrole voor {', '.join(condition_names)} vanaf {due_date}"
+            ),
+            "Volgende actiedatum": due_date,
+            "Urgentie": 60,
+        }
+    )
+    return row
+
+
+def _condition_names(group: dict[str, object]) -> list[str]:
+    names = []
+    for row in group["rows"]:
+        if row.get("is_aandoening") and not row.get("is_mortellaro"):
+            problem = _optional_str(row.get("probleem"))
+            if problem:
+                names.append(problem)
+
+    return sorted(set(names)) or ["aandoening"]
+
+
+def _classify_preventive_status(
+    row: dict[str, object],
+    context_row: dict[str, object],
+    last_healthy_date: Optional[date],
+    peildatum: date,
+) -> dict[str, object]:
+    current_dim = _optional_int(context_row.get("current_dim"))
+    if is_droogstaand(context_row):
+        row.update(
+            {
+                "Aanbiedcategorie": "Tijdelijk niet aanbieden",
+                "Aanbiedreden": "Koe staat droog",
+                "Urgentie": 60,
+            }
+        )
+        return row
+
+    if current_dim is None:
+        row.update(
+            {
+                "Aanbiedcategorie": "Onvoldoende data",
+                "Aanbiedreden": "DIM ontbreekt",
+                "Urgentie": 90,
+            }
+        )
+        return row
+
+    if current_dim < MIN_DIM_PREVENTIEF:
+        row.update(
+            {
+                "Aanbiedcategorie": "Tijdelijk niet aanbieden",
+                "Aanbiedreden": f"Preventief vanaf {MIN_DIM_PREVENTIEF} DIM",
+                "Volgende actiedatum": peildatum
+                + timedelta(days=MIN_DIM_PREVENTIEF - current_dim),
+                "Urgentie": 60,
+            }
+        )
+        return row
+
+    if last_healthy_date is None:
+        row.update(
+            {
+                "Aanbiedcategorie": "Onvoldoende data",
+                "Aanbiedreden": "Geen gezonde Vierkant-registratie gevonden",
+                "Urgentie": 90,
+            }
+        )
+        return row
+
+    due_date = last_healthy_date + timedelta(days=PREVENTIEF_DAGEN)
+    if peildatum >= due_date:
+        row.update(
+            {
+                "Aanbiedcategorie": "Preventief bekappen",
+                "Aanbiedreden": "Meer dan 183 dagen sinds zuivere Vierkant-registratie",
+                "Moet aangeboden worden": True,
+                "Volgende actiedatum": due_date,
+                "Urgentie": 3,
+            }
+        )
+        return row
+
+    row.update(
+        {
+            "Aanbiedcategorie": "Tijdelijk niet aanbieden",
+            "Aanbiedreden": f"Preventief bekappen vanaf {due_date}",
+            "Volgende actiedatum": due_date,
+            "Urgentie": 60,
+        }
+    )
+    return row
 
 
 def _lookup_uniform_agri_code(
@@ -627,6 +1077,10 @@ def _format_uniform_agri_grouped_row(row: dict[str, object]) -> dict[str, object
 
 def _is_mortellaro_text(value: str) -> bool:
     return re.search(r"\bmortel{1,2}aro\b", _normalize_text(value)) is not None
+
+
+def _matches_known_item(value: str, known_items: set[str]) -> bool:
+    return any(item in value for item in known_items)
 
 
 def _normalize_text(value: Optional[str]) -> str:
@@ -679,6 +1133,13 @@ def _optional_str(value: object) -> Optional[str]:
         return None
 
     return str(value)
+
+
+def _optional_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+
+    return int(value)
 
 
 def _strip_private_columns(row: dict[str, object]) -> dict[str, object]:

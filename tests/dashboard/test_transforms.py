@@ -4,6 +4,7 @@ from datetime import date
 
 from dashboard.transforms import (
     add_mortellaro_case_columns,
+    build_klauwbekap_protocol_rows,
     build_open_mortellaro_rows,
     build_uniform_agri_csv_download_rows,
     build_uniform_agri_csv_rows,
@@ -386,6 +387,245 @@ class TestOpenMortellaroRows:
         assert result[0]["Laatste notatie(s)"] == "Linksachter Verband"
 
 
+class TestKlauwbekapProtocolRows:
+    """Tests voor de klauwbekapprotocol aanbiedlijst."""
+
+    def test_mortellaro_is_always_offered_even_when_dry(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                    status="Droog",
+                    current_dim=10,
+                )
+            ],
+            reference_date=date(2026, 1, 10),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Actieve Mortellaro"
+        assert result[0]["Moet aangeboden worden"] is True
+
+    def test_mortellaro_followed_by_later_vierkant_is_not_active(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Vierkant",
+                ),
+            ],
+            reference_date=date(2026, 2, 2),
+        )
+
+        assert result[0]["Aanbiedcategorie"] != "Actieve Mortellaro"
+
+    def test_mortellaro_followed_by_vierkant_and_other_condition_starts_followup(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Vierkant",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Linksvoor Zoolzweer",
+                ),
+            ],
+            reference_date=date(2026, 4, 26),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Hercontrole aandoening"
+        assert "Zoolzweer" in result[0]["Aanbiedreden"]
+
+    def test_mortellaro_followed_by_vierkant_and_mortellaro_stays_active(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksachter Mortellaro",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Vierkant",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 2, 1),
+                    notatie="Rechtsachter Mortellaro",
+                ),
+            ],
+            reference_date=date(2026, 2, 2),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Actieve Mortellaro"
+
+    def test_other_condition_is_offered_after_twelve_weeks(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksvoor Zoolzweer",
+                )
+            ],
+            reference_date=date(2026, 3, 26),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Hercontrole aandoening"
+        assert result[0]["Moet aangeboden worden"] is True
+
+    def test_other_condition_before_twelve_weeks_is_not_offered_yet(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksvoor Zoolzweer",
+                )
+            ],
+            reference_date=date(2026, 3, 1),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Tijdelijk niet aanbieden"
+        assert result[0]["Moet aangeboden worden"] is False
+
+    def test_pure_vierkant_after_183_days_is_preventive(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Vierkant",
+                )
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Preventief bekappen"
+        assert result[0]["Moet aangeboden worden"] is True
+
+    def test_future_reference_date_can_make_preventive_due(self):
+        rows = [
+            build_klauw_row(
+                animal_id="koe-1",
+                behandeldatum=date(2026, 1, 1),
+                notatie="Vierkant",
+            )
+        ]
+
+        early = build_klauwbekap_protocol_rows(
+            rows,
+            reference_date=date(2026, 6, 30),
+        )
+        planned = build_klauwbekap_protocol_rows(
+            rows,
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert early[0]["Moet aangeboden worden"] is False
+        assert planned[0]["Moet aangeboden worden"] is True
+
+    def test_vierkant_with_condition_is_not_preventive(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Vierkant",
+                ),
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Linksvoor Zoolzweer",
+                ),
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Hercontrole aandoening"
+
+    def test_dry_cow_is_not_preventively_offered(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Vierkant",
+                    status="Droog",
+                )
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Tijdelijk niet aanbieden"
+        assert result[0]["Moet aangeboden worden"] is False
+
+    def test_low_dim_cow_is_not_preventively_offered(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=date(2026, 1, 1),
+                    notatie="Vierkant",
+                    current_dim=20,
+                )
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Tijdelijk niet aanbieden"
+        assert result[0]["Moet aangeboden worden"] is False
+
+    def test_cow_without_hoof_data_is_preventive_from_thirty_dim(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=None,
+                    notatie=None,
+                    current_dim=30,
+                )
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Preventief bekappen"
+        assert result[0]["Moet aangeboden worden"] is True
+
+    def test_young_stock_without_hoof_data_is_data_control(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=None,
+                    notatie=None,
+                    current_dim=30,
+                    is_young_stock=True,
+                )
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Onvoldoende data"
+        assert result[0]["Moet aangeboden worden"] is False
+
+
 class TestUniformAgriExport:
     """Tests voor Uniform Agri Hoof Supervisor exporttransforms."""
 
@@ -563,13 +803,18 @@ def build_uniform_row(
 def build_klauw_row(
     *,
     animal_id: str,
-    behandeldatum: date,
-    notatie: str,
+    behandeldatum: object,
+    notatie: object,
     name: str = "Koe 1",
     collar_number: int = 70,
     eartag_short: str = "0123",
     eartag: str = "NL 123",
     feeding_group_name: str = "Groep 1",
+    current_dim: object = 100,
+    lactation_number: object = 2,
+    status: object = "Lacterend",
+    status_days: object = 10,
+    is_young_stock: bool = False,
 ) -> dict[str, object]:
     return {
         "animal_id": animal_id,
@@ -578,6 +823,11 @@ def build_klauw_row(
         "eartag_short": eartag_short,
         "eartag": eartag,
         "feeding_group_name": feeding_group_name,
+        "current_dim": current_dim,
+        "lactation_number": lactation_number,
+        "status": status,
+        "status_days": status_days,
+        "is_young_stock": is_young_stock,
         "behandeldatum": behandeldatum,
         "notatie": notatie,
     }

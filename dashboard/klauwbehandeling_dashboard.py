@@ -88,7 +88,10 @@ def _(connectorx_database_url, pl):
         kd.current_dim,
         kd.feeding_group_number,
         kd.feeding_group_name,
-        kd.barn_group_name
+        kd.barn_group_name,
+        kd.status,
+        kd.status_days,
+        kd.is_young_stock
     FROM koeien k
     LEFT JOIN klauw_behandelingen kb
         ON k.eartag_short = kb.eartag_short
@@ -201,6 +204,8 @@ def _(df_raw, pl, transforms):
         "probleem": pl.String,
         "is_mortellaro": pl.Boolean,
         "is_vierkant": pl.Boolean,
+        "is_aandoening": pl.Boolean,
+        "is_behandeling": pl.Boolean,
     }
 
     def _parse_row(notatie):
@@ -213,6 +218,8 @@ def _(df_raw, pl, transforms):
             "probleem": parsed.probleem,
             "is_mortellaro": parsed.is_mortellaro,
             "is_vierkant": parsed.is_vierkant,
+            "is_aandoening": parsed.is_aandoening,
+            "is_behandeling": parsed.is_behandeling,
         }
 
     parsed_rows = [_parse_row(row["notatie"]) for row in df_behandelingen.to_dicts()]
@@ -380,6 +387,435 @@ def _(df_open_mortellaro_rows, mo):
         ]
     )
     return (mortellaro_overzicht_content,)
+
+
+@app.cell
+def _(datetime, mo):
+    """Protocol tab - peildatum control."""
+    protocol_peildatum = mo.ui.date(
+        label="Peildatum / datum klauwbekapper",
+        value=str(datetime.now().date()),
+    )
+    return (protocol_peildatum,)
+
+
+@app.cell
+def _(datetime, df_raw, pl, protocol_peildatum, transforms):
+    """Protocol tab - bereken protocolrijen."""
+    protocol_peildatum_value = protocol_peildatum.value
+    if isinstance(protocol_peildatum_value, str):
+        protocol_reference_date = datetime.fromisoformat(
+            protocol_peildatum_value
+        ).date()
+    else:
+        protocol_reference_date = protocol_peildatum_value
+
+    protocol_schema = {
+        "Peildatum": pl.Date,
+        "animal_id": pl.String,
+        "Koe / naam": pl.String,
+        "Halsbandnummer": pl.Int64,
+        "Oormerk kort": pl.String,
+        "Oormerk": pl.String,
+        "DIM": pl.Int64,
+        "Lactatie": pl.Int64,
+        "Voergroep": pl.String,
+        "Status": pl.String,
+        "Status dagen": pl.Int64,
+        "Laatste klauwdatum": pl.Date,
+        "Laatste notatie(s)": pl.String,
+        "Laatste gezonde datum": pl.Date,
+        "Dagen sinds laatste behandeling": pl.Int64,
+        "Volgende actiedatum": pl.Date,
+        "Aanbiedcategorie": pl.String,
+        "Aanbiedreden": pl.String,
+        "Moet aangeboden worden": pl.Boolean,
+        "Urgentie": pl.Int64,
+    }
+
+    protocol_rows = transforms.build_klauwbekap_protocol_rows(
+        df_raw.to_dicts(),
+        reference_date=protocol_reference_date,
+    )
+    df_protocol_rows = pl.DataFrame(protocol_rows, schema=protocol_schema)
+    return df_protocol_rows, protocol_reference_date
+
+
+@app.cell
+def _(df_protocol_rows, mo):
+    """Protocol tab - filter controls."""
+    protocol_categories = (
+        df_protocol_rows.select("Aanbiedcategorie")
+        .unique()
+        .sort("Aanbiedcategorie")["Aanbiedcategorie"]
+        .to_list()
+    )
+    protocol_category_filter = mo.ui.multiselect(
+        options=protocol_categories,
+        value=protocol_categories,
+        label="Categorie",
+    )
+
+    protocol_feed_groups = (
+        df_protocol_rows.select("Voergroep")
+        .unique()
+        .sort("Voergroep")["Voergroep"]
+        .to_list()
+    )
+    protocol_feed_group_filter = mo.ui.multiselect(
+        options=protocol_feed_groups,
+        value=protocol_feed_groups,
+        label="Voergroep",
+    )
+
+    protocol_search_filter = mo.ui.text(
+        label="Zoek koe",
+        placeholder="Naam, halsbandnummer, oormerk of kort oormerk",
+    )
+    return (
+        protocol_category_filter,
+        protocol_feed_group_filter,
+        protocol_search_filter,
+    )
+
+
+@app.cell
+def _(
+    df_protocol_rows,
+    pl,
+    protocol_category_filter,
+    protocol_feed_group_filter,
+    protocol_search_filter,
+):
+    """Protocol tab - pas filters toe."""
+    df_protocol_filtered_rows = df_protocol_rows
+
+    if protocol_category_filter.value:
+        df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
+            pl.col("Aanbiedcategorie").is_in(protocol_category_filter.value)
+        )
+
+    if protocol_feed_group_filter.value:
+        df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
+            pl.col("Voergroep").is_in(protocol_feed_group_filter.value)
+        )
+
+    if protocol_search_filter.value and protocol_search_filter.value.strip():
+        protocol_search_term = protocol_search_filter.value.strip().lower()
+        df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
+            pl.col("Koe / naam")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(protocol_search_term)
+            | pl.col("Halsbandnummer")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(protocol_search_term)
+            | pl.col("Oormerk kort")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(protocol_search_term)
+            | pl.col("Oormerk")
+            .cast(pl.Utf8)
+            .str.to_lowercase()
+            .str.contains(protocol_search_term)
+        )
+
+    df_protocol_aanbiedlijst = df_protocol_filtered_rows.filter(
+        pl.col("Moet aangeboden worden")
+    ).sort(["Urgentie", "Volgende actiedatum", "Halsbandnummer"])
+    df_protocol_nog_niet = df_protocol_filtered_rows.filter(
+        (pl.col("Aanbiedcategorie") == "Tijdelijk niet aanbieden")
+        & (~pl.col("Moet aangeboden worden"))
+    ).sort(["Volgende actiedatum", "Halsbandnummer"])
+    df_protocol_datacontrole = df_protocol_filtered_rows.filter(
+        pl.col("Aanbiedcategorie") == "Onvoldoende data"
+    ).sort(["Halsbandnummer", "Koe / naam"])
+
+    return (
+        df_protocol_aanbiedlijst,
+        df_protocol_datacontrole,
+        df_protocol_filtered_rows,
+        df_protocol_nog_niet,
+    )
+
+
+@app.cell
+def _(
+    df_protocol_aanbiedlijst,
+    df_protocol_datacontrole,
+    df_protocol_nog_niet,
+    df_protocol_rows,
+    mo,
+    pl,
+    protocol_category_filter,
+    protocol_feed_group_filter,
+    protocol_peildatum,
+    protocol_reference_date,
+    protocol_search_filter,
+):
+    """Protocol tab - bouw filters, KPI's en tabellen."""
+    protocol_filter_controls = mo.hstack(
+        [
+            protocol_peildatum,
+            protocol_category_filter,
+            protocol_feed_group_filter,
+            protocol_search_filter,
+        ],
+        justify="start",
+    )
+
+    protocol_rules_summary = mo.md(
+        """
+        **Selectieregels klauwbekapper**
+
+        - **Actieve Mortellaro:** aanbieden zodra de laatste Mortellaro nog niet is gevolgd door een latere gezonde registratie met alleen `Vierkant`.
+        - **Hercontrole aandoening:** aanbieden 12 weken na een klauwdatum met een aandoening anders dan Mortellaro.
+        - **Preventief bekappen:** aanbieden na 183 dagen wanneer de laatste klauwregistratie alleen `Vierkant` was, de koe niet droog staat en minimaal 30 DIM is.
+        - **Geen klauwdata:** aanbieden vanaf 30 DIM, zolang het geen jongvee is en de koe niet droog staat.
+
+        Droogstand en minder dan 30 DIM blokkeren alleen preventief bekappen. Actieve Mortellaro en hercontrole op een aandoening blijven altijd aanbieden.
+        """
+    )
+
+    protocol_kpi_cards = mo.hstack(
+        [
+            mo.stat(
+                value=str(
+                    df_protocol_rows.filter(pl.col("Moet aangeboden worden")).height
+                ),
+                label="Nu aanbieden",
+                caption=f"peildatum {protocol_reference_date}",
+            ),
+            mo.stat(
+                value=str(
+                    df_protocol_rows.filter(
+                        pl.col("Aanbiedcategorie") == "Actieve Mortellaro"
+                    ).height
+                ),
+                label="Actieve Mortellaro",
+                caption="direct opvolgen",
+            ),
+            mo.stat(
+                value=str(
+                    df_protocol_rows.filter(
+                        pl.col("Aanbiedcategorie") == "Hercontrole aandoening"
+                    ).height
+                ),
+                label="Hercontrole",
+                caption="na 12 weken",
+            ),
+            mo.stat(
+                value=str(
+                    df_protocol_rows.filter(
+                        pl.col("Aanbiedcategorie") == "Preventief bekappen"
+                    ).height
+                ),
+                label="Preventief",
+                caption="183 dagen",
+            ),
+            mo.stat(
+                value=str(
+                    df_protocol_rows.filter(
+                        pl.col("Aanbiedcategorie") == "Onvoldoende data"
+                    ).height
+                ),
+                label="Datacontrole",
+                caption="onvoldoende data",
+            ),
+        ],
+        justify="space-between",
+    )
+
+    aanbied_columns = [
+        "Aanbiedcategorie",
+        "Aanbiedreden",
+        "Koe / naam",
+        "Halsbandnummer",
+        "Oormerk kort",
+        "Oormerk",
+        "Laatste klauwdatum",
+        "Laatste notatie(s)",
+        "Dagen sinds laatste behandeling",
+        "Volgende actiedatum",
+        "DIM",
+        "Lactatie",
+        "Voergroep",
+        "Status",
+    ]
+    if df_protocol_aanbiedlijst.height > 0:
+        protocol_aanbiedlijst_table = mo.ui.table(
+            df_protocol_aanbiedlijst.select(aanbied_columns).to_pandas(),
+            selection="single",
+            page_size=25,
+            label="Aanbiedlijst klauwbekapper",
+        )
+    else:
+        protocol_aanbiedlijst_table = mo.callout(
+            mo.md(
+                "Geen koeien gevonden die op deze peildatum aangeboden moeten worden."
+            ),
+            kind="success",
+        )
+
+    nog_niet_columns = [
+        "Aanbiedcategorie",
+        "Aanbiedreden",
+        "Koe / naam",
+        "Halsbandnummer",
+        "Laatste klauwdatum",
+        "Volgende actiedatum",
+        "DIM",
+        "Voergroep",
+        "Status",
+    ]
+    if df_protocol_nog_niet.height > 0:
+        protocol_nog_niet_table = mo.ui.table(
+            df_protocol_nog_niet.select(nog_niet_columns).to_pandas(),
+            selection=None,
+            page_size=15,
+            label="Nog niet aanbieden",
+        )
+    else:
+        protocol_nog_niet_table = mo.callout(
+            mo.md("Geen koeien in de categorie tijdelijk niet aanbieden."),
+            kind="neutral",
+        )
+
+    datacontrole_columns = [
+        "Koe / naam",
+        "Halsbandnummer",
+        "Oormerk kort",
+        "Oormerk",
+        "Aanbiedreden",
+        "Laatste klauwdatum",
+        "Voergroep",
+        "Status",
+    ]
+    if df_protocol_datacontrole.height > 0:
+        protocol_datacontrole_table = mo.ui.table(
+            df_protocol_datacontrole.select(datacontrole_columns).to_pandas(),
+            selection=None,
+            page_size=15,
+            label="Onvoldoende data",
+        )
+    else:
+        protocol_datacontrole_table = mo.callout(
+            mo.md("Geen koeien met onvoldoende protocoldata."),
+            kind="success",
+        )
+
+    return (
+        protocol_aanbiedlijst_table,
+        protocol_datacontrole_table,
+        protocol_filter_controls,
+        protocol_kpi_cards,
+        protocol_nog_niet_table,
+        protocol_rules_summary,
+    )
+
+
+@app.cell
+def _(
+    df_behandelingen_parsed,
+    df_protocol_aanbiedlijst,
+    mo,
+    pl,
+    protocol_aanbiedlijst_table,
+):
+    """Protocol tab - registraties voor geselecteerde aanbiedlijst-koe."""
+    if df_protocol_aanbiedlijst.height == 0:
+        protocol_registraties_table = mo.md("")
+    elif len(protocol_aanbiedlijst_table.value) == 0:
+        protocol_registraties_table = mo.callout(
+            mo.md("Selecteer een koe in de aanbiedlijst om alle registraties te zien."),
+            kind="neutral",
+        )
+    else:
+        selected_protocol_row = protocol_aanbiedlijst_table.value.iloc[0]
+        selected_protocol_koe = df_protocol_aanbiedlijst.filter(
+            (pl.col("Oormerk") == selected_protocol_row["Oormerk"])
+            & (pl.col("Halsbandnummer") == selected_protocol_row["Halsbandnummer"])
+        ).head(1)
+
+        if selected_protocol_koe.height == 0:
+            protocol_registraties_table = mo.callout(
+                mo.md("De geselecteerde koe kon niet worden teruggevonden."),
+                kind="warn",
+            )
+        else:
+            selected_protocol_animal_id = selected_protocol_koe["animal_id"][0]
+            selected_protocol_koe_naam = selected_protocol_koe["Koe / naam"][0]
+            protocol_registraties_koe = (
+                df_behandelingen_parsed.filter(
+                    pl.col("animal_id") == selected_protocol_animal_id
+                )
+                .select(
+                    [
+                        "behandeldatum",
+                        "notatie",
+                    ]
+                )
+                .rename(
+                    {
+                        "behandeldatum": "Behandeldatum",
+                        "notatie": "Originele notatie",
+                    }
+                )
+                .sort("Behandeldatum", descending=True)
+            )
+
+            if protocol_registraties_koe.height == 0:
+                protocol_registraties_table = mo.callout(
+                    mo.md(
+                        "Geen klauwbehandelingsregistraties gevonden voor "
+                        f"{selected_protocol_koe_naam}."
+                    ),
+                    kind="warn",
+                )
+            else:
+                protocol_registraties_table = mo.vstack(
+                    [
+                        mo.md(f"### Registraties {selected_protocol_koe_naam}"),
+                        mo.ui.table(
+                            protocol_registraties_koe.to_pandas(),
+                            selection=None,
+                            page_size=20,
+                            label="Chronologische klauwbehandelingen",
+                        ),
+                    ]
+                )
+    return (protocol_registraties_table,)
+
+
+@app.cell
+def _(
+    mo,
+    protocol_aanbiedlijst_table,
+    protocol_datacontrole_table,
+    protocol_filter_controls,
+    protocol_kpi_cards,
+    protocol_nog_niet_table,
+    protocol_registraties_table,
+    protocol_rules_summary,
+):
+    """Protocol tab - bouw tab content."""
+    protocol_content = mo.vstack(
+        [
+            mo.md("## Klauwbekapprotocol"),
+            protocol_rules_summary,
+            protocol_filter_controls,
+            protocol_kpi_cards,
+            mo.md("### Aanbiedlijst klauwbekapper"),
+            protocol_aanbiedlijst_table,
+            protocol_registraties_table,
+            mo.md("### Nog niet aanbieden"),
+            protocol_nog_niet_table,
+            mo.md("### Onvoldoende data"),
+            protocol_datacontrole_table,
+        ]
+    )
+    return (protocol_content,)
 
 
 @app.cell
@@ -684,7 +1120,9 @@ def _(datetime, df_filtered, df_raw, koe_selectie_table, mo, pl):
             leeftijd_jaren = leeftijd_dagen // 365
             leeftijd_maanden = (leeftijd_dagen % 365) // 30
             totaal_behandelingen_koe = koe_data.height
-            unieke_problemen = koe_data.select("probleem").n_unique()
+            unieke_aandoeningen = (
+                koe_data.filter(pl.col("is_aandoening")).select("probleem").n_unique()
+            )
             laatste_behandeling = koe_data.select("behandeldatum").max()[0, 0]
             eerste_behandeling = koe_data.select("behandeldatum").min()[0, 0]
 
@@ -708,7 +1146,7 @@ def _(datetime, df_filtered, df_raw, koe_selectie_table, mo, pl):
                     mo.stat(
                         value=str(totaal_behandelingen_koe),
                         label="Behandelingen",
-                        caption=f"{unieke_problemen} unieke problemen",
+                        caption=f"{unieke_aandoeningen} unieke aandoeningen",
                     ),
                     mo.stat(
                         value=str(laatste_behandeling),
@@ -785,44 +1223,39 @@ def _(alt, koe_data, mo, pl, transforms):
 
 @app.cell
 def _(koe_data, mo, pl):
-    """Per koe tab - chronologische probleemnotaties."""
+    """Per koe tab - chronologische klauwbehandelingen."""
     if len(koe_data) > 0:
-        probleemnotaties_koe = (
-            koe_data.filter(~pl.col("is_vierkant"))
-            .select(
+        klauwbehandelingen_koe = (
+            koe_data.select(
                 [
                     "behandeldatum",
-                    "positie",
-                    "probleem",
                     "notatie",
                 ]
             )
             .rename(
                 {
                     "behandeldatum": "Behandeldatum",
-                    "positie": "Positie",
-                    "probleem": "Probleem",
                     "notatie": "Originele notatie",
                 }
             )
             .sort("Behandeldatum", descending=True)
         )
 
-        if probleemnotaties_koe.height > 0:
-            probleemnotaties_tabel_ui = mo.ui.table(
-                probleemnotaties_koe.to_pandas(),
+        if klauwbehandelingen_koe.height > 0:
+            klauwbehandelingen_tabel_ui = mo.ui.table(
+                klauwbehandelingen_koe.to_pandas(),
                 selection=None,
                 page_size=20,
-                label="Chronologische probleemnotaties",
+                label="Chronologische klauwbehandelingen",
             )
         else:
-            probleemnotaties_tabel_ui = mo.callout(
-                mo.md("Deze koe heeft geen probleemnotaties buiten Vierkant."),
+            klauwbehandelingen_tabel_ui = mo.callout(
+                mo.md("Deze koe heeft geen klauwbehandelingsnotaties."),
                 kind="success",
             )
     else:
-        probleemnotaties_tabel_ui = mo.md("")
-    return (probleemnotaties_tabel_ui,)
+        klauwbehandelingen_tabel_ui = mo.md("")
+    return (klauwbehandelingen_tabel_ui,)
 
 
 @app.cell
@@ -862,12 +1295,12 @@ def _(koe_data, mo, pl):
 
 @app.cell
 def _(
+    klauwbehandelingen_tabel_ui,
     koe_profiel_cards,
     koe_selectie_table,
     koe_tijdlijn_ui,
     mo,
     positie_heatmap_ui,
-    probleemnotaties_tabel_ui,
 ):
     """Per koe tab - verzamel content."""
     per_koe_content = mo.vstack(
@@ -879,8 +1312,8 @@ def _(
             ),
             koe_selectie_table,
             koe_profiel_cards,
-            mo.md("### Chronologische probleemnotaties"),
-            probleemnotaties_tabel_ui,
+            mo.md("### Chronologische klauwbehandelingen"),
+            klauwbehandelingen_tabel_ui,
             mo.md("### Behandelhistorie tijdlijn"),
             koe_tijdlijn_ui,
             positie_heatmap_ui,
@@ -1305,17 +1738,15 @@ def _(
 
 @app.cell
 def _(
-    algemeen_overzicht_content,
     mo,
-    mortellaro_overzicht_content,
     per_koe_content,
+    protocol_content,
     uniform_agri_content,
 ):
     """Tab navigatie - hoofdstructuur."""
     tabs = mo.ui.tabs(
         {
-            "Overzicht": algemeen_overzicht_content,
-            "Mortellaro": mortellaro_overzicht_content,
+            "Protocol": protocol_content,
             "Individuele koeien": per_koe_content,
             "Uniform-Agri": uniform_agri_content,
         }
