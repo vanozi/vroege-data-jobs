@@ -635,7 +635,6 @@ def _(
         "Oormerk kort",
         "Oormerk",
         "Laatste klauwdatum",
-        "Laatste notatie(s)",
         "Dagen sinds laatste behandeling",
         "Volgende actiedatum",
         "DIM",
@@ -644,8 +643,16 @@ def _(
         "Status",
     ]
     if df_protocol_aanbiedlijst.height > 0:
+        protocol_aanbiedlijst_data = df_protocol_aanbiedlijst.select(
+            aanbied_columns
+        ).rename(
+            {
+                "Laatste klauwdatum": "Laatste behandeldatum",
+                "Volgende actiedatum": "Volgende bekapdatum",
+            }
+        )
         protocol_aanbiedlijst_table = mo.ui.table(
-            df_protocol_aanbiedlijst.select(aanbied_columns).to_pandas(),
+            protocol_aanbiedlijst_data.to_pandas(),
             selection="single",
             page_size=25,
             label="Aanbiedlijst klauwbekapper",
@@ -670,8 +677,14 @@ def _(
         "Status",
     ]
     if df_protocol_nog_niet.height > 0:
+        protocol_nog_niet_data = df_protocol_nog_niet.select(nog_niet_columns).rename(
+            {
+                "Laatste klauwdatum": "Laatste behandeldatum",
+                "Volgende actiedatum": "Volgende bekapdatum",
+            }
+        )
         protocol_nog_niet_table = mo.ui.table(
-            df_protocol_nog_niet.select(nog_niet_columns).to_pandas(),
+            protocol_nog_niet_data.to_pandas(),
             selection=None,
             page_size=15,
             label="Nog niet aanbieden",
@@ -693,8 +706,15 @@ def _(
         "Status",
     ]
     if df_protocol_datacontrole.height > 0:
+        protocol_datacontrole_data = df_protocol_datacontrole.select(
+            datacontrole_columns
+        ).rename(
+            {
+                "Laatste klauwdatum": "Laatste behandeldatum",
+            }
+        )
         protocol_datacontrole_table = mo.ui.table(
-            df_protocol_datacontrole.select(datacontrole_columns).to_pandas(),
+            protocol_datacontrole_data.to_pandas(),
             selection=None,
             page_size=15,
             label="Onvoldoende data",
