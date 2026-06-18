@@ -429,7 +429,7 @@ def _(datetime, df_raw, pl, protocol_peildatum, transforms):
         "Dagen sinds laatste behandeling": pl.Int64,
         "Volgende actiedatum": pl.Date,
         "Aanbiedcategorie": pl.String,
-        "Aanbiedreden": pl.String,
+        "Reden selectie": pl.String,
         "Moet aangeboden worden": pl.Boolean,
         "Urgentie": pl.Int64,
     }
@@ -630,7 +630,7 @@ def _(
     protocol_table_columns = [
         "Halsbandnummer",
         "Voergroep nummer",
-        "Aanbiedreden",
+        "Reden selectie",
         "Status",
         "Status dagen",
         "Lactatie",
@@ -644,7 +644,6 @@ def _(
             protocol_aanbiedlijst_data.to_pandas(),
             selection="single",
             page_size=25,
-            label="Aanbiedlijst klauwbekapper",
         )
     else:
         protocol_aanbiedlijst_table = mo.callout(
@@ -660,7 +659,6 @@ def _(
             protocol_nog_niet_data.to_pandas(),
             selection=None,
             page_size=15,
-            label="Nog niet aanbieden",
         )
     else:
         protocol_nog_niet_table = mo.callout(
@@ -676,7 +674,6 @@ def _(
             protocol_datacontrole_data.to_pandas(),
             selection=None,
             page_size=15,
-            label="Onvoldoende data",
         )
     else:
         protocol_datacontrole_table = mo.callout(
@@ -784,10 +781,10 @@ def _(
             protocol_rules_summary,
             protocol_filter_controls,
             protocol_kpi_cards,
-            mo.md("### Aanbiedlijst klauwbekapper"),
+            mo.md("### Selectielijst te bekappen koeien"),
             protocol_aanbiedlijst_table,
             protocol_registraties_table,
-            mo.md("### Nog niet aanbieden"),
+            mo.md("### Niet bekappen"),
             protocol_nog_niet_table,
             mo.md("### Onvoldoende data"),
             protocol_datacontrole_table,
