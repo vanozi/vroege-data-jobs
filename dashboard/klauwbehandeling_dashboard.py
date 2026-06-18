@@ -940,11 +940,28 @@ def _(
             protocol_rules_summary,
             protocol_filter_controls,
             protocol_kpi_cards,
-            mo.md("### Selectielijst te bekappen koeien"),
-            protocol_aanbiedlijst_table,
-            protocol_aanbiedlijst_pdf_download,
-            mo.md("### Bekappingen opzoeken"),
-            protocol_bekappingen_lookup,
+            mo.hstack(
+                [
+                    mo.vstack(
+                        [
+                            mo.md("### Selectielijst te bekappen koeien"),
+                            protocol_aanbiedlijst_table,
+                            protocol_aanbiedlijst_pdf_download,
+                        ],
+                        gap=0.5,
+                    ),
+                    mo.vstack(
+                        [
+                            mo.md("### Bekappingen opzoeken"),
+                            protocol_bekappingen_lookup,
+                        ],
+                        gap=0.5,
+                    ),
+                ],
+                align="start",
+                gap=1,
+                widths=[0.75, 0.25],
+            ),
             mo.md("### Niet bekappen"),
             protocol_nog_niet_table,
             mo.md("### Onvoldoende data"),
