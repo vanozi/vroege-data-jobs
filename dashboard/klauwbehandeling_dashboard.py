@@ -629,14 +629,13 @@ def _(
     )
 
     protocol_table_columns = [
-        "Voergroep nummer",
-        "Voergroep naam",
         "Halsbandnummer",
-        "DIM",
-        "Lactatie",
-        "Status",
-        "Aanbiedcategorie",
+        "Voergroep nummer",
         "Aanbiedreden",
+        "Status",
+        "Status dagen",
+        "Lactatie",
+        "DIM",
     ]
     if df_protocol_aanbiedlijst.height > 0:
         protocol_aanbiedlijst_data = df_protocol_aanbiedlijst.select(
@@ -727,14 +726,13 @@ def _(
             selected_protocol_animal_id = selected_protocol_koe["animal_id"][0]
             selected_protocol_koe_naam = selected_protocol_koe["Koe / naam"][0]
             selected_protocol_columns = {
-                "Voergroep nummer": selected_protocol_koe["Voergroep nummer"][0],
-                "Voergroep naam": selected_protocol_koe["Voergroep naam"][0],
                 "Halsbandnummer": selected_protocol_koe["Halsbandnummer"][0],
-                "DIM": selected_protocol_koe["DIM"][0],
-                "Lactatie": selected_protocol_koe["Lactatie"][0],
-                "Status": selected_protocol_koe["Status"][0],
-                "Aanbiedcategorie": selected_protocol_koe["Aanbiedcategorie"][0],
+                "Voergroep nummer": selected_protocol_koe["Voergroep nummer"][0],
                 "Aanbiedreden": selected_protocol_koe["Aanbiedreden"][0],
+                "Status": selected_protocol_koe["Status"][0],
+                "Status dagen": selected_protocol_koe["Status dagen"][0],
+                "Lactatie": selected_protocol_koe["Lactatie"][0],
+                "DIM": selected_protocol_koe["DIM"][0],
             }
             protocol_registraties_koe = (
                 df_behandelingen_parsed.filter(
