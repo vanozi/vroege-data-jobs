@@ -419,7 +419,8 @@ def _(datetime, df_raw, pl, protocol_peildatum, transforms):
         "Oormerk": pl.String,
         "DIM": pl.Int64,
         "Lactatie": pl.Int64,
-        "Voergroep": pl.String,
+        "Voergroep nummer": pl.String,
+        "Voergroep naam": pl.String,
         "Status": pl.String,
         "Status dagen": pl.Int64,
         "Laatste klauwdatum": pl.Date,
@@ -457,9 +458,9 @@ def _(df_protocol_rows, mo):
     )
 
     protocol_feed_groups = (
-        df_protocol_rows.select("Voergroep")
+        df_protocol_rows.select("Voergroep naam")
         .unique()
-        .sort("Voergroep")["Voergroep"]
+        .sort("Voergroep naam")["Voergroep naam"]
         .to_list()
     )
     protocol_feed_group_filter = mo.ui.multiselect(
@@ -497,7 +498,7 @@ def _(
 
     if protocol_feed_group_filter.value:
         df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
-            pl.col("Voergroep").is_in(protocol_feed_group_filter.value)
+            pl.col("Voergroep naam").is_in(protocol_feed_group_filter.value)
         )
 
     if protocol_search_filter.value and protocol_search_filter.value.strip():
@@ -627,29 +628,19 @@ def _(
         justify="space-between",
     )
 
-    aanbied_columns = [
-        "Aanbiedcategorie",
-        "Aanbiedreden",
-        "Koe / naam",
+    protocol_table_columns = [
+        "Voergroep nummer",
+        "Voergroep naam",
         "Halsbandnummer",
-        "Oormerk kort",
-        "Oormerk",
-        "Laatste klauwdatum",
-        "Dagen sinds laatste behandeling",
-        "Volgende actiedatum",
         "DIM",
         "Lactatie",
-        "Voergroep",
         "Status",
+        "Aanbiedcategorie",
+        "Aanbiedreden",
     ]
     if df_protocol_aanbiedlijst.height > 0:
         protocol_aanbiedlijst_data = df_protocol_aanbiedlijst.select(
-            aanbied_columns
-        ).rename(
-            {
-                "Laatste klauwdatum": "Laatste behandeldatum",
-                "Volgende actiedatum": "Volgende bekapdatum",
-            }
+            protocol_table_columns
         )
         protocol_aanbiedlijst_table = mo.ui.table(
             protocol_aanbiedlijst_data.to_pandas(),
@@ -665,24 +656,8 @@ def _(
             kind="success",
         )
 
-    nog_niet_columns = [
-        "Aanbiedcategorie",
-        "Aanbiedreden",
-        "Koe / naam",
-        "Halsbandnummer",
-        "Laatste klauwdatum",
-        "Volgende actiedatum",
-        "DIM",
-        "Voergroep",
-        "Status",
-    ]
     if df_protocol_nog_niet.height > 0:
-        protocol_nog_niet_data = df_protocol_nog_niet.select(nog_niet_columns).rename(
-            {
-                "Laatste klauwdatum": "Laatste behandeldatum",
-                "Volgende actiedatum": "Volgende bekapdatum",
-            }
-        )
+        protocol_nog_niet_data = df_protocol_nog_niet.select(protocol_table_columns)
         protocol_nog_niet_table = mo.ui.table(
             protocol_nog_niet_data.to_pandas(),
             selection=None,
@@ -695,23 +670,9 @@ def _(
             kind="neutral",
         )
 
-    datacontrole_columns = [
-        "Koe / naam",
-        "Halsbandnummer",
-        "Oormerk kort",
-        "Oormerk",
-        "Aanbiedreden",
-        "Laatste klauwdatum",
-        "Voergroep",
-        "Status",
-    ]
     if df_protocol_datacontrole.height > 0:
         protocol_datacontrole_data = df_protocol_datacontrole.select(
-            datacontrole_columns
-        ).rename(
-            {
-                "Laatste klauwdatum": "Laatste behandeldatum",
-            }
+            protocol_table_columns
         )
         protocol_datacontrole_table = mo.ui.table(
             protocol_datacontrole_data.to_pandas(),
@@ -754,8 +715,7 @@ def _(
     else:
         selected_protocol_row = protocol_aanbiedlijst_table.value.iloc[0]
         selected_protocol_koe = df_protocol_aanbiedlijst.filter(
-            (pl.col("Oormerk") == selected_protocol_row["Oormerk"])
-            & (pl.col("Halsbandnummer") == selected_protocol_row["Halsbandnummer"])
+            pl.col("Halsbandnummer") == selected_protocol_row["Halsbandnummer"]
         ).head(1)
 
         if selected_protocol_koe.height == 0:
@@ -766,6 +726,16 @@ def _(
         else:
             selected_protocol_animal_id = selected_protocol_koe["animal_id"][0]
             selected_protocol_koe_naam = selected_protocol_koe["Koe / naam"][0]
+            selected_protocol_columns = {
+                "Voergroep nummer": selected_protocol_koe["Voergroep nummer"][0],
+                "Voergroep naam": selected_protocol_koe["Voergroep naam"][0],
+                "Halsbandnummer": selected_protocol_koe["Halsbandnummer"][0],
+                "DIM": selected_protocol_koe["DIM"][0],
+                "Lactatie": selected_protocol_koe["Lactatie"][0],
+                "Status": selected_protocol_koe["Status"][0],
+                "Aanbiedcategorie": selected_protocol_koe["Aanbiedcategorie"][0],
+                "Aanbiedreden": selected_protocol_koe["Aanbiedreden"][0],
+            }
             protocol_registraties_koe = (
                 df_behandelingen_parsed.filter(
                     pl.col("animal_id") == selected_protocol_animal_id
@@ -781,6 +751,19 @@ def _(
                         "behandeldatum": "Behandeldatum",
                         "notatie": "Originele notatie",
                     }
+                )
+                .with_columns(
+                    [
+                        pl.lit(value).alias(column)
+                        for column, value in selected_protocol_columns.items()
+                    ]
+                )
+                .select(
+                    [
+                        *selected_protocol_columns.keys(),
+                        "Behandeldatum",
+                        "Originele notatie",
+                    ]
                 )
                 .sort("Behandeldatum", descending=True)
             )

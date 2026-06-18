@@ -802,7 +802,12 @@ def _build_base_protocol_row(
         "Oormerk": context_row.get("eartag"),
         "DIM": context_row.get("current_dim"),
         "Lactatie": context_row.get("lactation_number"),
-        "Voergroep": context_row.get("feeding_group_name") or "Onbekend",
+        "Voergroep nummer": (
+            str(context_row.get("feeding_group_number"))
+            if context_row.get("feeding_group_number") is not None
+            else "Onbekend"
+        ),
+        "Voergroep naam": context_row.get("feeding_group_name") or "Onbekend",
         "Status": context_row.get("status") or "Onbekend",
         "Status dagen": context_row.get("status_days"),
         "Laatste klauwdatum": None,
