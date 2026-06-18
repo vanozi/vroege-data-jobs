@@ -571,11 +571,10 @@ def _(
         **Selectieregels klauwbekapper**
 
         - **Actieve Mortellaro:** aanbieden zodra de laatste Mortellaro nog niet is gevolgd door een latere gezonde registratie met alleen `Vierkant`.
-        - **Hercontrole aandoening:** aanbieden 12 weken na een klauwdatum met een aandoening anders dan Mortellaro.
-        - **Preventief bekappen:** aanbieden na 183 dagen wanneer de laatste klauwregistratie alleen `Vierkant` was, de koe niet droog staat en minimaal 30 DIM is.
+        - **Hercontrole aandoening:** aanbieden 12 weken na laatste behandeling met een aandoening anders dan Mortellaro.
+        - **Preventief bekappen:** aanbieden na 183 dagen wanneer de laatste registratie alleen `Vierkant` was, de koe niet droog staat en minimaal 30 DIM is.
         - **Geen klauwdata:** aanbieden vanaf 30 DIM, zolang het geen jongvee is en de koe niet droog staat.
 
-        Droogstand en minder dan 30 DIM blokkeren alleen preventief bekappen. Actieve Mortellaro en hercontrole op een aandoening blijven altijd aanbieden.
         """
     )
 
