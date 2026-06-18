@@ -429,7 +429,7 @@ def _(datetime, df_raw, pl, protocol_peildatum, transforms):
         "Dagen sinds laatste behandeling": pl.Int64,
         "Volgende actiedatum": pl.Date,
         "Aanbiedcategorie": pl.String,
-        "Reden selectie": pl.String,
+        "Aanbiedreden": pl.String,
         "Moet aangeboden worden": pl.Boolean,
         "Urgentie": pl.Int64,
     }
@@ -470,8 +470,8 @@ def _(df_protocol_rows, mo):
     )
 
     protocol_search_filter = mo.ui.text(
-        label="Zoek koe",
-        placeholder="Naam, halsbandnummer, oormerk of kort oormerk",
+        label="Zoek halsbandnummer",
+        placeholder="Halsbandnummer",
     )
     return (
         protocol_category_filter,
@@ -502,24 +502,12 @@ def _(
         )
 
     if protocol_search_filter.value and protocol_search_filter.value.strip():
-        protocol_search_term = protocol_search_filter.value.strip().lower()
+        protocol_search_term = protocol_search_filter.value.strip()
         df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
-            pl.col("Koe / naam")
+            pl.col("Halsbandnummer")
             .cast(pl.Utf8)
-            .str.to_lowercase()
-            .str.contains(protocol_search_term)
-            | pl.col("Halsbandnummer")
-            .cast(pl.Utf8)
-            .str.to_lowercase()
-            .str.contains(protocol_search_term)
-            | pl.col("Oormerk kort")
-            .cast(pl.Utf8)
-            .str.to_lowercase()
-            .str.contains(protocol_search_term)
-            | pl.col("Oormerk")
-            .cast(pl.Utf8)
-            .str.to_lowercase()
-            .str.contains(protocol_search_term)
+            .str.strip_chars()
+            .eq(protocol_search_term)
         )
 
     df_protocol_aanbiedlijst = df_protocol_filtered_rows.filter(
@@ -569,7 +557,6 @@ def _(
     protocol_rules_summary = mo.md(
         """
         **Selectieregels klauwbekapper**
-
         - **Actieve Mortellaro:** aanbieden zodra de laatste Mortellaro nog niet is gevolgd door een latere gezonde registratie met alleen `Vierkant`.
         - **Hercontrole aandoening:** aanbieden 12 weken na laatste behandeling met een aandoening anders dan Mortellaro.
         - **Preventief bekappen:** aanbieden na 183 dagen wanneer de laatste registratie alleen `Vierkant` was, de koe niet droog staat en minimaal 30 DIM is.
@@ -627,22 +614,25 @@ def _(
         justify="space-between",
     )
 
-    protocol_table_columns = [
+    protocol_table_source_columns = [
         "Halsbandnummer",
         "Voergroep nummer",
-        "Reden selectie",
+        "Aanbiedreden",
         "Status",
         "Status dagen",
         "Lactatie",
         "DIM",
     ]
+    protocol_table_column_names = {
+        "Aanbiedreden": "Reden selectie",
+    }
     if df_protocol_aanbiedlijst.height > 0:
         protocol_aanbiedlijst_data = df_protocol_aanbiedlijst.select(
-            protocol_table_columns
-        )
+            protocol_table_source_columns
+        ).rename(protocol_table_column_names)
         protocol_aanbiedlijst_table = mo.ui.table(
             protocol_aanbiedlijst_data.to_pandas(),
-            selection="single",
+            selection="multi",
             page_size=25,
         )
     else:
@@ -654,7 +644,9 @@ def _(
         )
 
     if df_protocol_nog_niet.height > 0:
-        protocol_nog_niet_data = df_protocol_nog_niet.select(protocol_table_columns)
+        protocol_nog_niet_data = df_protocol_nog_niet.select(
+            protocol_table_source_columns
+        ).rename(protocol_table_column_names)
         protocol_nog_niet_table = mo.ui.table(
             protocol_nog_niet_data.to_pandas(),
             selection=None,
@@ -668,8 +660,8 @@ def _(
 
     if df_protocol_datacontrole.height > 0:
         protocol_datacontrole_data = df_protocol_datacontrole.select(
-            protocol_table_columns
-        )
+            protocol_table_source_columns
+        ).rename(protocol_table_column_names)
         protocol_datacontrole_table = mo.ui.table(
             protocol_datacontrole_data.to_pandas(),
             selection=None,
@@ -692,86 +684,149 @@ def _(
 
 
 @app.cell
-def _(
-    df_behandelingen_parsed,
-    df_protocol_aanbiedlijst,
-    mo,
-    pl,
-    protocol_aanbiedlijst_table,
-):
-    """Protocol tab - registraties voor geselecteerde aanbiedlijst-koe."""
-    if df_protocol_aanbiedlijst.height == 0:
-        protocol_registraties_table = mo.md("")
-    elif len(protocol_aanbiedlijst_table.value) == 0:
-        protocol_registraties_table = mo.callout(
-            mo.md("Selecteer een koe in de aanbiedlijst om alle registraties te zien."),
+def _(mo, protocol_aanbiedlijst_table, protocol_reference_date):
+    """Protocol tab - PDF-download voor geselecteerde aanbiedlijst-koeien."""
+    if len(protocol_aanbiedlijst_table.value) == 0:
+        protocol_aanbiedlijst_pdf_download = mo.callout(
+            mo.md("Selecteer een of meer koeien om een PDF te downloaden."),
             kind="neutral",
         )
     else:
-        selected_protocol_row = protocol_aanbiedlijst_table.value.iloc[0]
-        selected_protocol_koe = df_protocol_aanbiedlijst.filter(
-            pl.col("Halsbandnummer") == selected_protocol_row["Halsbandnummer"]
-        ).head(1)
+        from io import BytesIO
 
-        if selected_protocol_koe.height == 0:
-            protocol_registraties_table = mo.callout(
-                mo.md("De geselecteerde koe kon niet worden teruggevonden."),
-                kind="warn",
-            )
-        else:
-            selected_protocol_animal_id = selected_protocol_koe["animal_id"][0]
-            selected_protocol_koe_naam = selected_protocol_koe["Koe / naam"][0]
-            protocol_registraties_koe = (
-                df_behandelingen_parsed.filter(
-                    pl.col("animal_id") == selected_protocol_animal_id
-                )
-                .select(
-                    [
-                        "behandeldatum",
-                        "notatie",
-                    ]
-                )
-                .rename(
-                    {
-                        "behandeldatum": "Behandeldatum",
-                        "notatie": "Originele notatie",
-                    }
-                )
-                .sort("Behandeldatum", descending=True)
-            )
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
+        from reportlab.platypus import TableStyle
 
-            if protocol_registraties_koe.height == 0:
-                protocol_registraties_table = mo.callout(
-                    mo.md(
-                        "Geen klauwbehandelingsregistraties gevonden voor "
-                        f"{selected_protocol_koe_naam}."
-                    ),
-                    kind="warn",
-                )
-            else:
-                protocol_registraties_table = mo.vstack(
-                    [
-                        mo.md(f"### Registraties {selected_protocol_koe_naam}"),
-                        mo.ui.table(
-                            protocol_registraties_koe.to_pandas(),
-                            selection=None,
-                            page_size=20,
-                            label="Chronologische klauwbehandelingen",
-                        ),
-                    ]
-                )
-    return (protocol_registraties_table,)
+        selected_rows = protocol_aanbiedlijst_table.value.copy()
+
+        def _sort_voergroep_number(value) -> int:
+            value_text = "" if value is None else str(value).strip()
+            if value_text.isdigit():
+                return int(value_text)
+            return 999_999
+
+        selected_rows["_voergroep_sort"] = selected_rows["Voergroep nummer"].map(
+            _sort_voergroep_number
+        )
+        selected_rows = (
+            selected_rows.sort_values(
+                ["_voergroep_sort", "Halsbandnummer"],
+                kind="stable",
+            )
+            .drop(columns=["_voergroep_sort"])
+            .reset_index(drop=True)
+        )
+        styles = getSampleStyleSheet()
+        header_style = styles["BodyText"].clone("protocol_pdf_header")
+        header_style.fontName = "Helvetica-Bold"
+        header_style.fontSize = 8
+        header_style.leading = 9
+        header_style.textColor = colors.whitesmoke
+
+        body_style = styles["BodyText"].clone("protocol_pdf_body")
+        body_style.fontSize = 8
+        body_style.leading = 9
+
+        def _format_pdf_value(column: str, value) -> str:
+            if value is None:
+                return ""
+            if isinstance(value, float) and value != value:
+                return ""
+            if column == "DIM":
+                return str(int(value))
+            return str(value)
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),
+            leftMargin=10 * mm,
+            rightMargin=10 * mm,
+            topMargin=10 * mm,
+            bottomMargin=10 * mm,
+        )
+        column_widths_mm = {
+            "Halsbandnummer": 25,
+            "Voergroep nummer": 28,
+            "Reden selectie": 78,
+            "Status": 35,
+            "Status dagen": 24,
+            "Lactatie": 18,
+            "DIM": 18,
+        }
+        table_columns = selected_rows.columns.to_list()
+        table_data = [
+            [Paragraph(column, header_style) for column in table_columns],
+            *[
+                [
+                    Paragraph(_format_pdf_value(column, value), body_style)
+                    for column, value in zip(table_columns, row)
+                ]
+                for row in selected_rows.itertuples(index=False, name=None)
+            ],
+        ]
+        table = Table(
+            table_data,
+            colWidths=[
+                column_widths_mm.get(column, 25) * mm for column in table_columns
+            ],
+            repeatRows=1,
+            splitByRow=True,
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4f4f4f")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 8),
+                    ("TOPPADDING", (0, 0), (-1, 0), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cfcfcf")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                    ("ALIGN", (0, 0), (2, -1), "LEFT"),
+                    ("FONTSIZE", (0, 1), (-1, -1), 8),
+                ]
+            )
+        )
+        story = [
+            Paragraph("Selectielijst te bekappen koeien", styles["Title"]),
+            Spacer(1, 3 * mm),
+            Paragraph(
+                (
+                    f"Peildatum: {protocol_reference_date}<br/>"
+                    f"Aantal geselecteerd: {len(selected_rows)}"
+                ),
+                styles["Normal"],
+            ),
+            Spacer(1, 4 * mm),
+            table,
+        ]
+        doc.build(story)
+        protocol_aanbiedlijst_pdf_download = mo.download(
+            data=buffer.getvalue(),
+            filename="selectielijst-te-bekappen-koeien.pdf",
+            mimetype="application/pdf",
+            label="Download selectie PDF",
+        )
+
+    return (protocol_aanbiedlijst_pdf_download,)
 
 
 @app.cell
 def _(
     mo,
+    protocol_aanbiedlijst_pdf_download,
     protocol_aanbiedlijst_table,
     protocol_datacontrole_table,
     protocol_filter_controls,
     protocol_kpi_cards,
     protocol_nog_niet_table,
-    protocol_registraties_table,
     protocol_rules_summary,
 ):
     """Protocol tab - bouw tab content."""
@@ -783,7 +838,7 @@ def _(
             protocol_kpi_cards,
             mo.md("### Selectielijst te bekappen koeien"),
             protocol_aanbiedlijst_table,
-            protocol_registraties_table,
+            protocol_aanbiedlijst_pdf_download,
             mo.md("### Niet bekappen"),
             protocol_nog_niet_table,
             mo.md("### Onvoldoende data"),
