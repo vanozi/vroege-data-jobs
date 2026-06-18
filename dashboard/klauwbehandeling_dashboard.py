@@ -86,6 +86,7 @@ def _(connectorx_database_url, pl):
         kb.notatie,
         kd.lactation_number,
         kd.current_dim,
+        kd.last_milk,
         kd.feeding_group_number,
         kd.feeding_group_name,
         kd.barn_group_name,
@@ -418,8 +419,9 @@ def _(datetime, df_raw, pl, protocol_peildatum, transforms):
         "Oormerk kort": pl.String,
         "Oormerk": pl.String,
         "DIM": pl.Int64,
+        "Laatste melk": pl.Float64,
         "Lactatie": pl.Int64,
-        "Voergroep nummer": pl.String,
+        "Voergroep nummer": pl.Int64,
         "Voergroep naam": pl.String,
         "Status": pl.String,
         "Status dagen": pl.Int64,
@@ -443,7 +445,7 @@ def _(datetime, df_raw, pl, protocol_peildatum, transforms):
 
 
 @app.cell
-def _(df_protocol_rows, mo):
+def _(df_protocol_rows, mo, pl):
     """Protocol tab - filter controls."""
     protocol_categories = (
         df_protocol_rows.select("Aanbiedcategorie")
@@ -458,9 +460,18 @@ def _(df_protocol_rows, mo):
     )
 
     protocol_feed_groups = (
-        df_protocol_rows.select("Voergroep naam")
+        df_protocol_rows.select(["Voergroep nummer", "Voergroep naam"])
         .unique()
-        .sort("Voergroep naam")["Voergroep naam"]
+        .sort(["Voergroep nummer", "Voergroep naam"])
+        .with_columns(
+            pl.concat_str(
+                [
+                    pl.col("Voergroep nummer").cast(pl.Utf8).fill_null("Onbekend"),
+                    pl.lit(" - "),
+                    pl.col("Voergroep naam").fill_null("Onbekend"),
+                ]
+            ).alias("Voergroep label")
+        )["Voergroep label"]
         .to_list()
     )
     protocol_feed_group_filter = mo.ui.multiselect(
@@ -498,7 +509,13 @@ def _(
 
     if protocol_feed_group_filter.value:
         df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
-            pl.col("Voergroep naam").is_in(protocol_feed_group_filter.value)
+            pl.concat_str(
+                [
+                    pl.col("Voergroep nummer").cast(pl.Utf8).fill_null("Onbekend"),
+                    pl.lit(" - "),
+                    pl.col("Voergroep naam").fill_null("Onbekend"),
+                ]
+            ).is_in(protocol_feed_group_filter.value)
         )
 
     if protocol_search_filter.value and protocol_search_filter.value.strip():
@@ -617,14 +634,15 @@ def _(
     protocol_table_source_columns = [
         "Halsbandnummer",
         "Voergroep nummer",
-        "Aanbiedreden",
+        "Aanbiedcategorie",
         "Status",
         "Status dagen",
         "Lactatie",
         "DIM",
+        "Laatste melk",
     ]
     protocol_table_column_names = {
-        "Aanbiedreden": "Reden selectie",
+        "Aanbiedcategorie": "Reden selectie",
     }
     if df_protocol_aanbiedlijst.height > 0:
         protocol_aanbiedlijst_data = df_protocol_aanbiedlijst.select(
@@ -686,7 +704,10 @@ def _(
 @app.cell
 def _(mo, protocol_aanbiedlijst_table, protocol_reference_date):
     """Protocol tab - PDF-download voor geselecteerde aanbiedlijst-koeien."""
-    if len(protocol_aanbiedlijst_table.value) == 0:
+    if (
+        not hasattr(protocol_aanbiedlijst_table, "value")
+        or len(protocol_aanbiedlijst_table.value) == 0
+    ):
         protocol_aanbiedlijst_pdf_download = mo.callout(
             mo.md("Selecteer een of meer koeien om een PDF te downloaden."),
             kind="neutral",
@@ -704,9 +725,14 @@ def _(mo, protocol_aanbiedlijst_table, protocol_reference_date):
         selected_rows = protocol_aanbiedlijst_table.value.copy()
 
         def _sort_voergroep_number(value) -> int:
-            value_text = "" if value is None else str(value).strip()
-            if value_text.isdigit():
-                return int(value_text)
+            if value is None:
+                return 999_999
+            if isinstance(value, float) and value != value:
+                return 999_999
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                pass
             return 999_999
 
         selected_rows["_voergroep_sort"] = selected_rows["Voergroep nummer"].map(
@@ -738,6 +764,8 @@ def _(mo, protocol_aanbiedlijst_table, protocol_reference_date):
                 return ""
             if column == "DIM":
                 return str(int(value))
+            if column == "Laatste melk":
+                return f"{float(value):g}"
             return str(value)
 
         buffer = BytesIO()
@@ -757,6 +785,7 @@ def _(mo, protocol_aanbiedlijst_table, protocol_reference_date):
             "Status dagen": 24,
             "Lactatie": 18,
             "DIM": 18,
+            "Laatste melk": 22,
         }
         table_columns = selected_rows.columns.to_list()
         table_data = [
@@ -819,10 +848,85 @@ def _(mo, protocol_aanbiedlijst_table, protocol_reference_date):
 
 
 @app.cell
+def _(mo):
+    """Protocol tab - opzoekveld voor bekappingen per halsbandnummer."""
+    protocol_bekappingen_search = mo.ui.text(
+        label="Zoek bekappingen op halsbandnummer",
+        placeholder="Halsbandnummer",
+    )
+    return (protocol_bekappingen_search,)
+
+
+@app.cell
+def _(df_behandelingen_parsed, mo, pl, protocol_bekappingen_search):
+    """Protocol tab - bekappingen voor opgezocht halsbandnummer."""
+    protocol_bekappingen_search_value = protocol_bekappingen_search.value or ""
+    if not protocol_bekappingen_search_value.strip():
+        protocol_bekappingen_lookup = mo.vstack(
+            [
+                protocol_bekappingen_search,
+                mo.callout(
+                    mo.md("Vul een halsbandnummer in om bekappingen op te zoeken."),
+                    kind="neutral",
+                ),
+            ]
+        )
+    else:
+        protocol_bekappingen_search_term = protocol_bekappingen_search_value.strip()
+        protocol_bekappingen_rows = (
+            df_behandelingen_parsed.filter(
+                pl.col("collar_number")
+                .cast(pl.Utf8)
+                .str.strip_chars()
+                .eq(protocol_bekappingen_search_term)
+            )
+            .select(
+                [
+                    "behandeldatum",
+                    "notatie",
+                ]
+            )
+            .rename(
+                {
+                    "behandeldatum": "Behandeldatum",
+                    "notatie": "Originele notatie",
+                }
+            )
+            .sort("Behandeldatum", descending=True)
+        )
+
+        if protocol_bekappingen_rows.height == 0:
+            protocol_bekappingen_result = mo.callout(
+                mo.md(
+                    "Geen bekappingen gevonden voor halsbandnummer "
+                    f"{protocol_bekappingen_search_term}."
+                ),
+                kind="neutral",
+            )
+        else:
+            protocol_bekappingen_result = mo.ui.table(
+                protocol_bekappingen_rows.to_pandas(),
+                selection=None,
+                page_size=20,
+                label="Chronologische bekappingen",
+            )
+
+        protocol_bekappingen_lookup = mo.vstack(
+            [
+                protocol_bekappingen_search,
+                protocol_bekappingen_result,
+            ]
+        )
+
+    return (protocol_bekappingen_lookup,)
+
+
+@app.cell
 def _(
     mo,
     protocol_aanbiedlijst_pdf_download,
     protocol_aanbiedlijst_table,
+    protocol_bekappingen_lookup,
     protocol_datacontrole_table,
     protocol_filter_controls,
     protocol_kpi_cards,
@@ -839,6 +943,8 @@ def _(
             mo.md("### Selectielijst te bekappen koeien"),
             protocol_aanbiedlijst_table,
             protocol_aanbiedlijst_pdf_download,
+            mo.md("### Bekappingen opzoeken"),
+            protocol_bekappingen_lookup,
             mo.md("### Niet bekappen"),
             protocol_nog_niet_table,
             mo.md("### Onvoldoende data"),

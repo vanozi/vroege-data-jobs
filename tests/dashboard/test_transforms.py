@@ -406,8 +406,9 @@ class TestKlauwbekapProtocolRows:
 
         assert result[0]["Aanbiedcategorie"] == "Actieve Mortellaro"
         assert result[0]["Moet aangeboden worden"] is True
-        assert result[0]["Voergroep nummer"] == "7"
+        assert result[0]["Voergroep nummer"] == 7
         assert result[0]["Voergroep naam"] == "Groep 1"
+        assert result[0]["Laatste melk"] == 42.5
 
     def test_mortellaro_followed_by_later_vierkant_is_not_active(self):
         result = build_klauwbekap_protocol_rows(
@@ -814,6 +815,7 @@ def build_klauw_row(
     feeding_group_number: int = 7,
     feeding_group_name: str = "Groep 1",
     current_dim: object = 100,
+    last_milk: object = 42.5,
     lactation_number: object = 2,
     status: object = "Lacterend",
     status_days: object = 10,
@@ -828,6 +830,7 @@ def build_klauw_row(
         "feeding_group_number": feeding_group_number,
         "feeding_group_name": feeding_group_name,
         "current_dim": current_dim,
+        "last_milk": last_milk,
         "lactation_number": lactation_number,
         "status": status,
         "status_days": status_days,

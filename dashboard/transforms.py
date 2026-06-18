@@ -801,11 +801,10 @@ def _build_base_protocol_row(
         "Oormerk kort": context_row.get("eartag_short"),
         "Oormerk": context_row.get("eartag"),
         "DIM": context_row.get("current_dim"),
+        "Laatste melk": context_row.get("last_milk"),
         "Lactatie": context_row.get("lactation_number"),
-        "Voergroep nummer": (
-            str(context_row.get("feeding_group_number"))
-            if context_row.get("feeding_group_number") is not None
-            else "Onbekend"
+        "Voergroep nummer": _parse_optional_int(
+            context_row.get("feeding_group_number")
         ),
         "Voergroep naam": context_row.get("feeding_group_name") or "Onbekend",
         "Status": context_row.get("status") or "Onbekend",
@@ -820,6 +819,16 @@ def _build_base_protocol_row(
         "Moet aangeboden worden": False,
         "Urgentie": 50,
     }
+
+
+def _parse_optional_int(value: object) -> Optional[int]:
+    if value is None:
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _classify_cow_without_treatments(
