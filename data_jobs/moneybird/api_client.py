@@ -75,6 +75,15 @@ class MoneybirdClient:
         response = self._request_with_retry("GET", path, params=params)
         return self._parse_json(path, response)
 
+    def post_json(
+        self,
+        path: str,
+        json: Optional[dict[str, object]] = None,
+    ) -> Any:
+        """Perform a POST request and return the parsed JSON response."""
+        response = self._request_with_retry("POST", path, json=json)
+        return self._parse_json(path, response)
+
     def get_paginated(
         self,
         path: str,
@@ -116,11 +125,12 @@ class MoneybirdClient:
         method: str,
         path: str,
         params: Optional[dict[str, str]] = None,
+        json: Optional[dict[str, object]] = None,
     ) -> httpx.Response:
         attempt = 0
 
         while True:
-            response = self._send(method, path, params=params)
+            response = self._send(method, path, params=params, json=json)
             if response.status_code not in RETRYABLE_STATUS_CODES:
                 break
 
@@ -146,12 +156,14 @@ class MoneybirdClient:
         method: str,
         path: str,
         params: Optional[dict[str, str]] = None,
+        json: Optional[dict[str, object]] = None,
     ) -> httpx.Response:
         try:
             return self.http_client.request(
                 method=method.upper(),
                 url=path,
                 params=params,
+                json=json,
                 headers=self._headers(),
             )
         except httpx.HTTPError as error:

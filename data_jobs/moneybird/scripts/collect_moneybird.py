@@ -57,6 +57,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Collect purchase invoices.",
     )
+    parser.add_argument(
+        "--contacts",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Collect contacts for invoice relation lookups.",
+    )
+    parser.add_argument(
+        "--ledger-accounts",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Collect ledger accounts for report account lookups.",
+    )
+    parser.add_argument(
+        "--financial-accounts",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Collect financial accounts for bank views.",
+    )
+    parser.add_argument(
+        "--financial-mutations",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Collect financial mutations through Moneybird synchronization.",
+    )
     return parser
 
 
@@ -95,6 +119,16 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
             sync_purchase_invoices=_sync_flag(
                 args.purchase_invoices,
                 config.sync_invoices,
+            ),
+            sync_contacts=_sync_flag(args.contacts, config.sync_contacts),
+            sync_ledger_accounts=_sync_flag(args.ledger_accounts, config.sync_reports),
+            sync_financial_accounts=_sync_flag(
+                args.financial_accounts,
+                config.sync_bank,
+            ),
+            sync_financial_mutations=_sync_flag(
+                args.financial_mutations,
+                config.sync_bank,
             ),
         )
 
@@ -153,12 +187,36 @@ def _persist_rows(
             repositories.get("purchase_invoices"),
             dry_run=dry_run,
         ),
+        "contacts": moneybird_persistence.save_moneybird_contacts(
+            result.contacts,
+            repositories.get("contacts"),
+            dry_run=dry_run,
+        ),
+        "ledger_accounts": moneybird_persistence.save_moneybird_ledger_accounts(
+            result.ledger_accounts,
+            repositories.get("ledger_accounts"),
+            dry_run=dry_run,
+        ),
+        "financial_accounts": moneybird_persistence.save_moneybird_financial_accounts(
+            result.financial_accounts,
+            repositories.get("financial_accounts"),
+            dry_run=dry_run,
+        ),
+        "financial_mutations": moneybird_persistence.save_moneybird_financial_mutations(
+            result.financial_mutations,
+            repositories.get("financial_mutations"),
+            dry_run=dry_run,
+        ),
     }
 
 
 def _build_repositories() -> dict[str, object]:
     from database import database
     from database.repositories.moneybird_repository import (
+        MoneybirdContactsRepository,
+        MoneybirdFinancialAccountsRepository,
+        MoneybirdFinancialMutationsRepository,
+        MoneybirdLedgerAccountsRepository,
         MoneybirdPurchaseInvoicesRepository,
         MoneybirdReportSnapshotsRepository,
         MoneybirdSalesInvoicesRepository,
@@ -168,6 +226,14 @@ def _build_repositories() -> dict[str, object]:
         "report_snapshots": MoneybirdReportSnapshotsRepository(database.get_session),
         "sales_invoices": MoneybirdSalesInvoicesRepository(database.get_session),
         "purchase_invoices": MoneybirdPurchaseInvoicesRepository(database.get_session),
+        "contacts": MoneybirdContactsRepository(database.get_session),
+        "ledger_accounts": MoneybirdLedgerAccountsRepository(database.get_session),
+        "financial_accounts": MoneybirdFinancialAccountsRepository(
+            database.get_session
+        ),
+        "financial_mutations": MoneybirdFinancialMutationsRepository(
+            database.get_session
+        ),
     }
 
 
@@ -180,14 +246,25 @@ def _log_collection_summary(
     counts = result.summary_counts()
     logger.info(
         "Moneybird summary: report_snapshots=%s sales_invoices=%s "
-        "purchase_invoices=%s saved_report_snapshots=%s saved_sales_invoices=%s "
-        "saved_purchase_invoices=%s dry_run=%s",
+        "purchase_invoices=%s contacts=%s ledger_accounts=%s "
+        "financial_accounts=%s financial_mutations=%s saved_report_snapshots=%s "
+        "saved_sales_invoices=%s saved_purchase_invoices=%s saved_contacts=%s "
+        "saved_ledger_accounts=%s saved_financial_accounts=%s "
+        "saved_financial_mutations=%s dry_run=%s",
         counts["report_snapshots"],
         counts["sales_invoices"],
         counts["purchase_invoices"],
+        counts["contacts"],
+        counts["ledger_accounts"],
+        counts["financial_accounts"],
+        counts["financial_mutations"],
         saved_counts["report_snapshots"],
         saved_counts["sales_invoices"],
         saved_counts["purchase_invoices"],
+        saved_counts["contacts"],
+        saved_counts["ledger_accounts"],
+        saved_counts["financial_accounts"],
+        saved_counts["financial_mutations"],
         dry_run,
     )
 
@@ -202,9 +279,17 @@ def _summary_lines(
         f"report_snapshots={counts['report_snapshots']}",
         f"sales_invoices={counts['sales_invoices']}",
         f"purchase_invoices={counts['purchase_invoices']}",
+        f"contacts={counts['contacts']}",
+        f"ledger_accounts={counts['ledger_accounts']}",
+        f"financial_accounts={counts['financial_accounts']}",
+        f"financial_mutations={counts['financial_mutations']}",
         f"saved_report_snapshots={saved_counts['report_snapshots']}",
         f"saved_sales_invoices={saved_counts['sales_invoices']}",
         f"saved_purchase_invoices={saved_counts['purchase_invoices']}",
+        f"saved_contacts={saved_counts['contacts']}",
+        f"saved_ledger_accounts={saved_counts['ledger_accounts']}",
+        f"saved_financial_accounts={saved_counts['financial_accounts']}",
+        f"saved_financial_mutations={saved_counts['financial_mutations']}",
         f"dry_run={dry_run}",
         f"finished_at={datetime.now(UTC).isoformat()}",
     ]

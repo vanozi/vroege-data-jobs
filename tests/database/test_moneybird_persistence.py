@@ -11,6 +11,14 @@ class FakeMoneybirdSalesInvoicesRepository:
         self.rows.append(row)
 
 
+class FakeMoneybirdFinancialMutationsRepository:
+    def __init__(self):
+        self.rows = []
+
+    def upsert_moneybird_financial_mutation(self, row):
+        self.rows.append(row)
+
+
 def test_save_moneybird_sales_invoices_dry_run_without_repository():
     rows = [{"administration_id": "admin-1", "moneybird_id": "invoice-1"}]
 
@@ -31,6 +39,22 @@ def test_save_moneybird_sales_invoices_upserts_rows():
     ]
 
     saved_count = moneybird.save_moneybird_sales_invoices(
+        rows,
+        repository=repository,
+    )
+
+    assert saved_count == 2
+    assert repository.rows == rows
+
+
+def test_save_moneybird_financial_mutations_upserts_rows():
+    repository = FakeMoneybirdFinancialMutationsRepository()
+    rows = [
+        {"administration_id": "admin-1", "moneybird_id": "mutation-1"},
+        {"administration_id": "admin-1", "moneybird_id": "mutation-2"},
+    ]
+
+    saved_count = moneybird.save_moneybird_financial_mutations(
         rows,
         repository=repository,
     )

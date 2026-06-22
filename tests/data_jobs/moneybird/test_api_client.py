@@ -103,6 +103,31 @@ def test_get_paginated_increments_page_when_no_link_and_page_is_full():
     assert rows == [{"id": "0"}, {"id": "1"}, {"id": "last"}]
 
 
+def test_post_json_sends_json_body():
+    captured_request = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(200, json=[{"id": "mutation-1"}])
+
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://moneybird.example.test/api/v2",
+    )
+    client = MoneybirdClient(config=build_config(), http_client=http_client)
+
+    response = client.post_json(
+        "/123/financial_mutations/synchronization.json",
+        json={"ids": ["mutation-1"]},
+    )
+
+    assert response == [{"id": "mutation-1"}]
+    assert captured_request is not None
+    assert captured_request.method == "POST"
+    assert captured_request.content == b'{"ids":["mutation-1"]}'
+
+
 def test_rate_limit_retries_with_retry_after_header():
     calls = 0
     sleep_calls = []

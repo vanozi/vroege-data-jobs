@@ -23,6 +23,10 @@ def test_persist_rows_dry_run_returns_counts_without_repositories():
         report_snapshots=[{"report_type": "profit_loss"}],
         sales_invoices=[{"moneybird_id": "sales-1"}],
         purchase_invoices=[{"moneybird_id": "purchase-1"}],
+        contacts=[{"moneybird_id": "contact-1"}],
+        ledger_accounts=[{"moneybird_id": "ledger-1"}],
+        financial_accounts=[{"moneybird_id": "account-1"}],
+        financial_mutations=[{"moneybird_id": "mutation-1"}],
     )
 
     saved_counts = collect_moneybird._persist_rows(result, dry_run=True)
@@ -31,6 +35,10 @@ def test_persist_rows_dry_run_returns_counts_without_repositories():
         "report_snapshots": 1,
         "sales_invoices": 1,
         "purchase_invoices": 1,
+        "contacts": 1,
+        "ledger_accounts": 1,
+        "financial_accounts": 1,
+        "financial_mutations": 1,
     }
 
 
@@ -39,6 +47,10 @@ def test_summary_lines_include_collected_and_saved_counts():
         report_snapshots=[{}],
         sales_invoices=[{}, {}],
         purchase_invoices=[],
+        contacts=[{}],
+        ledger_accounts=[{}],
+        financial_accounts=[],
+        financial_mutations=[{}, {}],
     )
 
     lines = collect_moneybird._summary_lines(
@@ -47,6 +59,10 @@ def test_summary_lines_include_collected_and_saved_counts():
             "report_snapshots": 1,
             "sales_invoices": 2,
             "purchase_invoices": 0,
+            "contacts": 1,
+            "ledger_accounts": 1,
+            "financial_accounts": 0,
+            "financial_mutations": 2,
         },
         dry_run=True,
     )
@@ -54,6 +70,9 @@ def test_summary_lines_include_collected_and_saved_counts():
     assert "report_snapshots=1" in lines
     assert "sales_invoices=2" in lines
     assert "saved_purchase_invoices=0" in lines
+    assert "contacts=1" in lines
+    assert "financial_mutations=2" in lines
+    assert "saved_financial_accounts=0" in lines
     assert "dry_run=True" in lines
 
 
@@ -89,6 +108,10 @@ def test_run_collects_and_persists_with_one_command_path(monkeypatch):
         report_snapshots=[{"report_type": "profit_loss"}],
         sales_invoices=[{"moneybird_id": "sales-1"}],
         purchase_invoices=[{"moneybird_id": "purchase-1"}],
+        contacts=[{"moneybird_id": "contact-1"}],
+        ledger_accounts=[{"moneybird_id": "ledger-1"}],
+        financial_accounts=[{"moneybird_id": "account-1"}],
+        financial_mutations=[{"moneybird_id": "mutation-1"}],
     )
     captured = {}
 
@@ -126,6 +149,10 @@ def test_run_collects_and_persists_with_one_command_path(monkeypatch):
             "report_snapshots": len(received_result.report_snapshots),
             "sales_invoices": len(received_result.sales_invoices),
             "purchase_invoices": len(received_result.purchase_invoices),
+            "contacts": len(received_result.contacts),
+            "ledger_accounts": len(received_result.ledger_accounts),
+            "financial_accounts": len(received_result.financial_accounts),
+            "financial_mutations": len(received_result.financial_mutations),
         },
     )
     args = argparse.Namespace(
@@ -136,6 +163,10 @@ def test_run_collects_and_persists_with_one_command_path(monkeypatch):
         reports=None,
         sales_invoices=None,
         purchase_invoices=None,
+        contacts=None,
+        ledger_accounts=None,
+        financial_accounts=None,
+        financial_mutations=None,
     )
 
     exit_code = collect_moneybird.run(args, FakeLogger())
@@ -145,3 +176,7 @@ def test_run_collects_and_persists_with_one_command_path(monkeypatch):
     assert captured["kwargs"]["sync_reports"] is True
     assert captured["kwargs"]["sync_sales_invoices"] is True
     assert captured["kwargs"]["sync_purchase_invoices"] is True
+    assert captured["kwargs"]["sync_contacts"] is True
+    assert captured["kwargs"]["sync_ledger_accounts"] is True
+    assert captured["kwargs"]["sync_financial_accounts"] is True
+    assert captured["kwargs"]["sync_financial_mutations"] is True

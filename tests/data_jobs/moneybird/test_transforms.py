@@ -108,6 +108,97 @@ def test_transform_purchase_invoice_maps_base_amounts():
     assert row["total_price_incl_tax_base"] == Decimal("242.00")
 
 
+def test_transform_contact_maps_relation_fields():
+    row = transforms.transform_contact(
+        {
+            "id": "contact-1",
+            "company_name": "Klant BV",
+            "firstname": "Jan",
+            "lastname": "Jansen",
+            "customer_id": "C001",
+            "supplier_id": "S001",
+            "email": "info@example.test",
+            "city": "Amsterdam",
+            "country": "NL",
+            "archived": "false",
+            "version": "4",
+            "updated_at": "2026-06-21T09:00:00Z",
+        },
+        administration_id="admin-1",
+        synced_at=datetime(2026, 6, 22, 10, 0),
+    )
+
+    assert row["moneybird_id"] == "contact-1"
+    assert row["company_name"] == "Klant BV"
+    assert row["archived"] is False
+    assert row["moneybird_version"] == 4
+
+
+def test_transform_ledger_account_maps_account_lookup_fields():
+    row = transforms.transform_ledger_account(
+        {
+            "id": "ledger-1",
+            "name": "Omzet",
+            "account_type": "revenue",
+            "account_id": "8000",
+            "version": 3,
+        },
+        administration_id="admin-1",
+        synced_at=datetime(2026, 6, 22, 10, 0),
+    )
+
+    assert row["moneybird_id"] == "ledger-1"
+    assert row["name"] == "Omzet"
+    assert row["account_id"] == "8000"
+
+
+def test_transform_financial_account_maps_bank_fields():
+    row = transforms.transform_financial_account(
+        {
+            "id": "account-1",
+            "type": "bank_account",
+            "name": "Betaalrekening",
+            "identifier": "NL00BANK0123456789",
+            "currency": "EUR",
+            "provider": "bank",
+            "active": True,
+        },
+        administration_id="admin-1",
+        synced_at=datetime(2026, 6, 22, 10, 0),
+    )
+
+    assert row["moneybird_id"] == "account-1"
+    assert row["name"] == "Betaalrekening"
+    assert row["active"] is True
+
+
+def test_transform_financial_mutation_maps_transaction_fields():
+    row = transforms.transform_financial_mutation(
+        {
+            "id": "mutation-1",
+            "financial_account_id": "account-1",
+            "amount": "-10.25",
+            "amount_open": "0.00",
+            "date": "2026-06-20",
+            "message": "Factuurbetaling",
+            "code": "transfer",
+            "contra_account_name": "Klant BV",
+            "contra_account_number": "NL00TEST0123456789",
+            "state": "processed",
+            "settlement_state": "settled",
+            "version": "9",
+            "updated_at": "2026-06-21T09:00:00Z",
+        },
+        administration_id="admin-1",
+        synced_at=datetime(2026, 6, 22, 10, 0),
+    )
+
+    assert row["moneybird_id"] == "mutation-1"
+    assert row["amount"] == Decimal("-10.25")
+    assert row["date"] == date(2026, 6, 20)
+    assert row["moneybird_version"] == 9
+
+
 def test_transform_sales_invoice_requires_id():
     with pytest.raises(ValueError, match="sales invoice id"):
         transforms.transform_sales_invoice(
