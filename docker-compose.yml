@@ -171,6 +171,14 @@ services:
       - data_jobs.tank_terminal.scripts.collect_tank_terminal
       - --summary
 
+  datajob-moneybird:
+    <<: *datajob-base
+    command:
+      - python
+      - -m
+      - data_jobs.moneybird.scripts.collect_moneybird
+      - --summary
+
   portal:
     build:
       context: .
@@ -387,6 +395,53 @@ services:
       - traefik.http.routers.marimo-tank-terminal-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-tank-terminal-manifest.priority=200
       - traefik.http.routers.marimo-tank-terminal-manifest.service=marimo-tank-terminal
+
+  marimo-moneybird:
+    build:
+      context: .
+      dockerfile: docker/marimo/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gebroeders_vroege}
+    command:
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/moneybird_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2721"
+      - --base-url
+      - /moneybird
+      - --proxy
+      - https://${APP_HOST}
+      - --no-token
+    expose:
+      - "2721"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dashboards
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marimo-moneybird.rule=Host(`${APP_HOST}`) && PathPrefix(`/moneybird`)
+      - traefik.http.routers.marimo-moneybird.entrypoints=websecure
+      - traefik.http.routers.marimo-moneybird.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-moneybird.middlewares=portal-auth
+      - traefik.http.routers.marimo-moneybird.priority=100
+      - traefik.http.routers.marimo-moneybird.service=marimo-moneybird
+      - traefik.http.services.marimo-moneybird.loadbalancer.server.port=2721
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-moneybird-manifest.rule=Host(`${APP_HOST}`) && Path(`/moneybird/manifest.json`)
+      - traefik.http.routers.marimo-moneybird-manifest.entrypoints=websecure
+      - traefik.http.routers.marimo-moneybird-manifest.tls.certresolver=letsencrypt
+      - traefik.http.routers.marimo-moneybird-manifest.middlewares=portal-auth
+      - traefik.http.routers.marimo-moneybird-manifest.priority=200
+      - traefik.http.routers.marimo-moneybird-manifest.service=marimo-moneybird
 
 networks:
   dashboards:

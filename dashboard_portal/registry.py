@@ -35,6 +35,12 @@ DEFAULT_DASHBOARDS = [
         url="/tank-terminal",
         status="Concept",
     ),
+    DashboardLink(
+        name="Moneybird",
+        description="Boekhoudkundig overzicht van facturen, rapporten en bankmutaties.",
+        url="/moneybird",
+        status="Concept",
+    ),
 ]
 
 

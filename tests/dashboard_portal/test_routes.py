@@ -639,6 +639,7 @@ def test_application_key_for_path_maps_known_prefixes():
         portal_app.application_key_for_path("/tank-terminal")
         == "dashboard_tank_terminal"
     )
+    assert portal_app.application_key_for_path("/moneybird") == "dashboard_moneybird"
     assert (
         portal_app.application_key_for_path(
             "https://app.gebroedersvroege.nl/tank-terminal/manifest.json"

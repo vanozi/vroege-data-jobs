@@ -1,6 +1,7 @@
 """Read-only Moneybird API client."""
 
 from collections.abc import Callable
+import logging
 import time
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
@@ -88,12 +89,15 @@ class MoneybirdClient:
         self,
         path: str,
         params: Optional[dict[str, str]] = None,
+        logger: Optional[logging.Logger] = None,
+        progress_interval_pages: int = 5,
     ) -> list[dict[str, Any]]:
         """Collect all pages from a paginated Moneybird list endpoint."""
         collected_rows: list[dict[str, Any]] = []
         request_params = dict(params or {})
         request_params.setdefault("per_page", "100")
         request_params.setdefault("page", "1")
+        page_count = 0
 
         while True:
             response = self._request_with_retry("GET", path, params=request_params)
@@ -108,6 +112,14 @@ class MoneybirdClient:
 
             rows = _ensure_dict_list(parsed_response, endpoint=path)
             collected_rows.extend(rows)
+            page_count += 1
+            _log_paginated_progress(
+                logger,
+                path=path,
+                page_count=page_count,
+                row_count=len(collected_rows),
+                progress_interval_pages=progress_interval_pages,
+            )
 
             next_page = _next_page_from_link_header(response.headers.get("Link"))
             if next_page is None:
@@ -266,3 +278,26 @@ def _retry_delay_seconds(
             pass
 
     return fallback_backoff_seconds * (2**attempt)
+
+
+def _log_paginated_progress(
+    logger: Optional[logging.Logger],
+    *,
+    path: str,
+    page_count: int,
+    row_count: int,
+    progress_interval_pages: int,
+) -> None:
+    if logger is None:
+        return
+    if progress_interval_pages <= 0:
+        return
+    if page_count % progress_interval_pages != 0:
+        return
+
+    logger.info(
+        "Fetched %s Moneybird pages from %s; rows_so_far=%s.",
+        page_count,
+        path,
+        row_count,
+    )

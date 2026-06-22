@@ -192,7 +192,7 @@ The services use separate Dockerfiles and dependency files:
 - [`docker/kippen/Dockerfile`](docker/kippen/Dockerfile): Kippen registratie
   Flask app and Gunicorn.
 - [`docker/marimo/Dockerfile`](docker/marimo/Dockerfile): Marimo dashboard and
-  dashboard data dependencies for Kippen, Klauwgezondheid, and Tanken.
+  dashboard data dependencies for Kippen, Klauwgezondheid, Tanken, and Moneybird.
 - [`docker/database/Dockerfile`](docker/database/Dockerfile): Alembic migration
   runner for the `database/` package.
 - [`docker/datajobs/Dockerfile`](docker/datajobs/Dockerfile): Playwright-based
@@ -200,7 +200,7 @@ The services use separate Dockerfiles and dependency files:
 
 Traefik protects the Marimo dashboard paths with the portal `/auth/verify`
 ForwardAuth endpoint. Direct access to `/kippen-dashboard`, `/klauwgezondheid`,
-`/tank-terminal`, and their Marimo manifest routes without a valid shared
+`/tank-terminal`, `/moneybird`, and their Marimo manifest routes without a valid shared
 portal session and matching application access returns unauthorized.
 The Kippen registratie app at `/kippen` uses the shared portal session and
 requires active `kippen` application access.
@@ -263,7 +263,7 @@ docker compose --env-file .env.local.example -f docker-compose.yml -f docker-com
 
 The bootstrap command creates the core application keys (`kippen`,
 `dashboard_kippen`, `dashboard_klauwgezondheid`,
-`dashboard_tank_terminal`, and `user_administration`), the core roles
+`dashboard_tank_terminal`, `dashboard_moneybird`, and `user_administration`), the core roles
 (`admin`, `worker`, `viewer`), and grants the bootstrap admin access to those
 apps. If users already exist and
 `AUTH_BOOTSTRAP_USERNAME` is empty, it only refreshes the core apps and roles.
@@ -305,6 +305,7 @@ Local routes:
 - `http://localhost/kippen-dashboard`: Kippen Marimo dashboard.
 - `http://localhost/klauwgezondheid`: Marimo dashboard.
 - `http://localhost/tank-terminal`: Tanken Marimo dashboard.
+- `http://localhost/moneybird`: Moneybird Marimo dashboard.
 - `http://localhost:8080`: Adminer database editor.
 
 Adminer login for the local stack:
@@ -338,6 +339,7 @@ Production routes:
 - `https://app.gebroedersvroege.nl/kippen-dashboard`: Kippen Marimo dashboard.
 - `https://app.gebroedersvroege.nl/klauwgezondheid`: Marimo dashboard.
 - `https://app.gebroedersvroege.nl/tank-terminal`: Tanken Marimo dashboard.
+- `https://app.gebroedersvroege.nl/moneybird`: Moneybird Marimo dashboard.
 
 Clone the repository somewhere owned by the deploy user, for example:
 

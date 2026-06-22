@@ -24,6 +24,7 @@ PATH_APPLICATION_KEYS = [
     ("/kippen-dashboard", "dashboard_kippen"),
     ("/klauwgezondheid", "dashboard_klauwgezondheid"),
     ("/tank-terminal", "dashboard_tank_terminal"),
+    ("/moneybird", "dashboard_moneybird"),
 ]
 
 

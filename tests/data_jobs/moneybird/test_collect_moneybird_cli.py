@@ -180,3 +180,4 @@ def test_run_collects_and_persists_with_one_command_path(monkeypatch):
     assert captured["kwargs"]["sync_ledger_accounts"] is True
     assert captured["kwargs"]["sync_financial_accounts"] is True
     assert captured["kwargs"]["sync_financial_mutations"] is True
+    assert isinstance(captured["kwargs"]["logger"], FakeLogger)

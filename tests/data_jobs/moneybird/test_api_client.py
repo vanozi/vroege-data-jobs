@@ -9,6 +9,14 @@ from data_jobs.moneybird.exceptions import (
 )
 
 
+class FakeLogger:
+    def __init__(self):
+        self.messages = []
+
+    def info(self, message, *args):
+        self.messages.append(message % args if args else message)
+
+
 def build_config(**overrides) -> MoneybirdConfig:
     values = {
         "access_token": "secret-token",
@@ -101,6 +109,34 @@ def test_get_paginated_increments_page_when_no_link_and_page_is_full():
 
     assert requested_pages == ["1", "2"]
     assert rows == [{"id": "0"}, {"id": "1"}, {"id": "last"}]
+
+
+def test_get_paginated_logs_page_progress():
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page"))
+        if page < 3:
+            return httpx.Response(200, json=[{"id": str(page)}])
+
+        return httpx.Response(200, json=[])
+
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://moneybird.example.test/api/v2",
+    )
+    client = MoneybirdClient(config=build_config(), http_client=http_client)
+    logger = FakeLogger()
+
+    rows = client.get_paginated(
+        "/123/contacts.json",
+        params={"per_page": "1"},
+        logger=logger,
+        progress_interval_pages=2,
+    )
+
+    assert rows == [{"id": "1"}, {"id": "2"}]
+    assert logger.messages == [
+        "Fetched 2 Moneybird pages from /123/contacts.json; rows_so_far=2."
+    ]
 
 
 def test_post_json_sends_json_body():

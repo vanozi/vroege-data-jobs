@@ -151,3 +151,38 @@ services:
       - traefik.http.routers.marimo-tank-terminal-manifest.middlewares=portal-auth
       - traefik.http.routers.marimo-tank-terminal-manifest.priority=200
       - traefik.http.routers.marimo-tank-terminal-manifest.service=marimo-tank-terminal
+
+  marimo-moneybird:
+    volumes:
+      - ./dashboard:/app/dashboard
+      - ./database:/app/database
+    command: !override
+      - python
+      - -m
+      - marimo
+      - run
+      - dashboard/moneybird_dashboard.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "2721"
+      - --base-url
+      - /moneybird
+      - --proxy
+      - http://${APP_HOST}
+      - --no-token
+    labels: !override
+      - traefik.enable=true
+      - traefik.http.routers.marimo-moneybird.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && PathPrefix(`/moneybird`)
+      - traefik.http.routers.marimo-moneybird.entrypoints=web
+      - traefik.http.routers.marimo-moneybird.middlewares=portal-auth
+      - traefik.http.routers.marimo-moneybird.priority=100
+      - traefik.http.routers.marimo-moneybird.service=marimo-moneybird
+      - traefik.http.services.marimo-moneybird.loadbalancer.server.port=2721
+      - traefik.http.middlewares.portal-auth.forwardauth.address=http://portal:8000/auth/verify
+      - traefik.http.middlewares.portal-auth.forwardauth.trustForwardHeader=true
+      - traefik.http.routers.marimo-moneybird-manifest.rule=(Host(`${APP_HOST}`) || Host(`127.0.0.1`) || Host(`localhost`)) && Path(`/moneybird/manifest.json`)
+      - traefik.http.routers.marimo-moneybird-manifest.entrypoints=web
+      - traefik.http.routers.marimo-moneybird-manifest.middlewares=portal-auth
+      - traefik.http.routers.marimo-moneybird-manifest.priority=200
+      - traefik.http.routers.marimo-moneybird-manifest.service=marimo-moneybird

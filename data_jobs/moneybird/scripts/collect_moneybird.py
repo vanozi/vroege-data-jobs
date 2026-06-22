@@ -130,6 +130,7 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
                 args.financial_mutations,
                 config.sync_bank,
             ),
+            logger=logger,
         )
 
     saved_counts = _persist_rows(result, dry_run=args.dry_run)

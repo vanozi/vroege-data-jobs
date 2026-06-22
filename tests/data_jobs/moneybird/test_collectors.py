@@ -2,6 +2,14 @@ from data_jobs.moneybird import collectors
 from data_jobs.moneybird.config import MoneybirdConfig
 
 
+class FakeLogger:
+    def __init__(self):
+        self.messages = []
+
+    def info(self, message, *args):
+        self.messages.append(message % args if args else message)
+
+
 class FakeMoneybirdClient:
     def __init__(self):
         self.json_requests = []
@@ -16,7 +24,7 @@ class FakeMoneybirdClient:
             return {"assets": []}
         raise AssertionError(f"Unexpected path: {path}")
 
-    def get_paginated(self, path, params=None):
+    def get_paginated(self, path, params=None, logger=None, progress_interval_pages=5):
         self.paginated_requests.append((path, params))
         if path.endswith("/sales_invoices.json"):
             return [
@@ -146,7 +154,13 @@ def test_collect_dashboard_records_resolves_administration_by_name():
 
 def test_collect_financial_mutations_uses_synchronization_batches():
     class BatchClient(FakeMoneybirdClient):
-        def get_paginated(self, path, params=None):
+        def get_paginated(
+            self,
+            path,
+            params=None,
+            logger=None,
+            progress_interval_pages=5,
+        ):
             self.paginated_requests.append((path, params))
             return [{"id": f"mutation-{index}"} for index in range(101)]
 
@@ -157,15 +171,24 @@ def test_collect_financial_mutations_uses_synchronization_batches():
             ]
 
     client = BatchClient()
+    logger = FakeLogger()
 
     rows = collectors.collect_financial_mutations(
         client,
         administration_id="admin-1",
         period="this_year",
         synced_at=collectors.datetime(2026, 6, 22),
+        logger=logger,
     )
 
     assert len(rows) == 101
     assert len(client.post_requests) == 2
     assert len(client.post_requests[0][1]["ids"]) == 100
     assert len(client.post_requests[1][1]["ids"]) == 1
+    assert (
+        "Financial mutation synchronization index returned 101 ids in 2 batches."
+        in (logger.messages)
+    )
+    assert "Processed financial mutation batch 2/2; total mutations=101." in (
+        logger.messages
+    )

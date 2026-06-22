@@ -90,6 +90,14 @@ CORE_APPLICATIONS = [
         display_order=30,
     ),
     CoreApplication(
+        key="dashboard_moneybird",
+        name="Moneybird",
+        url="/moneybird",
+        category="dashboard",
+        description="Boekhoudkundig overzicht van facturen, rapporten en bankmutaties.",
+        display_order=35,
+    ),
+    CoreApplication(
         key="user_administration",
         name="Gebruikersbeheer",
         url="/admin/users",
@@ -123,6 +131,7 @@ ADMIN_ROLE_GRANTS = {
     "dashboard_kippen": ["viewer"],
     "dashboard_klauwgezondheid": ["viewer"],
     "dashboard_tank_terminal": ["viewer"],
+    "dashboard_moneybird": ["viewer"],
 }
 
 
