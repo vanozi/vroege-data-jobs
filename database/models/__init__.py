@@ -20,6 +20,17 @@ from .laying_hens import (
     OutsideNestEggRound,
 )
 from .melking import Melking
+from .moneybird import (
+    MoneybirdAdministration,
+    MoneybirdCollectionRun,
+    MoneybirdContact,
+    MoneybirdFinancialAccount,
+    MoneybirdFinancialMutation,
+    MoneybirdLedgerAccount,
+    MoneybirdPurchaseInvoice,
+    MoneybirdReportSnapshot,
+    MoneybirdSalesInvoice,
+)
 from .tank_transaction import TankTransaction
 
 __all__ = [
@@ -36,6 +47,15 @@ __all__ = [
     "Koe",
     "KoeDetail",
     "Melking",
+    "MoneybirdAdministration",
+    "MoneybirdCollectionRun",
+    "MoneybirdContact",
+    "MoneybirdFinancialAccount",
+    "MoneybirdFinancialMutation",
+    "MoneybirdLedgerAccount",
+    "MoneybirdPurchaseInvoice",
+    "MoneybirdReportSnapshot",
+    "MoneybirdSalesInvoice",
     "OutsideNestEggRound",
     "Role",
     "TankTransaction",

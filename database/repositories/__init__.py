@@ -17,6 +17,15 @@ from .laying_hens_repository import FeedWaterRegistrationsRepository
 from .laying_hens_repository import FlocksRepository
 from .laying_hens_repository import OutsideNestEggRoundsRepository
 from .melkingen_repository import MelkingenRepository
+from .moneybird_repository import MoneybirdAdministrationsRepository
+from .moneybird_repository import MoneybirdCollectionRunsRepository
+from .moneybird_repository import MoneybirdContactsRepository
+from .moneybird_repository import MoneybirdFinancialAccountsRepository
+from .moneybird_repository import MoneybirdFinancialMutationsRepository
+from .moneybird_repository import MoneybirdLedgerAccountsRepository
+from .moneybird_repository import MoneybirdPurchaseInvoicesRepository
+from .moneybird_repository import MoneybirdReportSnapshotsRepository
+from .moneybird_repository import MoneybirdSalesInvoicesRepository
 
 __all__ = [
     "ApplicationsRepository",
@@ -30,6 +39,15 @@ __all__ = [
     "KoeDetailRepository",
     "KoeRepository",
     "MelkingenRepository",
+    "MoneybirdAdministrationsRepository",
+    "MoneybirdCollectionRunsRepository",
+    "MoneybirdContactsRepository",
+    "MoneybirdFinancialAccountsRepository",
+    "MoneybirdFinancialMutationsRepository",
+    "MoneybirdLedgerAccountsRepository",
+    "MoneybirdPurchaseInvoicesRepository",
+    "MoneybirdReportSnapshotsRepository",
+    "MoneybirdSalesInvoicesRepository",
     "OutsideNestEggRoundsRepository",
     "RolesRepository",
     "UserApplicationAccessRepository",
