@@ -249,6 +249,12 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
     sales_states = _unique_strings(df_sales_invoices, "state", pl)
     purchase_states = _unique_strings(df_purchase_invoices, "state", pl)
     periods = _unique_strings(df_report_snapshots, "period", pl)
+    sales_contacts = _top_unique_strings(
+        df_sales_invoices,
+        "contact_name",
+        pl,
+        limit=250,
+    )
 
     sales_state_filter = mo.ui.multiselect(
         options=sales_states,
@@ -265,6 +271,11 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         value=periods[0] if periods else None,
         label="Rapportperiode",
     )
+    sales_contact_filter = mo.ui.multiselect(
+        options=sales_contacts,
+        value=sales_contacts,
+        label="Verkoopcontact",
+    )
 
     filters_content = mo.hstack(
         [
@@ -272,6 +283,7 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
             datum_tot_filter,
             period_filter,
             sales_state_filter,
+            sales_contact_filter,
             purchase_state_filter,
         ],
         justify="start",
@@ -281,6 +293,7 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         datum_van_filter,
         filters_content,
         period_filter,
+        sales_contact_filter,
         purchase_state_filter,
         sales_state_filter,
     )
@@ -298,6 +311,7 @@ def _(
     period_filter,
     pl,
     purchase_state_filter,
+    sales_contact_filter,
     sales_state_filter,
 ):
     """Filters toepassen."""
@@ -345,6 +359,10 @@ def _(
         df_sales_filtered = df_sales_filtered.filter(
             pl.col("state").is_in(sales_state_filter.value)
         )
+    if sales_contact_filter.value and df_sales_filtered.height > 0:
+        df_sales_filtered = df_sales_filtered.filter(
+            pl.col("contact_name").is_in(sales_contact_filter.value)
+        )
     if purchase_state_filter.value and df_purchase_filtered.height > 0:
         df_purchase_filtered = df_purchase_filtered.filter(
             pl.col("state").is_in(purchase_state_filter.value)
@@ -360,59 +378,156 @@ def _(
 
 @app.cell
 def _(
+    date,
+    df_financial_accounts,
+    df_financial_mutations,
     df_mutations_filtered,
     df_purchase_filtered,
+    df_purchase_invoices,
     df_reports_filtered,
     df_sales_filtered,
+    df_sales_invoices,
+    df_report_snapshots,
     mo,
     pl,
 ):
     """KPI's."""
-    if (
-        df_sales_filtered.height == 0
-        and df_purchase_filtered.height == 0
-        and df_reports_filtered.height == 0
-    ):
-        kpi_cards = mo.callout(
-            mo.md("Nog geen Moneybird data gevonden in de lokale database."),
-            kind="neutral",
-        )
-    else:
-        omzet = _report_value(df_reports_filtered, "profit_loss", "total_revenue", pl)
-        resultaat = _report_value(df_reports_filtered, "profit_loss", "net_profit", pl)
-        open_debiteuren = _sum_column(df_sales_filtered, "total_unpaid", pl)
-        open_crediteuren = _sum_open_purchase(df_purchase_filtered, pl)
-        bank_mutaties = _sum_column(df_mutations_filtered, "amount", pl)
+    vandaag = date.today()
+    omzet = _report_value(df_reports_filtered, "profit_loss", "total_revenue", pl)
+    kosten = _report_value(df_reports_filtered, "profit_loss", "total_expenses", pl)
+    bruto_marge = _report_value(df_reports_filtered, "profit_loss", "gross_profit", pl)
+    operationeel_resultaat = _report_value(
+        df_reports_filtered,
+        "profit_loss",
+        "operating_profit",
+        pl,
+    )
+    netto_resultaat = _report_value(
+        df_reports_filtered, "profit_loss", "net_profit", pl
+    )
+    open_debiteuren = _sum_column(df_sales_filtered, "total_unpaid", pl)
+    open_crediteuren = _sum_open_purchase(df_purchase_filtered, pl)
+    verlopen_verkoopfacturen = _count_overdue_invoices(
+        df_sales_filtered,
+        due_date_column="due_date",
+        paid_at_column="paid_at",
+        today=vandaag,
+        pl=pl,
+    )
+    verlopen_inkoopfacturen = _count_overdue_invoices(
+        df_purchase_filtered,
+        due_date_column="due_date",
+        paid_at_column="paid_at",
+        today=vandaag,
+        pl=pl,
+    )
 
-        kpi_cards = mo.hstack(
+    kpi_cards = mo.vstack(
+        [
+            mo.hstack(
+                [
+                    mo.stat(
+                        value=_format_euro(omzet),
+                        label="Omzet",
+                        caption="gekozen rapportperiode",
+                    ),
+                    mo.stat(
+                        value=_format_euro(kosten),
+                        label="Kosten",
+                        caption="gekozen rapportperiode",
+                    ),
+                    mo.stat(
+                        value=_format_euro(bruto_marge),
+                        label="Bruto marge",
+                        caption="gekozen rapportperiode",
+                    ),
+                    mo.stat(
+                        value=_format_euro(operationeel_resultaat),
+                        label="Operationeel resultaat",
+                        caption="gekozen rapportperiode",
+                    ),
+                    mo.stat(
+                        value=_format_euro(netto_resultaat),
+                        label="Netto resultaat",
+                        caption="gekozen rapportperiode",
+                    ),
+                ],
+                justify="space-between",
+            ),
+            mo.hstack(
+                [
+                    mo.stat(
+                        value=_format_euro(open_debiteuren),
+                        label="Open debiteuren",
+                        caption="binnen huidige filter",
+                    ),
+                    mo.stat(
+                        value=_format_euro(open_crediteuren),
+                        label="Open crediteuren",
+                        caption="binnen huidige filter",
+                    ),
+                    mo.stat(
+                        value=str(verlopen_verkoopfacturen),
+                        label="Verlopen verkoopfacturen",
+                        caption="open en vervallen",
+                    ),
+                    mo.stat(
+                        value=str(verlopen_inkoopfacturen),
+                        label="Verlopen inkoopfacturen",
+                        caption="open en vervallen",
+                    ),
+                ],
+                justify="space-between",
+            ),
+            mo.hstack(
+                [
+                    mo.stat(
+                        value=_latest_sync_text(df_sales_invoices, "synced_at", pl),
+                        label="Sync verkoop",
+                        caption=f"{df_sales_invoices.height} rijen",
+                    ),
+                    mo.stat(
+                        value=_latest_sync_text(df_purchase_invoices, "synced_at", pl),
+                        label="Sync inkoop",
+                        caption=f"{df_purchase_invoices.height} rijen",
+                    ),
+                    mo.stat(
+                        value=_latest_sync_text(df_report_snapshots, "synced_at", pl),
+                        label="Sync rapporten",
+                        caption=f"{df_report_snapshots.height} rijen",
+                    ),
+                    mo.stat(
+                        value=_latest_sync_text(df_financial_accounts, "synced_at", pl),
+                        label="Sync rekeningen",
+                        caption=f"{df_financial_accounts.height} rijen",
+                    ),
+                    mo.stat(
+                        value=_latest_sync_text(
+                            df_financial_mutations, "synced_at", pl
+                        ),
+                        label="Sync bank",
+                        caption=f"{df_financial_mutations.height} rijen",
+                    ),
+                ],
+                justify="space-between",
+            ),
+        ]
+    )
+    if (
+        df_sales_invoices.height == 0
+        and df_purchase_invoices.height == 0
+        and df_report_snapshots.height == 0
+        and df_financial_accounts.height == 0
+        and df_financial_mutations.height == 0
+    ):
+        kpi_cards = mo.vstack(
             [
-                mo.stat(
-                    value=_format_euro(omzet),
-                    label="Omzet",
-                    caption="profit/loss rapport",
+                mo.callout(
+                    mo.md("Nog geen Moneybird data gevonden in de lokale database."),
+                    kind="neutral",
                 ),
-                mo.stat(
-                    value=_format_euro(resultaat),
-                    label="Resultaat",
-                    caption="netto resultaat",
-                ),
-                mo.stat(
-                    value=_format_euro(open_debiteuren),
-                    label="Open debiteuren",
-                    caption="verkoopfacturen",
-                ),
-                mo.stat(
-                    value=_format_euro(open_crediteuren),
-                    label="Open crediteuren",
-                    caption="onbetaalde inkoopfacturen",
-                ),
-                mo.stat(
-                    value=_format_euro(bank_mutaties),
-                    label="Bankmutaties",
-                    caption="som binnen filter",
-                ),
-            ],
-            justify="space-between",
+                kpi_cards,
+            ]
         )
     return (kpi_cards,)
 
@@ -470,56 +585,116 @@ def _(alt, df_purchase_filtered, df_sales_filtered, mo, pl):
 @app.cell
 def _(df_sales_filtered, mo):
     """Verkoopfacturen tabel."""
-    if df_sales_filtered.height == 0:
-        sales_table = mo.callout(
-            mo.md("Geen verkoopfacturen binnen de huidige filter."),
+    sales_table = _sales_invoice_table(
+        df_sales_filtered,
+        mo,
+        empty_message="Geen verkoopfacturen binnen de huidige filter.",
+        label="Alle verkoopfacturen",
+        page_size=25,
+    )
+    return (sales_table,)
+
+
+@app.cell
+def _(alt, date, df_sales_filtered, mo, pl, sales_table):
+    """Verkoop tab met openstaande en verlopen facturen."""
+    today = date.today()
+    df_sales_open = _open_invoice_rows(
+        df_sales_filtered, paid_at_column="paid_at", pl=pl
+    )
+    df_sales_overdue = _overdue_invoice_rows(
+        df_sales_filtered,
+        due_date_column="due_date",
+        paid_at_column="paid_at",
+        today=today,
+        pl=pl,
+    )
+    sales_revenue = _sum_column(df_sales_filtered, "total_price_incl_tax", pl)
+    sales_open_amount = _sum_column(df_sales_open, "total_unpaid", pl)
+    sales_overdue_amount = _sum_column(df_sales_overdue, "total_unpaid", pl)
+
+    sales_summary = mo.hstack(
+        [
+            mo.stat(
+                value=str(df_sales_filtered.height),
+                label="Verkoopfacturen",
+                caption="binnen huidige filter",
+            ),
+            mo.stat(
+                value=_format_euro(sales_revenue),
+                label="Gefactureerd",
+                caption="totaal incl. btw",
+            ),
+            mo.stat(
+                value=str(df_sales_open.height),
+                label="Openstaand",
+                caption=_format_euro(sales_open_amount),
+            ),
+            mo.stat(
+                value=str(df_sales_overdue.height),
+                label="Verlopen",
+                caption=_format_euro(sales_overdue_amount),
+            ),
+        ],
+        justify="space-between",
+    )
+
+    sales_chart_data = _monthly_amounts(
+        df_sales_filtered,
+        date_column="invoice_date",
+        amount_column="total_price_incl_tax",
+        label="Omzet",
+        pl=pl,
+    )
+    if sales_chart_data.height == 0:
+        sales_revenue_chart = mo.callout(
+            mo.md("Geen omzetdata binnen de huidige verkoopfilter."),
             kind="neutral",
         )
     else:
-        sales_table_data = _format_money_columns(
-            _add_status_label(
-                df_sales_filtered, source_column="state", label_column="Status"
-            ),
-            [
-                "total_price_incl_tax",
-                "total_paid",
-                "total_unpaid",
-            ],
-        )
-        sales_table = mo.ui.table(
-            sales_table_data.select(
-                [
-                    "invoice_date",
-                    "invoice_id",
-                    "contact_name",
-                    "Status",
-                    "due_date",
-                    "paid_at",
-                    "total_price_incl_tax",
-                    "total_paid",
-                    "total_unpaid",
-                    "reminder_count",
-                ]
+        sales_chart = (
+            alt.Chart(sales_chart_data.to_pandas())
+            .mark_bar(color="#2563eb")
+            .encode(
+                x=alt.X("Maand:N", title="Maand"),
+                y=alt.Y("Bedrag:Q", title="Omzet incl. btw"),
+                tooltip=[
+                    alt.Tooltip("Maand:N", title="Maand"),
+                    alt.Tooltip("Bedrag:Q", title="Omzet", format=",.2f"),
+                ],
             )
-            .rename(
-                {
-                    "invoice_date": "Factuurdatum",
-                    "invoice_id": "Factuurnummer",
-                    "contact_name": "Contact",
-                    "due_date": "Vervaldatum",
-                    "paid_at": "Betaaldatum",
-                    "total_price_incl_tax": "Totaal incl. btw",
-                    "total_paid": "Betaald",
-                    "total_unpaid": "Open",
-                    "reminder_count": "Herinneringen",
-                }
-            )
-            .to_pandas(),
-            selection=None,
-            page_size=20,
-            label="Verkoopfacturen",
+            .properties(width=900, height=320, title="Omzet per maand")
         )
-    return (sales_table,)
+        sales_revenue_chart = mo.ui.altair_chart(sales_chart)
+
+    sales_open_table = _sales_invoice_table(
+        df_sales_open,
+        mo,
+        empty_message="Geen openstaande verkoopfacturen binnen de huidige filter.",
+        label="Openstaande verkoopfacturen",
+        page_size=15,
+    )
+    sales_overdue_table = _sales_invoice_table(
+        df_sales_overdue,
+        mo,
+        empty_message="Geen verlopen verkoopfacturen binnen de huidige filter.",
+        label="Verlopen verkoopfacturen",
+        page_size=15,
+    )
+
+    sales_content = mo.vstack(
+        [
+            sales_summary,
+            sales_revenue_chart,
+            mo.md("## Openstaande verkoopfacturen"),
+            sales_open_table,
+            mo.md("## Verlopen verkoopfacturen"),
+            sales_overdue_table,
+            mo.md("## Alle verkoopfacturen"),
+            sales_table,
+        ]
+    )
+    return (sales_content,)
 
 
 @app.cell
@@ -832,7 +1007,7 @@ def _(
     purchase_table,
     quality_content,
     reports_content,
-    sales_table,
+    sales_content,
 ):
     """Dashboard layout."""
     tabs = mo.ui.tabs(
@@ -844,7 +1019,7 @@ def _(
                     invoice_chart,
                 ]
             ),
-            "Verkoop": sales_table,
+            "Verkoop": sales_content,
             "Inkoop": purchase_table,
             "Bank": bank_content,
             "Rapporten": reports_content,
@@ -870,6 +1045,23 @@ def _unique_strings(df, column: str, pl) -> list[str]:
     )
 
 
+def _top_unique_strings(df, column: str, pl, *, limit: int) -> list[str]:
+    if df.height == 0 or column not in df.columns:
+        return []
+
+    return (
+        df.filter(pl.col(column).is_not_null())
+        .with_columns(pl.col(column).cast(pl.String).str.strip_chars().alias(column))
+        .filter(pl.col(column) != "")
+        .group_by(column)
+        .agg(pl.len().alias("count"))
+        .sort(["count", column], descending=[True, False])
+        .head(limit)
+        .sort(column)[column]
+        .to_list()
+    )
+
+
 def _sum_column(df, column: str, pl) -> Decimal:
     if df.height == 0 or column not in df.columns:
         return Decimal("0")
@@ -889,6 +1081,53 @@ def _sum_open_purchase(df, pl) -> Decimal:
     return _sum_column(open_rows, "total_price_incl_tax", pl)
 
 
+def _count_overdue_invoices(
+    df,
+    *,
+    due_date_column: str,
+    paid_at_column: str,
+    today,
+    pl,
+) -> int:
+    if df.height == 0:
+        return 0
+    if due_date_column not in df.columns or paid_at_column not in df.columns:
+        return 0
+
+    return df.filter(
+        pl.col(due_date_column).is_not_null()
+        & (pl.col(due_date_column) < today)
+        & pl.col(paid_at_column).is_null()
+    ).height
+
+
+def _open_invoice_rows(df, *, paid_at_column: str, pl):
+    if df.height == 0 or paid_at_column not in df.columns:
+        return df
+
+    return df.filter(pl.col(paid_at_column).is_null())
+
+
+def _overdue_invoice_rows(
+    df,
+    *,
+    due_date_column: str,
+    paid_at_column: str,
+    today,
+    pl,
+):
+    if df.height == 0:
+        return df
+    if due_date_column not in df.columns or paid_at_column not in df.columns:
+        return df
+
+    return df.filter(
+        pl.col(due_date_column).is_not_null()
+        & (pl.col(due_date_column) < today)
+        & pl.col(paid_at_column).is_null()
+    )
+
+
 def _report_value(df, report_type: str, column: str, pl) -> Decimal:
     if df.height == 0 or column not in df.columns:
         return Decimal("0")
@@ -898,19 +1137,32 @@ def _report_value(df, report_type: str, column: str, pl) -> Decimal:
 
 
 def _format_euro(value: Decimal) -> str:
-    return f"EUR {value:,.2f}"
+    formatted = f"{value:,.2f}"
+    dutch_formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"EUR {dutch_formatted}"
 
 
 def _format_euro_cell(value: object) -> str:
     if value is None:
-        return "EUR 0.00"
+        return "EUR 0,00"
 
     try:
         amount = Decimal(str(value))
     except (ValueError, ArithmeticError):
-        return "EUR 0.00"
+        return "EUR 0,00"
 
     return _format_euro(amount)
+
+
+def _latest_sync_text(df, synced_at_column: str, polars_module) -> str:
+    if df.height == 0 or synced_at_column not in df.columns:
+        return "Geen data"
+
+    latest_sync = df.select(polars_module.col(synced_at_column).max())[0, 0]
+    if latest_sync is None:
+        return "Geen data"
+
+    return str(latest_sync)
 
 
 def _format_money_columns(df, columns: list[str]):
@@ -931,6 +1183,62 @@ def _format_money_columns(df, columns: list[str]):
         return df
 
     return df.with_columns(expressions)
+
+
+def _sales_invoice_display_df(df):
+    sales_table_data = _format_money_columns(
+        _add_status_label(df, source_column="state", label_column="Status"),
+        [
+            "total_price_incl_tax",
+            "total_paid",
+            "total_unpaid",
+        ],
+    )
+    return sales_table_data.select(
+        [
+            "invoice_date",
+            "invoice_id",
+            "contact_name",
+            "Status",
+            "due_date",
+            "paid_at",
+            "total_price_incl_tax",
+            "total_paid",
+            "total_unpaid",
+            "reminder_count",
+        ]
+    ).rename(
+        {
+            "invoice_date": "Factuurdatum",
+            "invoice_id": "Factuurnummer",
+            "contact_name": "Contact",
+            "due_date": "Vervaldatum",
+            "paid_at": "Betaaldatum",
+            "total_price_incl_tax": "Totaal incl. btw",
+            "total_paid": "Betaald",
+            "total_unpaid": "Open bedrag",
+            "reminder_count": "Herinneringen",
+        }
+    )
+
+
+def _sales_invoice_table(
+    df,
+    mo,
+    *,
+    empty_message: str,
+    label: str,
+    page_size: int,
+):
+    if df.height == 0:
+        return mo.callout(mo.md(empty_message), kind="neutral")
+
+    return mo.ui.table(
+        _sales_invoice_display_df(df).to_pandas(),
+        selection=None,
+        page_size=page_size,
+        label=label,
+    )
 
 
 def _add_status_label(df, *, source_column: str, label_column: str):
