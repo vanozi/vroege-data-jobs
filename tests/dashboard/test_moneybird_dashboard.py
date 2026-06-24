@@ -164,6 +164,63 @@ def test_sales_invoice_display_df_formats_expected_columns():
     assert display_df["Open bedrag"].to_list() == ["EUR 121,00"]
 
 
+def test_purchase_invoice_display_df_formats_expected_columns():
+    df = pl.DataFrame(
+        [
+            {
+                "date": date(2026, 6, 1),
+                "entry_number": 42,
+                "reference": "INK-001",
+                "contact_name": "Leverancier",
+                "state": "open",
+                "due_date": date(2026, 6, 15),
+                "paid_at": None,
+                "total_price_incl_tax": Decimal("242.00"),
+                "total_price_incl_tax_base": Decimal("242.00"),
+            }
+        ]
+    )
+
+    display_df = moneybird_dashboard._purchase_invoice_display_df(df)
+
+    assert display_df.columns == [
+        "Datum",
+        "Boekstuk",
+        "Referentie",
+        "Leverancier",
+        "Status",
+        "Vervaldatum",
+        "Betaaldatum",
+        "Totaal incl. btw",
+        "Totaal basisvaluta",
+    ]
+    assert display_df["Status"].to_list() == ["Open"]
+    assert display_df["Totaal incl. btw"].to_list() == ["EUR 242,00"]
+
+
+def test_monthly_amounts_builds_scanable_purchase_costs_per_month():
+    df = pl.DataFrame(
+        [
+            {"date": date(2026, 6, 1), "total_price_incl_tax": Decimal("100.00")},
+            {"date": date(2026, 6, 15), "total_price_incl_tax": Decimal("50.00")},
+            {"date": date(2026, 7, 1), "total_price_incl_tax": Decimal("25.00")},
+        ]
+    )
+
+    monthly = moneybird_dashboard._monthly_amounts(
+        df,
+        date_column="date",
+        amount_column="total_price_incl_tax",
+        label="Kosten",
+        pl=pl,
+    )
+
+    assert monthly.to_dicts() == [
+        {"Maand": "2026-06", "Type": "Kosten", "Bedrag": 150.0},
+        {"Maand": "2026-07", "Type": "Kosten", "Bedrag": 25.0},
+    ]
+
+
 def test_latest_sync_text_returns_latest_timestamp_or_no_data():
     df = pl.DataFrame(
         [

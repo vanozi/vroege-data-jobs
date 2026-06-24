@@ -255,6 +255,12 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         pl,
         limit=250,
     )
+    purchase_contacts = _top_unique_strings(
+        df_purchase_invoices,
+        "contact_name",
+        pl,
+        limit=250,
+    )
 
     sales_state_filter = mo.ui.multiselect(
         options=sales_states,
@@ -265,6 +271,11 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         options=purchase_states,
         value=purchase_states,
         label="Inkoopstatus",
+    )
+    purchase_contact_filter = mo.ui.multiselect(
+        options=purchase_contacts,
+        value=purchase_contacts,
+        label="Leverancier",
     )
     period_filter = mo.ui.dropdown(
         options=periods,
@@ -285,6 +296,7 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
             sales_state_filter,
             sales_contact_filter,
             purchase_state_filter,
+            purchase_contact_filter,
         ],
         justify="start",
     )
@@ -294,6 +306,7 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         filters_content,
         period_filter,
         sales_contact_filter,
+        purchase_contact_filter,
         purchase_state_filter,
         sales_state_filter,
     )
@@ -310,6 +323,7 @@ def _(
     df_sales_invoices,
     period_filter,
     pl,
+    purchase_contact_filter,
     purchase_state_filter,
     sales_contact_filter,
     sales_state_filter,
@@ -366,6 +380,10 @@ def _(
     if purchase_state_filter.value and df_purchase_filtered.height > 0:
         df_purchase_filtered = df_purchase_filtered.filter(
             pl.col("state").is_in(purchase_state_filter.value)
+        )
+    if purchase_contact_filter.value and df_purchase_filtered.height > 0:
+        df_purchase_filtered = df_purchase_filtered.filter(
+            pl.col("contact_name").is_in(purchase_contact_filter.value)
         )
 
     return (
@@ -700,53 +718,126 @@ def _(alt, date, df_sales_filtered, mo, pl, sales_table):
 @app.cell
 def _(df_purchase_filtered, mo):
     """Inkoopfacturen tabel."""
-    if df_purchase_filtered.height == 0:
-        purchase_table = mo.callout(
-            mo.md("Geen inkoopfacturen binnen de huidige filter."),
+    purchase_table = _purchase_invoice_table(
+        df_purchase_filtered,
+        mo,
+        empty_message="Geen inkoopfacturen binnen de huidige filter.",
+        label="Alle inkoopfacturen",
+        page_size=25,
+    )
+    return (purchase_table,)
+
+
+@app.cell
+def _(alt, date, df_purchase_filtered, mo, pl, purchase_table):
+    """Inkoop tab met openstaande en verlopen facturen."""
+    today = date.today()
+    df_purchase_open = _open_invoice_rows(
+        df_purchase_filtered,
+        paid_at_column="paid_at",
+        pl=pl,
+    )
+    df_purchase_overdue = _overdue_invoice_rows(
+        df_purchase_filtered,
+        due_date_column="due_date",
+        paid_at_column="paid_at",
+        today=today,
+        pl=pl,
+    )
+    purchase_costs = _sum_column(df_purchase_filtered, "total_price_incl_tax", pl)
+    purchase_open_amount = _sum_column(
+        df_purchase_open,
+        "total_price_incl_tax",
+        pl,
+    )
+    purchase_overdue_amount = _sum_column(
+        df_purchase_overdue,
+        "total_price_incl_tax",
+        pl,
+    )
+
+    purchase_summary = mo.hstack(
+        [
+            mo.stat(
+                value=str(df_purchase_filtered.height),
+                label="Inkoopfacturen",
+                caption="binnen huidige filter",
+            ),
+            mo.stat(
+                value=_format_euro(purchase_costs),
+                label="Kosten",
+                caption="totaal incl. btw",
+            ),
+            mo.stat(
+                value=str(df_purchase_open.height),
+                label="Openstaand",
+                caption=_format_euro(purchase_open_amount),
+            ),
+            mo.stat(
+                value=str(df_purchase_overdue.height),
+                label="Verlopen",
+                caption=_format_euro(purchase_overdue_amount),
+            ),
+        ],
+        justify="space-between",
+    )
+
+    purchase_chart_data = _monthly_amounts(
+        df_purchase_filtered,
+        date_column="date",
+        amount_column="total_price_incl_tax",
+        label="Kosten",
+        pl=pl,
+    )
+    if purchase_chart_data.height == 0:
+        purchase_cost_chart = mo.callout(
+            mo.md("Geen kostendata binnen de huidige inkoopfilter."),
             kind="neutral",
         )
     else:
-        purchase_table_data = _format_money_columns(
-            _add_status_label(
-                df_purchase_filtered, source_column="state", label_column="Status"
-            ),
-            [
-                "total_price_incl_tax",
-                "total_price_incl_tax_base",
-            ],
-        )
-        purchase_table = mo.ui.table(
-            purchase_table_data.select(
-                [
-                    "date",
-                    "entry_number",
-                    "reference",
-                    "contact_name",
-                    "Status",
-                    "due_date",
-                    "paid_at",
-                    "total_price_incl_tax",
-                    "total_price_incl_tax_base",
-                ]
+        purchase_chart = (
+            alt.Chart(purchase_chart_data.to_pandas())
+            .mark_bar(color="#dc2626")
+            .encode(
+                x=alt.X("Maand:N", title="Maand"),
+                y=alt.Y("Bedrag:Q", title="Kosten incl. btw"),
+                tooltip=[
+                    alt.Tooltip("Maand:N", title="Maand"),
+                    alt.Tooltip("Bedrag:Q", title="Kosten", format=",.2f"),
+                ],
             )
-            .rename(
-                {
-                    "date": "Datum",
-                    "entry_number": "Boekstuk",
-                    "reference": "Referentie",
-                    "contact_name": "Contact",
-                    "due_date": "Vervaldatum",
-                    "paid_at": "Betaaldatum",
-                    "total_price_incl_tax": "Totaal incl. btw",
-                    "total_price_incl_tax_base": "Totaal basisvaluta",
-                }
-            )
-            .to_pandas(),
-            selection=None,
-            page_size=20,
-            label="Inkoopfacturen",
+            .properties(width=900, height=320, title="Inkoopkosten per maand")
         )
-    return (purchase_table,)
+        purchase_cost_chart = mo.ui.altair_chart(purchase_chart)
+
+    purchase_open_table = _purchase_invoice_table(
+        df_purchase_open,
+        mo,
+        empty_message="Geen openstaande inkoopfacturen binnen de huidige filter.",
+        label="Openstaande inkoopfacturen",
+        page_size=15,
+    )
+    purchase_overdue_table = _purchase_invoice_table(
+        df_purchase_overdue,
+        mo,
+        empty_message="Geen verlopen inkoopfacturen binnen de huidige filter.",
+        label="Verlopen inkoopfacturen",
+        page_size=15,
+    )
+
+    purchase_content = mo.vstack(
+        [
+            purchase_summary,
+            purchase_cost_chart,
+            mo.md("## Openstaande inkoopfacturen"),
+            purchase_open_table,
+            mo.md("## Verlopen inkoopfacturen"),
+            purchase_overdue_table,
+            mo.md("## Alle inkoopfacturen"),
+            purchase_table,
+        ]
+    )
+    return (purchase_content,)
 
 
 @app.cell
@@ -1004,7 +1095,7 @@ def _(
     invoice_chart,
     kpi_cards,
     mo,
-    purchase_table,
+    purchase_content,
     quality_content,
     reports_content,
     sales_content,
@@ -1020,7 +1111,7 @@ def _(
                 ]
             ),
             "Verkoop": sales_content,
-            "Inkoop": purchase_table,
+            "Inkoop": purchase_content,
             "Bank": bank_content,
             "Rapporten": reports_content,
             "Datakwaliteit": quality_content,
@@ -1235,6 +1326,59 @@ def _sales_invoice_table(
 
     return mo.ui.table(
         _sales_invoice_display_df(df).to_pandas(),
+        selection=None,
+        page_size=page_size,
+        label=label,
+    )
+
+
+def _purchase_invoice_display_df(df):
+    purchase_table_data = _format_money_columns(
+        _add_status_label(df, source_column="state", label_column="Status"),
+        [
+            "total_price_incl_tax",
+            "total_price_incl_tax_base",
+        ],
+    )
+    return purchase_table_data.select(
+        [
+            "date",
+            "entry_number",
+            "reference",
+            "contact_name",
+            "Status",
+            "due_date",
+            "paid_at",
+            "total_price_incl_tax",
+            "total_price_incl_tax_base",
+        ]
+    ).rename(
+        {
+            "date": "Datum",
+            "entry_number": "Boekstuk",
+            "reference": "Referentie",
+            "contact_name": "Leverancier",
+            "due_date": "Vervaldatum",
+            "paid_at": "Betaaldatum",
+            "total_price_incl_tax": "Totaal incl. btw",
+            "total_price_incl_tax_base": "Totaal basisvaluta",
+        }
+    )
+
+
+def _purchase_invoice_table(
+    df,
+    mo,
+    *,
+    empty_message: str,
+    label: str,
+    page_size: int,
+):
+    if df.height == 0:
+        return mo.callout(mo.md(empty_message), kind="neutral")
+
+    return mo.ui.table(
+        _purchase_invoice_display_df(df).to_pandas(),
         selection=None,
         page_size=page_size,
         label=label,
