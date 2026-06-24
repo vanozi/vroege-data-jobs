@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 import marimo
+import polars as pl
 
 __generated_with = "0.23.5"
 app = marimo.App(width="full")
@@ -475,16 +476,25 @@ def _(df_sales_filtered, mo):
             kind="neutral",
         )
     else:
+        sales_table_data = _format_money_columns(
+            _add_status_label(
+                df_sales_filtered, source_column="state", label_column="Status"
+            ),
+            [
+                "total_price_incl_tax",
+                "total_paid",
+                "total_unpaid",
+            ],
+        )
         sales_table = mo.ui.table(
-            df_sales_filtered.select(
+            sales_table_data.select(
                 [
                     "invoice_date",
                     "invoice_id",
                     "contact_name",
-                    "state",
+                    "Status",
                     "due_date",
                     "paid_at",
-                    "currency",
                     "total_price_incl_tax",
                     "total_paid",
                     "total_unpaid",
@@ -496,10 +506,8 @@ def _(df_sales_filtered, mo):
                     "invoice_date": "Factuurdatum",
                     "invoice_id": "Factuurnummer",
                     "contact_name": "Contact",
-                    "state": "Status",
                     "due_date": "Vervaldatum",
                     "paid_at": "Betaaldatum",
-                    "currency": "Valuta",
                     "total_price_incl_tax": "Totaal incl. btw",
                     "total_paid": "Betaald",
                     "total_unpaid": "Open",
@@ -523,17 +531,25 @@ def _(df_purchase_filtered, mo):
             kind="neutral",
         )
     else:
+        purchase_table_data = _format_money_columns(
+            _add_status_label(
+                df_purchase_filtered, source_column="state", label_column="Status"
+            ),
+            [
+                "total_price_incl_tax",
+                "total_price_incl_tax_base",
+            ],
+        )
         purchase_table = mo.ui.table(
-            df_purchase_filtered.select(
+            purchase_table_data.select(
                 [
                     "date",
                     "entry_number",
                     "reference",
                     "contact_name",
-                    "state",
+                    "Status",
                     "due_date",
                     "paid_at",
-                    "currency",
                     "total_price_incl_tax",
                     "total_price_incl_tax_base",
                 ]
@@ -544,10 +560,8 @@ def _(df_purchase_filtered, mo):
                     "entry_number": "Boekstuk",
                     "reference": "Referentie",
                     "contact_name": "Contact",
-                    "state": "Status",
                     "due_date": "Vervaldatum",
                     "paid_at": "Betaaldatum",
-                    "currency": "Valuta",
                     "total_price_incl_tax": "Totaal incl. btw",
                     "total_price_incl_tax_base": "Totaal basisvaluta",
                 }
@@ -569,10 +583,31 @@ def _(df_ledger_accounts, df_reports_filtered, mo):
             kind="neutral",
         )
     else:
+        reports_table_data = _format_money_columns(
+            _add_report_type_label(df_reports_filtered),
+            [
+                "total_revenue",
+                "total_expenses",
+                "gross_profit",
+                "operating_profit",
+                "net_profit",
+            ],
+        )
         reports_table = mo.ui.table(
-            df_reports_filtered.rename(
+            reports_table_data.select(
+                [
+                    "Rapport",
+                    "period",
+                    "total_revenue",
+                    "total_expenses",
+                    "gross_profit",
+                    "operating_profit",
+                    "net_profit",
+                    "synced_at",
+                ]
+            )
+            .rename(
                 {
-                    "report_type": "Rapport",
                     "period": "Periode",
                     "total_revenue": "Omzet",
                     "total_expenses": "Kosten",
@@ -581,7 +616,8 @@ def _(df_ledger_accounts, df_reports_filtered, mo):
                     "net_profit": "Netto resultaat",
                     "synced_at": "Gesynchroniseerd",
                 }
-            ).to_pandas(),
+            )
+            .to_pandas(),
             selection=None,
             page_size=10,
             label="Rapport snapshots",
@@ -653,8 +689,20 @@ def _(df_financial_accounts, df_mutations_filtered, mo):
             kind="neutral",
         )
     else:
+        mutations_table_data = _format_money_columns(
+            _add_status_label(
+                _add_status_label(
+                    df_mutations_filtered,
+                    source_column="state",
+                    label_column="Status",
+                ),
+                source_column="settlement_state",
+                label_column="Afletterstatus",
+            ),
+            ["amount", "amount_open"],
+        )
         mutations_table = mo.ui.table(
-            df_mutations_filtered.select(
+            mutations_table_data.select(
                 [
                     "date",
                     "financial_account_name",
@@ -663,8 +711,8 @@ def _(df_financial_accounts, df_mutations_filtered, mo):
                     "contra_account_name",
                     "contra_account_number",
                     "message",
-                    "state",
-                    "settlement_state",
+                    "Status",
+                    "Afletterstatus",
                 ]
             )
             .rename(
@@ -676,8 +724,6 @@ def _(df_financial_accounts, df_mutations_filtered, mo):
                     "contra_account_name": "Tegenrekening naam",
                     "contra_account_number": "Tegenrekening",
                     "message": "Omschrijving",
-                    "state": "Status",
-                    "settlement_state": "Afletterstatus",
                 }
             )
             .to_pandas(),
@@ -699,12 +745,92 @@ def _(df_financial_accounts, df_mutations_filtered, mo):
 
 @app.cell
 def _(
+    df_financial_accounts,
+    df_financial_mutations,
+    df_purchase_invoices,
+    df_report_snapshots,
+    df_sales_invoices,
+    mo,
+    pl,
+):
+    """Datakwaliteit tab."""
+    quality_rows = [
+        _dataset_quality_row("Verkoopfacturen", df_sales_invoices, "synced_at", pl),
+        _dataset_quality_row("Inkoopfacturen", df_purchase_invoices, "synced_at", pl),
+        _dataset_quality_row("Rapport snapshots", df_report_snapshots, "synced_at", pl),
+        _dataset_quality_row(
+            "Financiele rekeningen", df_financial_accounts, "synced_at", pl
+        ),
+        _dataset_quality_row("Bankmutaties", df_financial_mutations, "synced_at", pl),
+    ]
+    quality_table = mo.ui.table(
+        pl.DataFrame(quality_rows).to_pandas(),
+        selection=None,
+        page_size=10,
+        label="Datastatus",
+    )
+
+    missing_sales_contacts = _count_missing_lookup(
+        df_sales_invoices,
+        id_column="contact_id",
+        name_column="contact_name",
+        pl=pl,
+    )
+    missing_purchase_contacts = _count_missing_lookup(
+        df_purchase_invoices,
+        id_column="contact_id",
+        name_column="contact_name",
+        pl=pl,
+    )
+    missing_financial_accounts = _count_missing_lookup(
+        df_financial_mutations,
+        id_column="financial_account_id",
+        name_column="financial_account_name",
+        pl=pl,
+    )
+
+    quality_checks = mo.ui.table(
+        pl.DataFrame(
+            [
+                {
+                    "Controle": "Verkoopfacturen zonder lokale contactnaam",
+                    "Aantal": missing_sales_contacts,
+                },
+                {
+                    "Controle": "Inkoopfacturen zonder lokale contactnaam",
+                    "Aantal": missing_purchase_contacts,
+                },
+                {
+                    "Controle": "Bankmutaties zonder lokale rekeningnaam",
+                    "Aantal": missing_financial_accounts,
+                },
+            ]
+        ).to_pandas(),
+        selection=None,
+        page_size=10,
+        label="Controles",
+    )
+
+    quality_content = mo.vstack(
+        [
+            mo.md("## Datakwaliteit"),
+            quality_table,
+            mo.md("## Controles"),
+            quality_checks,
+        ]
+    )
+    return (quality_content,)
+
+
+@app.cell
+def _(
     bank_content,
     filters_content,
     invoice_chart,
     kpi_cards,
     mo,
     purchase_table,
+    quality_content,
     reports_content,
     sales_table,
 ):
@@ -720,8 +846,9 @@ def _(
             ),
             "Verkoop": sales_table,
             "Inkoop": purchase_table,
-            "Rapporten": reports_content,
             "Bank": bank_content,
+            "Rapporten": reports_content,
+            "Datakwaliteit": quality_content,
         }
     )
 
@@ -772,6 +899,126 @@ def _report_value(df, report_type: str, column: str, pl) -> Decimal:
 
 def _format_euro(value: Decimal) -> str:
     return f"EUR {value:,.2f}"
+
+
+def _format_euro_cell(value: object) -> str:
+    if value is None:
+        return "EUR 0.00"
+
+    try:
+        amount = Decimal(str(value))
+    except (ValueError, ArithmeticError):
+        return "EUR 0.00"
+
+    return _format_euro(amount)
+
+
+def _format_money_columns(df, columns: list[str]):
+    if df.height == 0:
+        return df
+
+    expressions = []
+    for column in columns:
+        if column not in df.columns:
+            continue
+        expressions.append(
+            pl.col(column)
+            .map_elements(_format_euro_cell, return_dtype=pl.String)
+            .alias(column)
+        )
+
+    if not expressions:
+        return df
+
+    return df.with_columns(expressions)
+
+
+def _add_status_label(df, *, source_column: str, label_column: str):
+    if df.height == 0 or source_column not in df.columns:
+        return df
+
+    return df.with_columns(
+        pl.col(source_column)
+        .map_elements(_status_label, return_dtype=pl.String)
+        .alias(label_column)
+    )
+
+
+def _status_label(value: object) -> str:
+    value_text = "" if value is None else str(value).strip()
+    if not value_text:
+        return "Onbekend"
+
+    status_labels = {
+        "draft": "Concept",
+        "open": "Open",
+        "late": "Verlopen",
+        "paid": "Betaald",
+        "pending_payment": "Betaling onderweg",
+        "reminded": "Herinnerd",
+        "uncollectible": "Oninbaar",
+        "processed": "Verwerkt",
+        "unprocessed": "Niet verwerkt",
+        "all": "Alles",
+        "settled": "Afgeletterd",
+        "unsettled": "Niet afgeletterd",
+        "partially_settled": "Deels afgeletterd",
+    }
+    normalized = value_text.lower()
+    return status_labels.get(normalized, value_text.replace("_", " ").title())
+
+
+def _add_report_type_label(df):
+    if df.height == 0 or "report_type" not in df.columns:
+        return df
+
+    return df.with_columns(
+        pl.col("report_type")
+        .map_elements(_report_type_label, return_dtype=pl.String)
+        .alias("Rapport")
+    )
+
+
+def _report_type_label(value: object) -> str:
+    value_text = "" if value is None else str(value).strip()
+    report_labels = {
+        "profit_loss": "Winst en verlies",
+        "balance_sheet": "Balans",
+    }
+    return report_labels.get(value_text, value_text.replace("_", " ").title())
+
+
+def _dataset_quality_row(label: str, df, synced_at_column: str, polars_module) -> dict:
+    latest_sync = None
+    if df.height > 0 and synced_at_column in df.columns:
+        latest_sync = df.select(polars_module.col(synced_at_column).max())[0, 0]
+
+    return {
+        "Dataset": label,
+        "Rijen": df.height,
+        "Laatste sync": str(latest_sync) if latest_sync else "",
+    }
+
+
+def _count_missing_lookup(
+    df,
+    *,
+    id_column: str,
+    name_column: str,
+    pl,
+) -> int:
+    if df.height == 0:
+        return 0
+    if id_column not in df.columns or name_column not in df.columns:
+        return 0
+
+    return df.filter(
+        pl.col(id_column).is_not_null()
+        & (
+            pl.col(name_column).is_null()
+            | (pl.col(name_column).cast(pl.String).str.strip_chars() == "")
+        )
+    ).height
 
 
 def _monthly_amounts(
