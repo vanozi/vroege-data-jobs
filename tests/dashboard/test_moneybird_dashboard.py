@@ -3,21 +3,23 @@ from decimal import Decimal
 
 import polars as pl
 
-from dashboard import moneybird_dashboard
+from dashboard import moneybird_transforms
 
 
 def test_format_euro_cell_handles_decimal_none_and_invalid_values():
-    assert moneybird_dashboard._format_euro_cell(Decimal("1234.5")) == "EUR 1.234,50"
-    assert moneybird_dashboard._format_euro_cell(None) == "EUR 0,00"
-    assert moneybird_dashboard._format_euro_cell("invalid") == "EUR 0,00"
+    assert moneybird_transforms._format_euro_cell(Decimal("1234.5")) == "EUR 1.234,50"
+    assert moneybird_transforms._format_euro_cell(None) == "EUR 0,00"
+    assert moneybird_transforms._format_euro_cell("invalid") == "EUR 0,00"
 
 
 def test_status_label_translates_known_values_and_keeps_unknown_readable():
-    assert moneybird_dashboard._status_label("open") == "Open"
-    assert moneybird_dashboard._status_label("paid") == "Betaald"
-    assert moneybird_dashboard._status_label("partially_settled") == "Deels afgeletterd"
-    assert moneybird_dashboard._status_label("custom_status") == "Custom Status"
-    assert moneybird_dashboard._status_label(None) == "Onbekend"
+    assert moneybird_transforms._status_label("open") == "Open"
+    assert moneybird_transforms._status_label("paid") == "Betaald"
+    assert (
+        moneybird_transforms._status_label("partially_settled") == "Deels afgeletterd"
+    )
+    assert moneybird_transforms._status_label("custom_status") == "Custom Status"
+    assert moneybird_transforms._status_label(None) == "Onbekend"
 
 
 def test_count_missing_lookup_counts_rows_with_id_without_name():
@@ -31,7 +33,7 @@ def test_count_missing_lookup_counts_rows_with_id_without_name():
     )
 
     assert (
-        moneybird_dashboard._count_missing_lookup(
+        moneybird_transforms._count_missing_lookup(
             df,
             id_column="contact_id",
             name_column="contact_name",
@@ -44,7 +46,7 @@ def test_count_missing_lookup_counts_rows_with_id_without_name():
 def test_dataset_quality_row_handles_empty_dataframes():
     df = pl.DataFrame(schema={"synced_at": pl.Datetime})
 
-    row = moneybird_dashboard._dataset_quality_row(
+    row = moneybird_transforms._dataset_quality_row(
         "Verkoopfacturen", df, "synced_at", pl
     )
 
@@ -56,12 +58,12 @@ def test_dataset_quality_row_handles_empty_dataframes():
 
 
 def test_quality_check_row_marks_warnings_and_ok_rows():
-    warning = moneybird_dashboard._quality_check_row(
+    warning = moneybird_transforms._quality_check_row(
         "Facturen zonder contact",
         2,
         "Synchroniseer contacten.",
     )
-    ok = moneybird_dashboard._quality_check_row(
+    ok = moneybird_transforms._quality_check_row(
         "Facturen zonder contact",
         0,
         "Synchroniseer contacten.",
@@ -111,13 +113,13 @@ def test_count_empty_report_snapshots_counts_only_empty_rows_without_values():
         ]
     )
 
-    assert moneybird_dashboard._count_empty_report_snapshots(df, pl) == 1
+    assert moneybird_transforms._count_empty_report_snapshots(df, pl) == 1
 
 
 def test_count_empty_report_snapshots_warns_when_dataset_is_missing():
     df = pl.DataFrame(schema={"raw_json": pl.String})
 
-    assert moneybird_dashboard._count_empty_report_snapshots(df, pl) == 1
+    assert moneybird_transforms._count_empty_report_snapshots(df, pl) == 1
 
 
 def test_count_overdue_invoices_counts_unpaid_past_due_rows():
@@ -130,7 +132,7 @@ def test_count_overdue_invoices_counts_unpaid_past_due_rows():
         ]
     )
 
-    count = moneybird_dashboard._count_overdue_invoices(
+    count = moneybird_transforms._count_overdue_invoices(
         df,
         due_date_column="due_date",
         paid_at_column="paid_at",
@@ -158,10 +160,10 @@ def test_open_and_overdue_invoice_rows_return_expected_rows():
         ]
     )
 
-    open_rows = moneybird_dashboard._open_invoice_rows(
+    open_rows = moneybird_transforms._open_invoice_rows(
         df, paid_at_column="paid_at", pl=pl
     )
-    overdue_rows = moneybird_dashboard._overdue_invoice_rows(
+    overdue_rows = moneybird_transforms._overdue_invoice_rows(
         df,
         due_date_column="due_date",
         paid_at_column="paid_at",
@@ -185,7 +187,7 @@ def test_top_unique_strings_limits_and_sorts_by_name_after_frequency_selection()
         ]
     )
 
-    assert moneybird_dashboard._top_unique_strings(
+    assert moneybird_transforms._top_unique_strings(
         df,
         "contact_name",
         pl,
@@ -211,7 +213,7 @@ def test_sales_invoice_display_df_formats_expected_columns():
         ]
     )
 
-    display_df = moneybird_dashboard._sales_invoice_display_df(df)
+    display_df = moneybird_transforms._sales_invoice_display_df(df)
 
     assert display_df.columns == [
         "Factuurdatum",
@@ -246,7 +248,7 @@ def test_purchase_invoice_display_df_formats_expected_columns():
         ]
     )
 
-    display_df = moneybird_dashboard._purchase_invoice_display_df(df)
+    display_df = moneybird_transforms._purchase_invoice_display_df(df)
 
     assert display_df.columns == [
         "Datum",
@@ -278,7 +280,7 @@ def test_profit_loss_report_rows_format_compact_report_card_data():
         ]
     )
 
-    rows = moneybird_dashboard._profit_loss_report_rows(df, pl)
+    rows = moneybird_transforms._profit_loss_report_rows(df, pl)
 
     assert rows.to_dicts() == [
         {"Onderdeel": "Omzet", "Waarde": "EUR 1.000,00", "Periode": "this_year"},
@@ -317,7 +319,7 @@ def test_balance_sheet_report_rows_extract_money_values_from_raw_json():
         ]
     )
 
-    rows = moneybird_dashboard._balance_sheet_report_rows(df, pl)
+    rows = moneybird_transforms._balance_sheet_report_rows(df, pl)
 
     assert rows.to_dicts() == [
         {"Onderdeel": "Bank", "Account ID": "1000", "Waarde": "EUR 1.250,50"},
@@ -343,7 +345,7 @@ def test_ledger_accounts_display_df_formats_lookup_columns():
         ]
     )
 
-    display_df = moneybird_dashboard._ledger_accounts_display_df(df)
+    display_df = moneybird_transforms._ledger_accounts_display_df(df)
 
     assert display_df.columns == [
         "Account ID",
@@ -383,7 +385,7 @@ def test_report_account_detail_rows_map_account_ids_to_ledger_names():
         ]
     )
 
-    rows = moneybird_dashboard._report_account_detail_rows(
+    rows = moneybird_transforms._report_account_detail_rows(
         reports,
         ledger_accounts,
         report_type="profit_loss",
@@ -415,7 +417,7 @@ def test_financial_accounts_display_df_formats_expected_columns():
         ]
     )
 
-    display_df = moneybird_dashboard._financial_accounts_display_df(df)
+    display_df = moneybird_transforms._financial_accounts_display_df(df)
 
     assert display_df.columns == [
         "Naam",
@@ -445,7 +447,7 @@ def test_bank_mutations_display_df_formats_expected_columns():
         ]
     )
 
-    display_df = moneybird_dashboard._bank_mutations_display_df(df)
+    display_df = moneybird_transforms._bank_mutations_display_df(df)
 
     assert display_df.columns == [
         "Datum",
@@ -479,8 +481,8 @@ def test_bank_open_and_state_rows_return_expected_rows():
         ]
     )
 
-    open_rows = moneybird_dashboard._open_bank_mutation_rows(df, pl)
-    unprocessed_rows = moneybird_dashboard._bank_state_rows(
+    open_rows = moneybird_transforms._open_bank_mutation_rows(df, pl)
+    unprocessed_rows = moneybird_transforms._bank_state_rows(
         df,
         state="unprocessed",
         pl=pl,
@@ -499,10 +501,10 @@ def test_bank_amount_sums_split_positive_and_negative_values():
         ]
     )
 
-    assert moneybird_dashboard._sum_positive_amounts(df, "amount", pl) == Decimal(
+    assert moneybird_transforms._sum_positive_amounts(df, "amount", pl) == Decimal(
         "100.00"
     )
-    assert moneybird_dashboard._sum_negative_amounts_abs(df, "amount", pl) == Decimal(
+    assert moneybird_transforms._sum_negative_amounts_abs(df, "amount", pl) == Decimal(
         "35.50"
     )
 
@@ -517,7 +519,7 @@ def test_bank_monthly_flows_splits_incoming_and_outgoing_per_month():
         ]
     )
 
-    monthly = moneybird_dashboard._bank_monthly_flows(df, pl=pl)
+    monthly = moneybird_transforms._bank_monthly_flows(df, pl=pl)
 
     assert monthly.to_dicts() == [
         {"Maand": "2026-06", "Richting": "Inkomend", "Bedrag": 100.0},
@@ -535,7 +537,7 @@ def test_monthly_amounts_builds_scanable_purchase_costs_per_month():
         ]
     )
 
-    monthly = moneybird_dashboard._monthly_amounts(
+    monthly = moneybird_transforms._monthly_amounts(
         df,
         date_column="date",
         amount_column="total_price_incl_tax",
@@ -558,9 +560,9 @@ def test_latest_sync_text_returns_latest_timestamp_or_no_data():
     )
     empty_df = pl.DataFrame(schema={"synced_at": pl.Datetime})
 
-    assert moneybird_dashboard._latest_sync_text(df, "synced_at", pl) == (
+    assert moneybird_transforms._latest_sync_text(df, "synced_at", pl) == (
         "2026-06-23 11:00:00"
     )
-    assert moneybird_dashboard._latest_sync_text(empty_df, "synced_at", pl) == (
+    assert moneybird_transforms._latest_sync_text(empty_df, "synced_at", pl) == (
         "Geen data"
     )
