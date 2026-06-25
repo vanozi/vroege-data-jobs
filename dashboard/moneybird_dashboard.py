@@ -1,5 +1,6 @@
 """Moneybird bookkeeping dashboard."""
 
+import json
 from decimal import Decimal
 
 import marimo
@@ -69,6 +70,7 @@ def _(connectorx_database_url, pl):
         s.moneybird_id,
         s.invoice_id,
         s.contact_id,
+        c.moneybird_id AS local_contact_id,
         COALESCE(
             NULLIF(c.company_name, ''),
             NULLIF(TRIM(COALESCE(c.firstname, '') || ' ' || COALESCE(c.lastname, '')), ''),
@@ -96,6 +98,7 @@ def _(connectorx_database_url, pl):
     SELECT
         p.moneybird_id,
         p.contact_id,
+        c.moneybird_id AS local_contact_id,
         COALESCE(
             NULLIF(c.company_name, ''),
             NULLIF(TRIM(COALESCE(c.firstname, '') || ' ' || COALESCE(c.lastname, '')), ''),
@@ -130,6 +133,7 @@ def _(connectorx_database_url, pl):
         gross_profit,
         operating_profit,
         net_profit,
+        raw_json,
         synced_at
     FROM moneybird_report_snapshots
     ORDER BY period DESC, report_type
@@ -216,7 +220,14 @@ def _(connectorx_database_url, pl):
 
 
 @app.cell
-def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
+def _(
+    df_financial_mutations,
+    df_purchase_invoices,
+    df_report_snapshots,
+    df_sales_invoices,
+    mo,
+    pl,
+):
     """Filter controls."""
     all_invoice_dates = []
     if df_sales_invoices.height > 0:
@@ -228,6 +239,12 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
     if df_purchase_invoices.height > 0:
         all_invoice_dates.extend(
             df_purchase_invoices.filter(pl.col("date").is_not_null())["date"].to_list()
+        )
+    if df_financial_mutations.height > 0:
+        all_invoice_dates.extend(
+            df_financial_mutations.filter(pl.col("date").is_not_null())[
+                "date"
+            ].to_list()
         )
 
     min_date = min(all_invoice_dates) if all_invoice_dates else None
@@ -261,6 +278,13 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         pl,
         limit=250,
     )
+    bank_accounts = _top_unique_strings(
+        df_financial_mutations,
+        "financial_account_name",
+        pl,
+        limit=250,
+    )
+    bank_states = _unique_strings(df_financial_mutations, "state", pl)
 
     sales_state_filter = mo.ui.multiselect(
         options=sales_states,
@@ -287,6 +311,16 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
         value=sales_contacts,
         label="Verkoopcontact",
     )
+    bank_account_filter = mo.ui.multiselect(
+        options=bank_accounts,
+        value=bank_accounts,
+        label="Bankrekening",
+    )
+    bank_state_filter = mo.ui.multiselect(
+        options=bank_states,
+        value=bank_states,
+        label="Bankstatus",
+    )
 
     filters_content = mo.hstack(
         [
@@ -297,10 +331,14 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
             sales_contact_filter,
             purchase_state_filter,
             purchase_contact_filter,
+            bank_account_filter,
+            bank_state_filter,
         ],
         justify="start",
     )
     return (
+        bank_account_filter,
+        bank_state_filter,
         datum_tot_filter,
         datum_van_filter,
         filters_content,
@@ -314,6 +352,8 @@ def _(df_purchase_invoices, df_report_snapshots, df_sales_invoices, mo, pl):
 
 @app.cell
 def _(
+    bank_account_filter,
+    bank_state_filter,
     date,
     datum_tot_filter,
     datum_van_filter,
@@ -384,6 +424,14 @@ def _(
     if purchase_contact_filter.value and df_purchase_filtered.height > 0:
         df_purchase_filtered = df_purchase_filtered.filter(
             pl.col("contact_name").is_in(purchase_contact_filter.value)
+        )
+    if bank_account_filter.value and df_mutations_filtered.height > 0:
+        df_mutations_filtered = df_mutations_filtered.filter(
+            pl.col("financial_account_name").is_in(bank_account_filter.value)
+        )
+    if bank_state_filter.value and df_mutations_filtered.height > 0:
+        df_mutations_filtered = df_mutations_filtered.filter(
+            pl.col("state").is_in(bank_state_filter.value)
         )
 
     return (
@@ -841,81 +889,67 @@ def _(alt, date, df_purchase_filtered, mo, pl, purchase_table):
 
 
 @app.cell
-def _(df_ledger_accounts, df_reports_filtered, mo):
+def _(df_ledger_accounts, df_reports_filtered, mo, pl):
     """Rapporten en grootboekrekeningen."""
-    if df_reports_filtered.height == 0:
-        reports_table = mo.callout(
-            mo.md("Geen rapport snapshots gevonden voor de gekozen periode."),
-            kind="neutral",
-        )
-    else:
-        reports_table_data = _format_money_columns(
-            _add_report_type_label(df_reports_filtered),
-            [
-                "total_revenue",
-                "total_expenses",
-                "gross_profit",
-                "operating_profit",
-                "net_profit",
-            ],
-        )
-        reports_table = mo.ui.table(
-            reports_table_data.select(
-                [
-                    "Rapport",
-                    "period",
-                    "total_revenue",
-                    "total_expenses",
-                    "gross_profit",
-                    "operating_profit",
-                    "net_profit",
-                    "synced_at",
-                ]
-            )
-            .rename(
-                {
-                    "period": "Periode",
-                    "total_revenue": "Omzet",
-                    "total_expenses": "Kosten",
-                    "gross_profit": "Brutomarge",
-                    "operating_profit": "Operationeel resultaat",
-                    "net_profit": "Netto resultaat",
-                    "synced_at": "Gesynchroniseerd",
-                }
-            )
-            .to_pandas(),
-            selection=None,
-            page_size=10,
-            label="Rapport snapshots",
-        )
+    profit_loss_card = _profit_loss_report_card(df_reports_filtered, mo, pl)
+    balance_sheet_table = _balance_sheet_report_table(df_reports_filtered, mo, pl)
+    reports_table = _report_snapshots_table(df_reports_filtered, mo)
+    ledger_table = _ledger_accounts_table(df_ledger_accounts, mo)
 
-    if df_ledger_accounts.height == 0:
-        ledger_table = mo.callout(
-            mo.md("Geen grootboekrekeningen lokaal beschikbaar."),
+    account_detail_rows = _report_account_detail_rows(
+        df_reports_filtered,
+        df_ledger_accounts,
+        report_type="profit_loss",
+        pl=pl,
+    )
+    if account_detail_rows.height == 0:
+        account_detail_content = mo.callout(
+            mo.md(
+                "Nog geen rapport-detailregels met grootboekrekening beschikbaar "
+                "in de lokale snapshots. De grootboeklookup hieronder is klaar "
+                "voor account-id mapping zodra deze regels worden opgeslagen."
+            ),
             kind="neutral",
         )
+        top_cost_accounts_content = mo.md("")
     else:
-        ledger_table = mo.ui.table(
-            df_ledger_accounts.rename(
-                {
-                    "moneybird_id": "Moneybird ID",
-                    "name": "Naam",
-                    "account_type": "Type",
-                    "account_id": "Rekening",
-                    "moneybird_version": "Versie",
-                    "synced_at": "Gesynchroniseerd",
-                }
-            ).to_pandas(),
+        account_detail_content = mo.ui.table(
+            account_detail_rows.drop("BedragSort").to_pandas(),
             selection=None,
             page_size=20,
-            label="Grootboekrekeningen",
+            label="Omzet en kosten per grootboekrekening",
         )
+        top_cost_accounts = _top_cost_account_rows(account_detail_rows, pl=pl)
+        if top_cost_accounts.height == 0:
+            top_cost_accounts_content = mo.callout(
+                mo.md("Geen kostenrekeningen gevonden in de rapport-detailregels."),
+                kind="neutral",
+            )
+        else:
+            top_cost_accounts_content = mo.vstack(
+                [
+                    mo.md("## Top kostenrekeningen"),
+                    mo.ui.table(
+                        top_cost_accounts.drop("BedragSort").to_pandas(),
+                        selection=None,
+                        page_size=10,
+                        label="Top kostenrekeningen",
+                    ),
+                ]
+            )
 
     reports_content = mo.vstack(
         [
-            mo.md("## Rapporten"),
+            mo.md("## Winst en verlies"),
+            profit_loss_card,
+            mo.md("## Balans"),
+            balance_sheet_table,
+            mo.md("## Rapport snapshots"),
             reports_table,
-            mo.md("## Grootboekrekeningen"),
+            mo.md("## Omzet en kosten per grootboekrekening"),
+            account_detail_content,
+            top_cost_accounts_content,
+            mo.md("## Grootboekrekening lookup"),
             ledger_table,
         ]
     )
@@ -923,86 +957,114 @@ def _(df_ledger_accounts, df_reports_filtered, mo):
 
 
 @app.cell
-def _(df_financial_accounts, df_mutations_filtered, mo):
-    """Bank tabellen."""
-    if df_financial_accounts.height == 0:
-        accounts_table = mo.callout(
-            mo.md("Geen financiele rekeningen lokaal beschikbaar."),
-            kind="neutral",
-        )
-    else:
-        accounts_table = mo.ui.table(
-            df_financial_accounts.rename(
-                {
-                    "moneybird_id": "Moneybird ID",
-                    "type": "Type",
-                    "name": "Naam",
-                    "identifier": "Identificatie",
-                    "currency": "Valuta",
-                    "provider": "Provider",
-                    "active": "Actief",
-                    "synced_at": "Gesynchroniseerd",
-                }
-            ).to_pandas(),
-            selection=None,
-            page_size=10,
-            label="Financiele rekeningen",
-        )
+def _(alt, df_financial_accounts, df_mutations_filtered, mo, pl):
+    """Bank tab."""
+    accounts_table = _financial_accounts_table(
+        df_financial_accounts,
+        mo,
+        empty_message="Geen financiele rekeningen lokaal beschikbaar.",
+        label="Financiele rekeningen",
+        page_size=10,
+    )
+    mutations_table = _bank_mutations_table(
+        df_mutations_filtered,
+        mo,
+        empty_message="Geen bankmutaties binnen de huidige filter.",
+        label="Alle bankmutaties",
+        page_size=25,
+    )
 
-    if df_mutations_filtered.height == 0:
-        mutations_table = mo.callout(
-            mo.md("Geen bankmutaties binnen de huidige filter."),
+    open_mutations = _open_bank_mutation_rows(df_mutations_filtered, pl)
+    unprocessed_mutations = _bank_state_rows(
+        df_mutations_filtered,
+        state="unprocessed",
+        pl=pl,
+    )
+    incoming_amount = _sum_positive_amounts(df_mutations_filtered, "amount", pl)
+    outgoing_amount = _sum_negative_amounts_abs(df_mutations_filtered, "amount", pl)
+    open_amount = _sum_column(open_mutations, "amount_open", pl)
+
+    bank_summary = mo.hstack(
+        [
+            mo.stat(
+                value=str(df_mutations_filtered.height),
+                label="Bankmutaties",
+                caption="binnen huidige filter",
+            ),
+            mo.stat(
+                value=_format_euro(incoming_amount),
+                label="Inkomend",
+                caption="positieve mutaties",
+            ),
+            mo.stat(
+                value=_format_euro(outgoing_amount),
+                label="Uitgaand",
+                caption="negatieve mutaties",
+            ),
+            mo.stat(
+                value=str(unprocessed_mutations.height),
+                label="Niet verwerkt",
+                caption="status bankmutatie",
+            ),
+            mo.stat(
+                value=str(open_mutations.height),
+                label="Open mutaties",
+                caption=_format_euro(open_amount),
+            ),
+        ],
+        justify="space-between",
+    )
+
+    bank_chart_data = _bank_monthly_flows(df_mutations_filtered, pl=pl)
+    if bank_chart_data.height == 0:
+        bank_flow_chart = mo.callout(
+            mo.md("Geen bankmutatiedata binnen de huidige bankfilter."),
             kind="neutral",
         )
     else:
-        mutations_table_data = _format_money_columns(
-            _add_status_label(
-                _add_status_label(
-                    df_mutations_filtered,
-                    source_column="state",
-                    label_column="Status",
-                ),
-                source_column="settlement_state",
-                label_column="Afletterstatus",
-            ),
-            ["amount", "amount_open"],
-        )
-        mutations_table = mo.ui.table(
-            mutations_table_data.select(
-                [
-                    "date",
-                    "financial_account_name",
-                    "amount",
-                    "amount_open",
-                    "contra_account_name",
-                    "contra_account_number",
-                    "message",
-                    "Status",
-                    "Afletterstatus",
-                ]
+        bank_chart = (
+            alt.Chart(bank_chart_data.to_pandas())
+            .mark_bar()
+            .encode(
+                x=alt.X("Maand:N", title="Maand"),
+                y=alt.Y("Bedrag:Q", title="Bedrag"),
+                color=alt.Color("Richting:N", title="Richting"),
+                tooltip=[
+                    alt.Tooltip("Maand:N", title="Maand"),
+                    alt.Tooltip("Richting:N", title="Richting"),
+                    alt.Tooltip("Bedrag:Q", title="Bedrag", format=",.2f"),
+                ],
             )
-            .rename(
-                {
-                    "date": "Datum",
-                    "financial_account_name": "Rekening",
-                    "amount": "Bedrag",
-                    "amount_open": "Open",
-                    "contra_account_name": "Tegenrekening naam",
-                    "contra_account_number": "Tegenrekening",
-                    "message": "Omschrijving",
-                }
-            )
-            .to_pandas(),
-            selection=None,
-            page_size=25,
-            label="Bankmutaties",
+            .properties(width=900, height=320, title="Inkomend en uitgaand per maand")
         )
+        bank_flow_chart = mo.ui.altair_chart(bank_chart)
+
+    open_mutations_table = _bank_mutations_table(
+        open_mutations,
+        mo,
+        empty_message="Geen open bankmutaties binnen de huidige filter.",
+        label="Open bankmutaties",
+        page_size=15,
+    )
+    unprocessed_mutations_table = _bank_mutations_table(
+        unprocessed_mutations,
+        mo,
+        empty_message="Geen niet-verwerkte bankmutaties binnen de huidige filter.",
+        label="Niet-verwerkte bankmutaties",
+        page_size=15,
+    )
 
     bank_content = mo.vstack(
         [
+            bank_summary,
+            bank_flow_chart,
             mo.md("## Financiele rekeningen"),
             accounts_table,
-            mo.md("## Bankmutaties"),
+            mo.md("## Open bankmutaties"),
+            open_mutations_table,
+            mo.md("## Niet-verwerkte bankmutaties"),
+            unprocessed_mutations_table,
+            mo.md("## Alle bankmutaties"),
             mutations_table,
         ]
     )
@@ -1020,15 +1082,14 @@ def _(
     pl,
 ):
     """Datakwaliteit tab."""
-    quality_rows = [
-        _dataset_quality_row("Verkoopfacturen", df_sales_invoices, "synced_at", pl),
-        _dataset_quality_row("Inkoopfacturen", df_purchase_invoices, "synced_at", pl),
-        _dataset_quality_row("Rapport snapshots", df_report_snapshots, "synced_at", pl),
-        _dataset_quality_row(
-            "Financiele rekeningen", df_financial_accounts, "synced_at", pl
-        ),
-        _dataset_quality_row("Bankmutaties", df_financial_mutations, "synced_at", pl),
-    ]
+    quality_rows = _moneybird_sync_quality_rows(
+        df_sales_invoices=df_sales_invoices,
+        df_purchase_invoices=df_purchase_invoices,
+        df_report_snapshots=df_report_snapshots,
+        df_financial_accounts=df_financial_accounts,
+        df_financial_mutations=df_financial_mutations,
+        pl=pl,
+    )
     quality_table = mo.ui.table(
         pl.DataFrame(quality_rows).to_pandas(),
         selection=None,
@@ -1048,30 +1109,77 @@ def _(
         name_column="contact_name",
         pl=pl,
     )
+    sales_without_local_contact = _count_missing_lookup(
+        df_sales_invoices,
+        id_column="contact_id",
+        name_column="local_contact_id",
+        pl=pl,
+    )
+    purchase_without_local_contact = _count_missing_lookup(
+        df_purchase_invoices,
+        id_column="contact_id",
+        name_column="local_contact_id",
+        pl=pl,
+    )
     missing_financial_accounts = _count_missing_lookup(
         df_financial_mutations,
         id_column="financial_account_id",
         name_column="financial_account_name",
         pl=pl,
     )
+    empty_report_snapshots = _count_empty_report_snapshots(df_report_snapshots, pl)
+
+    checks = [
+        _quality_check_row(
+            "Verkoopfacturen zonder contactnaam",
+            missing_sales_contacts,
+            "Controleer contactsynchronisatie of contactnaam op de factuur.",
+        ),
+        _quality_check_row(
+            "Inkoopfacturen zonder contactnaam",
+            missing_purchase_contacts,
+            "Controleer contactsynchronisatie of leveranciernaam op het document.",
+        ),
+        _quality_check_row(
+            "Verkoopfacturen met contact_id zonder lokaal contact",
+            sales_without_local_contact,
+            "De factuur verwijst naar een contact dat lokaal niet is gevonden.",
+        ),
+        _quality_check_row(
+            "Inkoopfacturen met contact_id zonder lokaal contact",
+            purchase_without_local_contact,
+            "Het document verwijst naar een contact dat lokaal niet is gevonden.",
+        ),
+        _quality_check_row(
+            "Bankmutaties zonder financiele rekeningnaam",
+            missing_financial_accounts,
+            "Synchroniseer financiele rekeningen om bankmutaties goed te groeperen.",
+        ),
+        _quality_check_row(
+            "Rapport snapshots ontbreken of zijn leeg",
+            empty_report_snapshots,
+            "Rapportdata kan ontbreken of niet bruikbaar zijn voor conclusies.",
+        ),
+    ]
+
+    warning_callouts = [
+        mo.callout(
+            mo.md(f"**{row['Controle']}**: {row['Aantal']} rij(en). {row['Actie']}"),
+            kind="warn",
+        )
+        for row in checks
+        if row["Aantal"] > 0
+    ]
+    if not warning_callouts:
+        warning_callouts = [
+            mo.callout(
+                mo.md("Geen datakwaliteitswaarschuwingen gevonden."),
+                kind="success",
+            )
+        ]
 
     quality_checks = mo.ui.table(
-        pl.DataFrame(
-            [
-                {
-                    "Controle": "Verkoopfacturen zonder lokale contactnaam",
-                    "Aantal": missing_sales_contacts,
-                },
-                {
-                    "Controle": "Inkoopfacturen zonder lokale contactnaam",
-                    "Aantal": missing_purchase_contacts,
-                },
-                {
-                    "Controle": "Bankmutaties zonder lokale rekeningnaam",
-                    "Aantal": missing_financial_accounts,
-                },
-            ]
-        ).to_pandas(),
+        pl.DataFrame(checks).to_pandas(),
         selection=None,
         page_size=10,
         label="Controles",
@@ -1080,6 +1188,8 @@ def _(
     quality_content = mo.vstack(
         [
             mo.md("## Datakwaliteit"),
+            mo.vstack(warning_callouts),
+            mo.md("## Laatste sync per tabel"),
             quality_table,
             mo.md("## Controles"),
             quality_checks,
@@ -1225,6 +1335,143 @@ def _report_value(df, report_type: str, column: str, pl) -> Decimal:
 
     rows = df.filter(pl.col("report_type") == report_type)
     return _sum_column(rows, column, pl)
+
+
+def _report_snapshot_row(df, report_type: str, pl):
+    if df.height == 0 or "report_type" not in df.columns:
+        return None
+
+    rows = df.filter(pl.col("report_type") == report_type)
+    if rows.height == 0:
+        return None
+
+    return rows.head(1).to_dicts()[0]
+
+
+def _coerce_report_json(value: object):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return value
+    if value is None:
+        return {}
+
+    value_text = str(value).strip()
+    if not value_text:
+        return {}
+
+    try:
+        parsed = json.loads(value_text)
+    except json.JSONDecodeError:
+        return {}
+
+    if isinstance(parsed, dict):
+        return parsed
+    if isinstance(parsed, list):
+        return parsed
+
+    return {}
+
+
+def _report_json_money_rows(raw_json, *, max_rows: int) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+
+    def walk(node, path: list[str]) -> None:
+        if len(rows) >= max_rows:
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item, path)
+            return
+        if not isinstance(node, dict):
+            return
+
+        amount = _report_node_amount(node)
+        label = _report_node_label(node, path)
+        if amount is not None and label:
+            rows.append(
+                {
+                    "label": label,
+                    "account_id": _report_node_account_id(node),
+                    "amount": amount,
+                    "path": " / ".join(path),
+                }
+            )
+
+        for key, value in node.items():
+            if isinstance(value, (dict, list)):
+                walk(value, [*path, _humanize_report_key(key)])
+
+    walk(raw_json, [])
+    return rows
+
+
+def _report_node_amount(node: dict) -> object:
+    for key in (
+        "total",
+        "amount",
+        "balance",
+        "value",
+        "total_amount",
+        "total_value",
+        "total_revenue",
+        "total_expenses",
+        "gross_profit",
+        "operating_profit",
+        "net_profit",
+    ):
+        amount = _decimal_or_none(node.get(key))
+        if amount is not None:
+            return amount
+
+    return None
+
+
+def _report_node_label(node: dict, path: list[str]) -> str:
+    for key in ("name", "label", "title", "description"):
+        value = node.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+
+    if path:
+        return path[-1]
+
+    return ""
+
+
+def _report_node_account_id(node: dict) -> str:
+    for key in ("account_id", "ledger_account_id", "ledger_account"):
+        value = node.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+
+    return ""
+
+
+def _humanize_report_key(value: object) -> str:
+    value_text = "" if value is None else str(value).strip()
+    if not value_text:
+        return ""
+
+    return value_text.replace("_", " ").title()
+
+
+def _decimal_or_none(value: object):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        return Decimal(str(value))
+
+    value_text = str(value).strip()
+    if not value_text:
+        return None
+
+    try:
+        return Decimal(value_text)
+    except (ArithmeticError, ValueError):
+        return None
 
 
 def _format_euro(value: Decimal) -> str:
@@ -1385,6 +1632,293 @@ def _purchase_invoice_table(
     )
 
 
+def _profit_loss_report_card(df, mo, pl):
+    profit_loss_rows = _profit_loss_report_rows(df, pl)
+    if profit_loss_rows.height == 0:
+        return mo.callout(
+            mo.md("Geen winst-en-verlies snapshot gevonden voor de gekozen periode."),
+            kind="neutral",
+        )
+
+    return mo.hstack(
+        [
+            mo.stat(
+                value=row["Waarde"],
+                label=row["Onderdeel"],
+                caption=row["Periode"],
+            )
+            for row in profit_loss_rows.to_dicts()
+        ],
+        justify="space-between",
+    )
+
+
+def _profit_loss_report_rows(df, pl):
+    row = _report_snapshot_row(df, "profit_loss", pl)
+    if row is None:
+        return pl.DataFrame(schema={"Onderdeel": pl.String, "Waarde": pl.String})
+
+    period = "" if row.get("period") is None else str(row.get("period"))
+    rows = [
+        ("Omzet", row.get("total_revenue")),
+        ("Kosten", row.get("total_expenses")),
+        ("Brutomarge", row.get("gross_profit")),
+        ("Operationeel resultaat", row.get("operating_profit")),
+        ("Netto resultaat", row.get("net_profit")),
+    ]
+    return pl.DataFrame(
+        [
+            {
+                "Onderdeel": label,
+                "Waarde": _format_euro_cell(value),
+                "Periode": period,
+            }
+            for label, value in rows
+        ]
+    )
+
+
+def _balance_sheet_report_table(df, mo, pl):
+    balance_rows = _balance_sheet_report_rows(df, pl)
+    if balance_rows.height == 0:
+        return mo.callout(
+            mo.md("Geen bruikbare balanssnapshot gevonden voor de gekozen periode."),
+            kind="neutral",
+        )
+
+    return mo.ui.table(
+        balance_rows.to_pandas(),
+        selection=None,
+        page_size=20,
+        label="Balans snapshot",
+    )
+
+
+def _balance_sheet_report_rows(df, pl):
+    row = _report_snapshot_row(df, "balance_sheet", pl)
+    if row is None:
+        return pl.DataFrame(
+            schema={
+                "Onderdeel": pl.String,
+                "Account ID": pl.String,
+                "Waarde": pl.String,
+            }
+        )
+
+    raw_json = _coerce_report_json(row.get("raw_json"))
+    money_rows = _report_json_money_rows(raw_json, max_rows=50)
+    if not money_rows:
+        return pl.DataFrame(
+            schema={
+                "Onderdeel": pl.String,
+                "Account ID": pl.String,
+                "Waarde": pl.String,
+            }
+        )
+
+    return pl.DataFrame(
+        [
+            {
+                "Onderdeel": item["label"],
+                "Account ID": item["account_id"],
+                "Waarde": _format_euro(item["amount"]),
+            }
+            for item in money_rows
+        ]
+    )
+
+
+def _report_snapshots_table(df, mo):
+    if df.height == 0:
+        return mo.callout(
+            mo.md("Geen rapport snapshots gevonden voor de gekozen periode."),
+            kind="neutral",
+        )
+
+    reports_table_data = _format_money_columns(
+        _add_report_type_label(df),
+        [
+            "total_revenue",
+            "total_expenses",
+            "gross_profit",
+            "operating_profit",
+            "net_profit",
+        ],
+    )
+    return mo.ui.table(
+        reports_table_data.select(
+            [
+                "Rapport",
+                "period",
+                "total_revenue",
+                "total_expenses",
+                "gross_profit",
+                "operating_profit",
+                "net_profit",
+                "synced_at",
+            ]
+        )
+        .rename(
+            {
+                "period": "Periode",
+                "total_revenue": "Omzet",
+                "total_expenses": "Kosten",
+                "gross_profit": "Brutomarge",
+                "operating_profit": "Operationeel resultaat",
+                "net_profit": "Netto resultaat",
+                "synced_at": "Gesynchroniseerd",
+            }
+        )
+        .to_pandas(),
+        selection=None,
+        page_size=10,
+        label="Rapport snapshots",
+    )
+
+
+def _ledger_accounts_display_df(df):
+    return df.select(
+        [
+            "account_id",
+            "name",
+            "account_type",
+            "moneybird_id",
+            "moneybird_version",
+            "synced_at",
+        ]
+    ).rename(
+        {
+            "account_id": "Account ID",
+            "name": "Naam",
+            "account_type": "Type",
+            "moneybird_id": "Moneybird ID",
+            "moneybird_version": "Versie",
+            "synced_at": "Gesynchroniseerd",
+        }
+    )
+
+
+def _ledger_accounts_table(df, mo):
+    if df.height == 0:
+        return mo.callout(
+            mo.md("Geen grootboekrekeningen lokaal beschikbaar."),
+            kind="neutral",
+        )
+
+    return mo.ui.table(
+        _ledger_accounts_display_df(df).to_pandas(),
+        selection=None,
+        page_size=20,
+        label="Grootboekrekeningen",
+    )
+
+
+def _financial_accounts_display_df(df):
+    return (
+        df.with_columns(
+            pl.col("active")
+            .map_elements(_bool_label, return_dtype=pl.String)
+            .alias("active")
+        )
+        .select(
+            [
+                "name",
+                "type",
+                "identifier",
+                "currency",
+                "provider",
+                "active",
+            ]
+        )
+        .rename(
+            {
+                "name": "Naam",
+                "type": "Type",
+                "identifier": "Identifier",
+                "currency": "Valuta",
+                "provider": "Provider",
+                "active": "Actief",
+            }
+        )
+    )
+
+
+def _financial_accounts_table(
+    df,
+    mo,
+    *,
+    empty_message: str,
+    label: str,
+    page_size: int,
+):
+    if df.height == 0:
+        return mo.callout(mo.md(empty_message), kind="neutral")
+
+    return mo.ui.table(
+        _financial_accounts_display_df(df).to_pandas(),
+        selection=None,
+        page_size=page_size,
+        label=label,
+    )
+
+
+def _bank_mutations_display_df(df):
+    mutations_table_data = _format_money_columns(
+        _add_status_label(
+            _add_status_label(
+                df,
+                source_column="state",
+                label_column="Status",
+            ),
+            source_column="settlement_state",
+            label_column="Afletterstatus",
+        ),
+        ["amount", "amount_open"],
+    )
+    return mutations_table_data.select(
+        [
+            "date",
+            "financial_account_name",
+            "amount",
+            "amount_open",
+            "contra_account_name",
+            "contra_account_number",
+            "message",
+            "Status",
+            "Afletterstatus",
+        ]
+    ).rename(
+        {
+            "date": "Datum",
+            "financial_account_name": "Rekening",
+            "amount": "Bedrag",
+            "amount_open": "Open bedrag",
+            "contra_account_name": "Tegenrekening naam",
+            "contra_account_number": "Tegenrekening nummer",
+            "message": "Omschrijving",
+        }
+    )
+
+
+def _bank_mutations_table(
+    df,
+    mo,
+    *,
+    empty_message: str,
+    label: str,
+    page_size: int,
+):
+    if df.height == 0:
+        return mo.callout(mo.md(empty_message), kind="neutral")
+
+    return mo.ui.table(
+        _bank_mutations_display_df(df).to_pandas(),
+        selection=None,
+        page_size=page_size,
+        label=label,
+    )
+
+
 def _add_status_label(df, *, source_column: str, label_column: str):
     if df.height == 0 or source_column not in df.columns:
         return df
@@ -1420,6 +1954,21 @@ def _status_label(value: object) -> str:
     return status_labels.get(normalized, value_text.replace("_", " ").title())
 
 
+def _bool_label(value: object) -> str:
+    if value is True:
+        return "Ja"
+    if value is False:
+        return "Nee"
+
+    value_text = "" if value is None else str(value).strip().lower()
+    if value_text in {"true", "1", "yes", "ja"}:
+        return "Ja"
+    if value_text in {"false", "0", "no", "nee"}:
+        return "Nee"
+
+    return "Onbekend"
+
+
 def _add_report_type_label(df):
     if df.height == 0 or "report_type" not in df.columns:
         return df
@@ -1452,6 +2001,35 @@ def _dataset_quality_row(label: str, df, synced_at_column: str, polars_module) -
     }
 
 
+def _moneybird_sync_quality_rows(
+    *,
+    df_sales_invoices,
+    df_purchase_invoices,
+    df_report_snapshots,
+    df_financial_accounts,
+    df_financial_mutations,
+    pl,
+) -> list[dict]:
+    return [
+        _dataset_quality_row("Verkoopfacturen", df_sales_invoices, "synced_at", pl),
+        _dataset_quality_row("Inkoopfacturen", df_purchase_invoices, "synced_at", pl),
+        _dataset_quality_row("Rapport snapshots", df_report_snapshots, "synced_at", pl),
+        _dataset_quality_row(
+            "Financiele rekeningen", df_financial_accounts, "synced_at", pl
+        ),
+        _dataset_quality_row("Bankmutaties", df_financial_mutations, "synced_at", pl),
+    ]
+
+
+def _quality_check_row(label: str, count: int, action: str) -> dict:
+    return {
+        "Controle": label,
+        "Aantal": count,
+        "Status": "Waarschuwing" if count > 0 else "OK",
+        "Actie": action if count > 0 else "",
+    }
+
+
 def _count_missing_lookup(
     df,
     *,
@@ -1473,6 +2051,148 @@ def _count_missing_lookup(
     ).height
 
 
+def _count_empty_report_snapshots(df, pl) -> int:
+    if df.height == 0:
+        return 1
+    if "raw_json" not in df.columns:
+        return df.height
+
+    numeric_columns = [
+        column
+        for column in [
+            "total_revenue",
+            "total_expenses",
+            "gross_profit",
+            "operating_profit",
+            "net_profit",
+        ]
+        if column in df.columns
+    ]
+    empty_raw_expression = (
+        pl.col("raw_json").is_null()
+        | (pl.col("raw_json").cast(pl.String).str.strip_chars() == "")
+        | (pl.col("raw_json").cast(pl.String).str.strip_chars().is_in(["{}", "[]"]))
+    )
+    if not numeric_columns:
+        return df.filter(empty_raw_expression).height
+
+    all_values_missing = pl.all_horizontal(
+        [pl.col(column).is_null() for column in numeric_columns]
+    )
+    return df.filter(empty_raw_expression & all_values_missing).height
+
+
+def _open_bank_mutation_rows(df, pl):
+    if df.height == 0 or "amount_open" not in df.columns:
+        return df
+
+    return df.filter(pl.col("amount_open").is_not_null() & (pl.col("amount_open") != 0))
+
+
+def _bank_state_rows(df, *, state: str, pl):
+    if df.height == 0 or "state" not in df.columns:
+        return df
+
+    return df.filter(pl.col("state") == state)
+
+
+def _sum_positive_amounts(df, column: str, pl) -> Decimal:
+    if df.height == 0 or column not in df.columns:
+        return Decimal("0")
+
+    return _sum_column(df.filter(pl.col(column) > 0), column, pl)
+
+
+def _sum_negative_amounts_abs(df, column: str, pl) -> Decimal:
+    if df.height == 0 or column not in df.columns:
+        return Decimal("0")
+
+    value = _sum_column(df.filter(pl.col(column) < 0), column, pl)
+    return abs(value)
+
+
+def _report_account_detail_rows(
+    df_reports, df_ledger_accounts, *, report_type: str, pl
+):
+    row = _report_snapshot_row(df_reports, report_type, pl)
+    if row is None:
+        return _empty_report_account_detail_df(pl)
+
+    raw_json = _coerce_report_json(row.get("raw_json"))
+    money_rows = [
+        item
+        for item in _report_json_money_rows(raw_json, max_rows=250)
+        if item["account_id"]
+    ]
+    if not money_rows:
+        return _empty_report_account_detail_df(pl)
+
+    account_names = _ledger_account_name_map(df_ledger_accounts)
+    detail_rows = []
+    for item in money_rows:
+        amount = item["amount"]
+        account_id = str(item["account_id"])
+        detail_rows.append(
+            {
+                "Categorie": str(item["path"] or _report_type_label(report_type)),
+                "Account ID": account_id,
+                "Grootboekrekening": account_names.get(account_id, ""),
+                "Onderdeel": str(item["label"]),
+                "Bedrag": _format_euro(amount),
+                "BedragSort": float(amount),
+            }
+        )
+
+    return pl.DataFrame(detail_rows).sort(["Categorie", "Account ID", "Onderdeel"])
+
+
+def _top_cost_account_rows(df, *, pl):
+    if df.height == 0 or "BedragSort" not in df.columns:
+        return df
+
+    return (
+        df.with_columns(pl.col("Categorie").str.to_lowercase().alias("_categorie"))
+        .filter(
+            (pl.col("BedragSort") < 0)
+            | pl.col("_categorie").str.contains("kosten|cost|expense")
+        )
+        .with_columns(pl.col("BedragSort").abs().alias("_absolute_amount"))
+        .sort("_absolute_amount", descending=True)
+        .head(10)
+        .drop(["_categorie", "_absolute_amount"])
+    )
+
+
+def _ledger_account_name_map(df) -> dict[str, str]:
+    if df.height == 0:
+        return {}
+    if "account_id" not in df.columns or "name" not in df.columns:
+        return {}
+
+    lookup = {}
+    for row in df.select(["account_id", "name"]).to_dicts():
+        account_id = row.get("account_id")
+        name = row.get("name")
+        if account_id is None or name is None:
+            continue
+        lookup[str(account_id)] = str(name)
+
+    return lookup
+
+
+def _empty_report_account_detail_df(pl):
+    return pl.DataFrame(
+        schema={
+            "Categorie": pl.String,
+            "Account ID": pl.String,
+            "Grootboekrekening": pl.String,
+            "Onderdeel": pl.String,
+            "Bedrag": pl.String,
+            "BedragSort": pl.Float64,
+        }
+    )
+
+
 def _monthly_amounts(
     df,
     *,
@@ -1492,6 +2212,29 @@ def _monthly_amounts(
         .with_columns(pl.lit(label).alias("Type"))
         .select(["Maand", "Type", "Bedrag"])
         .sort("Maand")
+    )
+
+
+def _bank_monthly_flows(df, *, pl):
+    if df.height == 0:
+        return pl.DataFrame(
+            schema={"Maand": pl.String, "Richting": pl.String, "Bedrag": pl.Float64}
+        )
+
+    return (
+        df.filter(pl.col("date").is_not_null() & pl.col("amount").is_not_null())
+        .with_columns(
+            pl.col("date").dt.strftime("%Y-%m").alias("Maand"),
+            pl.when(pl.col("amount") >= 0)
+            .then(pl.lit("Inkomend"))
+            .otherwise(pl.lit("Uitgaand"))
+            .alias("Richting"),
+            pl.col("amount").abs().alias("absolute_amount"),
+        )
+        .group_by(["Maand", "Richting"])
+        .agg(pl.col("absolute_amount").sum().cast(pl.Float64).round(2).alias("Bedrag"))
+        .select(["Maand", "Richting", "Bedrag"])
+        .sort(["Maand", "Richting"])
     )
 
 
