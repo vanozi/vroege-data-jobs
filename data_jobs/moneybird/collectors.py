@@ -1,6 +1,6 @@
 """Collectors for Moneybird dashboard data."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import logging
@@ -9,6 +9,7 @@ from typing import Optional
 from data_jobs.moneybird.api_client import MoneybirdClient
 from data_jobs.moneybird.config import MoneybirdConfig
 from data_jobs.moneybird import transforms
+from data_jobs.moneybird.exceptions import MoneybirdAuthenticationError
 from data_jobs.moneybird.exceptions import MoneybirdConfigError
 
 
@@ -71,11 +72,15 @@ def collect_dashboard_records(
     report_snapshots = []
     if sync_reports:
         _log_progress(logger, "Collecting report snapshots.")
-        report_snapshots = collect_report_snapshots(
-            client,
-            administration_id=resolved_administration_id,
-            period=resolved_period,
-            synced_at=synced_at,
+        report_snapshots = _collect_or_skip_forbidden(
+            "report snapshots",
+            lambda: collect_report_snapshots(
+                client,
+                administration_id=resolved_administration_id,
+                period=resolved_period,
+                synced_at=synced_at,
+            ),
+            logger,
         )
         _log_progress(logger, "Collected %s report snapshots.", len(report_snapshots))
     else:
@@ -84,12 +89,16 @@ def collect_dashboard_records(
     sales_invoices = []
     if sync_sales_invoices:
         _log_progress(logger, "Collecting sales invoices.")
-        sales_invoices = collect_sales_invoices(
-            client,
-            administration_id=resolved_administration_id,
-            period=resolved_period,
-            synced_at=synced_at,
-            logger=logger,
+        sales_invoices = _collect_or_skip_forbidden(
+            "sales invoices",
+            lambda: collect_sales_invoices(
+                client,
+                administration_id=resolved_administration_id,
+                period=resolved_period,
+                synced_at=synced_at,
+                logger=logger,
+            ),
+            logger,
         )
         _log_progress(logger, "Collected %s sales invoices.", len(sales_invoices))
     else:
@@ -98,12 +107,16 @@ def collect_dashboard_records(
     purchase_invoices = []
     if sync_purchase_invoices:
         _log_progress(logger, "Collecting purchase invoices.")
-        purchase_invoices = collect_purchase_invoices(
-            client,
-            administration_id=resolved_administration_id,
-            period=resolved_period,
-            synced_at=synced_at,
-            logger=logger,
+        purchase_invoices = _collect_or_skip_forbidden(
+            "purchase invoices",
+            lambda: collect_purchase_invoices(
+                client,
+                administration_id=resolved_administration_id,
+                period=resolved_period,
+                synced_at=synced_at,
+                logger=logger,
+            ),
+            logger,
         )
         _log_progress(
             logger,
@@ -116,11 +129,15 @@ def collect_dashboard_records(
     contacts = []
     if sync_contacts:
         _log_progress(logger, "Collecting contacts.")
-        contacts = collect_contacts(
-            client,
-            administration_id=resolved_administration_id,
-            synced_at=synced_at,
-            logger=logger,
+        contacts = _collect_or_skip_forbidden(
+            "contacts",
+            lambda: collect_contacts(
+                client,
+                administration_id=resolved_administration_id,
+                synced_at=synced_at,
+                logger=logger,
+            ),
+            logger,
         )
         _log_progress(logger, "Collected %s contacts.", len(contacts))
     else:
@@ -129,11 +146,15 @@ def collect_dashboard_records(
     ledger_accounts = []
     if sync_ledger_accounts:
         _log_progress(logger, "Collecting ledger accounts.")
-        ledger_accounts = collect_ledger_accounts(
-            client,
-            administration_id=resolved_administration_id,
-            synced_at=synced_at,
-            logger=logger,
+        ledger_accounts = _collect_or_skip_forbidden(
+            "ledger accounts",
+            lambda: collect_ledger_accounts(
+                client,
+                administration_id=resolved_administration_id,
+                synced_at=synced_at,
+                logger=logger,
+            ),
+            logger,
         )
         _log_progress(logger, "Collected %s ledger accounts.", len(ledger_accounts))
     else:
@@ -142,11 +163,15 @@ def collect_dashboard_records(
     financial_accounts = []
     if sync_financial_accounts:
         _log_progress(logger, "Collecting financial accounts.")
-        financial_accounts = collect_financial_accounts(
-            client,
-            administration_id=resolved_administration_id,
-            synced_at=synced_at,
-            logger=logger,
+        financial_accounts = _collect_or_skip_forbidden(
+            "financial accounts",
+            lambda: collect_financial_accounts(
+                client,
+                administration_id=resolved_administration_id,
+                synced_at=synced_at,
+                logger=logger,
+            ),
+            logger,
         )
         _log_progress(
             logger,
@@ -159,12 +184,16 @@ def collect_dashboard_records(
     financial_mutations = []
     if sync_financial_mutations:
         _log_progress(logger, "Collecting financial mutations.")
-        financial_mutations = collect_financial_mutations(
-            client,
-            administration_id=resolved_administration_id,
-            period=resolved_period,
-            synced_at=synced_at,
-            logger=logger,
+        financial_mutations = _collect_or_skip_forbidden(
+            "financial mutations",
+            lambda: collect_financial_mutations(
+                client,
+                administration_id=resolved_administration_id,
+                period=resolved_period,
+                synced_at=synced_at,
+                logger=logger,
+            ),
+            logger,
         )
         _log_progress(
             logger,
@@ -300,10 +329,17 @@ def collect_ledger_accounts(
     logger: Optional[logging.Logger] = None,
 ) -> list[dict[str, object]]:
     """Collect and normalize Moneybird ledger accounts."""
-    rows = client.get_paginated(
-        f"/{administration_id}/ledger_accounts.json",
-        logger=logger,
-    )
+    _log_progress(logger, "Fetching ledger accounts.")
+    rows = client.get_json(f"/{administration_id}/ledger_accounts.json")
+    if not isinstance(rows, list):
+        raise ValueError("Moneybird ledger accounts response was not a list.")
+
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError(
+                "Moneybird ledger accounts response contained a non-object item."
+            )
+
     return [
         transforms.transform_ledger_account(
             row,
@@ -428,6 +464,28 @@ def _resolve_administration_id(
 def _chunks(values: list[str], size: int) -> Iterator[list[str]]:
     for index in range(0, len(values), size):
         yield values[index : index + size]
+
+
+def _collect_or_skip_forbidden(
+    label: str,
+    collect_func: Callable[[], list[dict[str, object]]],
+    logger: Optional[logging.Logger],
+) -> list[dict[str, object]]:
+    try:
+        return collect_func()
+    except MoneybirdAuthenticationError as error:
+        if error.status_code != 403:
+            raise
+
+        endpoint = error.endpoint or "unknown endpoint"
+        _log_progress(
+            logger,
+            "Skipping %s because Moneybird returned HTTP 403 for %s. "
+            "Check token permissions for this dataset.",
+            label,
+            endpoint,
+        )
+        return []
 
 
 def _log_progress(

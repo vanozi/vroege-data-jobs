@@ -60,6 +60,10 @@ def test_bootstrap_seeds_core_apps_roles_and_first_admin_access():
         "dashboard_moneybird",
         "user_administration",
     ]
+    moneybird = context.applications.get_application_by_key("dashboard_moneybird")
+    assert moneybird.name == "Moneybird"
+    assert moneybird.url == "/moneybird"
+    assert moneybird.category == "dashboard"
     assert _role_keys_for(context, user.id, "user_administration") == ["admin"]
     assert _role_keys_for(context, user.id, "kippen") == ["admin", "worker"]
     assert _role_keys_for(context, user.id, "dashboard_kippen") == ["viewer"]

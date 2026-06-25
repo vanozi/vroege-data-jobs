@@ -1,9 +1,6 @@
 """Moneybird bookkeeping dashboard."""
 
 import marimo
-import polars as pl
-
-from dashboard import moneybird_transforms
 
 __generated_with = "0.23.5"
 app = marimo.App(width="full")
@@ -18,13 +15,16 @@ def _():
 
     import altair as alt
     import marimo as mo
+    import polars as pl
     from dotenv import load_dotenv
+
+    from dashboard import moneybird_transforms
 
     _repo_root = Path(__file__).parent.parent
     _env_path = _repo_root / ".env"
     load_dotenv(_env_path)
 
-    return alt, date, mo, os, pl
+    return alt, date, mo, moneybird_transforms, os, pl
 
 
 @app.cell
@@ -223,6 +223,7 @@ def _(
     df_purchase_invoices,
     df_report_snapshots,
     df_sales_invoices,
+    moneybird_transforms,
     mo,
     pl,
 ):
@@ -456,6 +457,7 @@ def _(
     df_sales_filtered,
     df_sales_invoices,
     df_report_snapshots,
+    moneybird_transforms,
     mo,
     pl,
 ):
@@ -617,7 +619,7 @@ def _(
 
 
 @app.cell
-def _(alt, df_purchase_filtered, df_sales_filtered, mo, pl):
+def _(alt, df_purchase_filtered, df_sales_filtered, moneybird_transforms, mo, pl):
     """Factuurtrend."""
     chart_frames = []
     if df_sales_filtered.height > 0:
@@ -667,7 +669,7 @@ def _(alt, df_purchase_filtered, df_sales_filtered, mo, pl):
 
 
 @app.cell
-def _(df_sales_filtered, mo):
+def _(df_sales_filtered, moneybird_transforms, mo):
     """Verkoopfacturen tabel."""
     sales_table = moneybird_transforms._sales_invoice_table(
         df_sales_filtered,
@@ -680,9 +682,9 @@ def _(df_sales_filtered, mo):
 
 
 @app.cell
-def _(alt, date, df_sales_filtered, mo, pl, sales_table):
+def _(alt, date, df_sales_filtered, moneybird_transforms, mo, pl, sales_table):
     """Verkoop tab met openstaande en verlopen facturen."""
-    today = date.today()
+    sales_today = date.today()
     df_sales_open = moneybird_transforms._open_invoice_rows(
         df_sales_filtered, paid_at_column="paid_at", pl=pl
     )
@@ -690,7 +692,7 @@ def _(alt, date, df_sales_filtered, mo, pl, sales_table):
         df_sales_filtered,
         due_date_column="due_date",
         paid_at_column="paid_at",
-        today=today,
+        today=sales_today,
         pl=pl,
     )
     sales_revenue = moneybird_transforms._sum_column(
@@ -788,7 +790,7 @@ def _(alt, date, df_sales_filtered, mo, pl, sales_table):
 
 
 @app.cell
-def _(df_purchase_filtered, mo):
+def _(df_purchase_filtered, moneybird_transforms, mo):
     """Inkoopfacturen tabel."""
     purchase_table = moneybird_transforms._purchase_invoice_table(
         df_purchase_filtered,
@@ -801,9 +803,9 @@ def _(df_purchase_filtered, mo):
 
 
 @app.cell
-def _(alt, date, df_purchase_filtered, mo, pl, purchase_table):
+def _(alt, date, df_purchase_filtered, moneybird_transforms, mo, pl, purchase_table):
     """Inkoop tab met openstaande en verlopen facturen."""
-    today = date.today()
+    purchase_today = date.today()
     df_purchase_open = moneybird_transforms._open_invoice_rows(
         df_purchase_filtered,
         paid_at_column="paid_at",
@@ -813,7 +815,7 @@ def _(alt, date, df_purchase_filtered, mo, pl, purchase_table):
         df_purchase_filtered,
         due_date_column="due_date",
         paid_at_column="paid_at",
-        today=today,
+        today=purchase_today,
         pl=pl,
     )
     purchase_costs = moneybird_transforms._sum_column(
@@ -915,7 +917,7 @@ def _(alt, date, df_purchase_filtered, mo, pl, purchase_table):
 
 
 @app.cell
-def _(df_ledger_accounts, df_reports_filtered, mo, pl):
+def _(df_ledger_accounts, df_reports_filtered, moneybird_transforms, mo, pl):
     """Rapporten en grootboekrekeningen."""
     profit_loss_card = moneybird_transforms._profit_loss_report_card(
         df_reports_filtered, mo, pl
@@ -991,7 +993,7 @@ def _(df_ledger_accounts, df_reports_filtered, mo, pl):
 
 
 @app.cell
-def _(alt, df_financial_accounts, df_mutations_filtered, mo, pl):
+def _(alt, df_financial_accounts, df_mutations_filtered, moneybird_transforms, mo, pl):
     """Bank tab."""
     accounts_table = moneybird_transforms._financial_accounts_table(
         df_financial_accounts,
@@ -1120,6 +1122,7 @@ def _(
     df_purchase_invoices,
     df_report_snapshots,
     df_sales_invoices,
+    moneybird_transforms,
     mo,
     pl,
 ):

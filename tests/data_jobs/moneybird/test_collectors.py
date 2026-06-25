@@ -1,5 +1,6 @@
 from data_jobs.moneybird import collectors
 from data_jobs.moneybird.config import MoneybirdConfig
+from data_jobs.moneybird.exceptions import MoneybirdAuthenticationError
 
 
 class FakeLogger:
@@ -22,6 +23,8 @@ class FakeMoneybirdClient:
             return {"total_revenue": "1000.00", "net_profit": "100.00"}
         if path.endswith("/balance_sheet.json"):
             return {"assets": []}
+        if path.endswith("/ledger_accounts.json"):
+            return [{"id": "ledger-1", "name": "Omzet"}]
         raise AssertionError(f"Unexpected path: {path}")
 
     def get_paginated(self, path, params=None, logger=None, progress_interval_pages=5):
@@ -44,8 +47,6 @@ class FakeMoneybirdClient:
             ]
         if path.endswith("/contacts.json"):
             return [{"id": "contact-1", "company_name": "Klant BV"}]
-        if path.endswith("/ledger_accounts.json"):
-            return [{"id": "ledger-1", "name": "Omzet"}]
         if path.endswith("/financial_accounts.json"):
             return [{"id": "account-1", "name": "Bank", "active": True}]
         if path.endswith("/financial_mutations/synchronization.json"):
@@ -99,6 +100,7 @@ def test_collect_dashboard_records_collects_reports_and_invoices():
     assert client.json_requests == [
         ("/admin-1/reports/profit_loss.json", {"period": "this_year"}),
         ("/admin-1/reports/balance_sheet.json", {"period": "this_year"}),
+        ("/admin-1/ledger_accounts.json", None),
     ]
     assert client.paginated_requests == [
         (
@@ -110,7 +112,6 @@ def test_collect_dashboard_records_collects_reports_and_invoices():
             {"filter": "period:this_year,state:all"},
         ),
         ("/admin-1/contacts.json", None),
-        ("/admin-1/ledger_accounts.json", None),
         ("/admin-1/financial_accounts.json", None),
         (
             "/admin-1/financial_mutations/synchronization.json",
@@ -192,3 +193,45 @@ def test_collect_financial_mutations_uses_synchronization_batches():
     assert "Processed financial mutation batch 2/2; total mutations=101." in (
         logger.messages
     )
+
+
+def test_collect_dashboard_records_skips_forbidden_optional_dataset():
+    class ForbiddenBankClient(FakeMoneybirdClient):
+        def get_paginated(
+            self,
+            path,
+            params=None,
+            logger=None,
+            progress_interval_pages=5,
+        ):
+            if path.endswith("/financial_mutations/synchronization.json"):
+                raise MoneybirdAuthenticationError(
+                    "forbidden",
+                    endpoint=path,
+                    status_code=403,
+                )
+
+            return super().get_paginated(
+                path,
+                params=params,
+                logger=logger,
+                progress_interval_pages=progress_interval_pages,
+            )
+
+    client = ForbiddenBankClient()
+    logger = FakeLogger()
+
+    result = collectors.collect_dashboard_records(
+        client,
+        build_config(administration_id="admin-1"),
+        logger=logger,
+    )
+
+    assert result.summary_counts()["contacts"] == 1
+    assert result.summary_counts()["financial_accounts"] == 1
+    assert result.summary_counts()["financial_mutations"] == 0
+    assert (
+        "Skipping financial mutations because Moneybird returned HTTP 403 for "
+        "/admin-1/financial_mutations/synchronization.json. Check token permissions "
+        "for this dataset."
+    ) in logger.messages

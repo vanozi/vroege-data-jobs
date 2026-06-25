@@ -1,6 +1,7 @@
 """Read-only Moneybird API client."""
 
 from collections.abc import Callable
+import json
 import logging
 import time
 from typing import Any, Optional
@@ -98,6 +99,7 @@ class MoneybirdClient:
         request_params.setdefault("per_page", "100")
         request_params.setdefault("page", "1")
         page_count = 0
+        seen_page_signatures = set()
 
         while True:
             response = self._request_with_retry("GET", path, params=request_params)
@@ -111,8 +113,15 @@ class MoneybirdClient:
                 )
 
             rows = _ensure_dict_list(parsed_response, endpoint=path)
-            collected_rows.extend(rows)
             page_count += 1
+            next_page = _next_page_from_link_header(response.headers.get("Link"))
+            page_signature = _page_signature(rows)
+            if next_page is None and page_signature in seen_page_signatures:
+                _log_repeated_page(logger, path=path, page_count=page_count)
+                break
+
+            seen_page_signatures.add(page_signature)
+            collected_rows.extend(rows)
             _log_paginated_progress(
                 logger,
                 path=path,
@@ -121,7 +130,6 @@ class MoneybirdClient:
                 progress_interval_pages=progress_interval_pages,
             )
 
-            next_page = _next_page_from_link_header(response.headers.get("Link"))
             if next_page is None:
                 if len(rows) >= int(request_params["per_page"]):
                     request_params["page"] = str(int(request_params["page"]) + 1)
@@ -264,6 +272,14 @@ def _next_page_from_link_header(link_header: Optional[str]) -> Optional[str]:
     return None
 
 
+def _page_signature(rows: list[dict[str, Any]]) -> tuple[str, ...]:
+    row_ids = [str(row.get("id")) for row in rows if row.get("id") is not None]
+    if row_ids and len(row_ids) == len(rows):
+        return tuple(row_ids)
+
+    return tuple(json.dumps(row, sort_keys=True, default=str) for row in rows)
+
+
 def _retry_delay_seconds(
     response: httpx.Response,
     *,
@@ -300,4 +316,21 @@ def _log_paginated_progress(
         page_count,
         path,
         row_count,
+    )
+
+
+def _log_repeated_page(
+    logger: Optional[logging.Logger],
+    *,
+    path: str,
+    page_count: int,
+) -> None:
+    if logger is None:
+        return
+
+    logger.info(
+        "Stopping Moneybird pagination for %s after page %s because the API returned "
+        "a repeated page without a next-page link.",
+        path,
+        page_count,
     )

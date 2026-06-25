@@ -111,6 +111,38 @@ def test_get_paginated_increments_page_when_no_link_and_page_is_full():
     assert rows == [{"id": "0"}, {"id": "1"}, {"id": "last"}]
 
 
+def test_get_paginated_stops_when_no_link_page_repeats():
+    requested_pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_pages.append(request.url.params.get("page"))
+        return httpx.Response(
+            200,
+            json=[{"id": "ledger-1"}, {"id": "ledger-2"}],
+        )
+
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://moneybird.example.test/api/v2",
+    )
+    client = MoneybirdClient(config=build_config(), http_client=http_client)
+    logger = FakeLogger()
+
+    rows = client.get_paginated(
+        "/123/ledger_accounts.json",
+        params={"per_page": "2"},
+        logger=logger,
+        progress_interval_pages=1,
+    )
+
+    assert requested_pages == ["1", "2"]
+    assert rows == [{"id": "ledger-1"}, {"id": "ledger-2"}]
+    assert logger.messages[-1] == (
+        "Stopping Moneybird pagination for /123/ledger_accounts.json after page 2 "
+        "because the API returned a repeated page without a next-page link."
+    )
+
+
 def test_get_paginated_logs_page_progress():
     def handler(request: httpx.Request) -> httpx.Response:
         page = int(request.url.params.get("page"))

@@ -82,6 +82,33 @@ def test_login_with_correct_credentials_shows_accessible_applications(monkeypatc
     assert 'href="/tank-terminal"' in index_response.text
 
 
+def test_moneybird_tile_is_database_backed(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    moneybird = _create_application(
+        context,
+        "dashboard_moneybird",
+        "Moneybird",
+        "/moneybird",
+        "dashboard",
+        35,
+    )
+    _grant_access(context, user.id, moneybird.id)
+    client.post(
+        "/login",
+        data={
+            "username": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Moneybird" in response.text
+    assert 'href="/moneybird"' in response.text
+
+
 def test_login_redirects_to_password_change_when_required(monkeypatch):
     client, context = _client(monkeypatch)
     _create_user(
