@@ -6,6 +6,41 @@ from decimal import Decimal
 import polars as pl
 
 
+LEDGER_ACCOUNT_TYPE_DESCRIPTIONS = {
+    "revenue": (
+        "Omzet/opbrengsten. Bijvoorbeeld verkoop melk, vee, diensten, subsidies "
+        "of andere bedrijfsopbrengsten."
+    ),
+    "expenses": (
+        "Bedrijfskosten. Bijvoorbeeld energie, onderhoud, verzekering, kantoor "
+        "en abonnementen."
+    ),
+    "direct_costs": (
+        "Directe kosten die direct samenhangen met productie of omzet. "
+        "Bijvoorbeeld voer, diergezondheid en productiegerelateerde inkoop."
+    ),
+    "current_assets": (
+        "Vlottende activa. Bezittingen die meestal binnen een jaar in geld omgaan, "
+        "zoals bank, kas, debiteuren en voorraad."
+    ),
+    "non_current_assets": (
+        "Vaste activa. Bezittingen voor langere termijn, zoals machines, "
+        "gebouwen, installaties en inventaris."
+    ),
+    "current_liabilities": (
+        "Kortlopende schulden. Verplichtingen binnen een jaar, zoals crediteuren, "
+        "te betalen btw en kortlopende leningen."
+    ),
+    "non_current_liabilities": (
+        "Langlopende schulden. Leningen of verplichtingen langer dan een jaar."
+    ),
+    "equity": (
+        "Eigen vermogen. Kapitaal van de onderneming, resultaat lopend boekjaar, "
+        "reserves en prive-opnames of stortingen afhankelijk van inrichting."
+    ),
+}
+
+
 def _unique_strings(df, column: str, pl) -> list[str]:
     if df.height == 0 or column not in df.columns:
         return []
@@ -587,6 +622,49 @@ def _ledger_accounts_table(df, mo):
     )
 
 
+def _ledger_account_type_description_rows(pl):
+    return pl.DataFrame(
+        [
+            {
+                "Grootboektype": _ledger_account_type_label(account_type),
+                "Omschrijving": description,
+            }
+            for account_type, description in LEDGER_ACCOUNT_TYPE_DESCRIPTIONS.items()
+        ],
+        schema={
+            "Grootboektype": pl.String,
+            "Omschrijving": pl.String,
+        },
+    )
+
+
+def _ledger_account_type_label(value: object) -> str:
+    value_text = "" if value is None else str(value).strip()
+    if not value_text:
+        return "Onbekend"
+
+    labels = {
+        "revenue": "Revenue",
+        "expenses": "Expenses",
+        "direct_costs": "Direct costs",
+        "current_assets": "Current assets",
+        "non_current_assets": "Non-current assets",
+        "current_liabilities": "Current liabilities",
+        "non_current_liabilities": "Non-current liabilities",
+        "equity": "Equity",
+    }
+    normalized = value_text.lower()
+    return labels.get(normalized, value_text.replace("_", " ").title())
+
+
+def _ledger_account_type_description(value: object) -> str:
+    value_text = "" if value is None else str(value).strip().lower()
+    if not value_text:
+        return ""
+
+    return LEDGER_ACCOUNT_TYPE_DESCRIPTIONS.get(value_text, "")
+
+
 def _financial_accounts_display_df(df):
     return (
         df.with_columns(
@@ -902,15 +980,22 @@ def _report_account_detail_rows(
         return _empty_report_account_detail_df(pl)
 
     account_names = _ledger_account_name_map(df_ledger_accounts)
+    account_types = _ledger_account_type_map(df_ledger_accounts)
     detail_rows = []
     for item in money_rows:
         amount = item["amount"]
         account_id = str(item["account_id"])
+        category = str(item["path"] or _report_type_label(report_type))
+        account_type = account_types.get(account_id, "") or _account_type_from_category(
+            category
+        )
         detail_rows.append(
             {
-                "Categorie": str(item["path"] or _report_type_label(report_type)),
+                "Categorie": category,
                 "Account ID": account_id,
                 "Grootboekrekening": account_names.get(account_id, ""),
+                "Grootboektype": _ledger_account_type_label(account_type),
+                "Omschrijving type": _ledger_account_type_description(account_type),
                 "Onderdeel": str(item["label"]),
                 "Bedrag": _format_euro(amount),
                 "BedragSort": float(amount),
@@ -940,18 +1025,68 @@ def _top_cost_account_rows(df, *, pl):
 def _ledger_account_name_map(df) -> dict[str, str]:
     if df.height == 0:
         return {}
-    if "account_id" not in df.columns or "name" not in df.columns:
+    if "name" not in df.columns:
         return {}
 
     lookup = {}
-    for row in df.select(["account_id", "name"]).to_dicts():
-        account_id = row.get("account_id")
+    lookup_columns = [
+        column for column in ["account_id", "moneybird_id"] if column in df.columns
+    ]
+    for row in df.select([*lookup_columns, "name"]).to_dicts():
         name = row.get("name")
-        if account_id is None or name is None:
+        if name is None:
             continue
-        lookup[str(account_id)] = str(name)
+        for lookup_column in lookup_columns:
+            lookup_value = row.get(lookup_column)
+            if lookup_value is None:
+                continue
+            lookup[str(lookup_value)] = str(name)
 
     return lookup
+
+
+def _ledger_account_type_map(df) -> dict[str, str]:
+    if df.height == 0:
+        return {}
+    if "account_type" not in df.columns:
+        return {}
+
+    lookup = {}
+    lookup_columns = [
+        column for column in ["account_id", "moneybird_id"] if column in df.columns
+    ]
+    for row in df.select([*lookup_columns, "account_type"]).to_dicts():
+        account_type = row.get("account_type")
+        if account_type is None:
+            continue
+        for lookup_column in lookup_columns:
+            lookup_value = row.get(lookup_column)
+            if lookup_value is None:
+                continue
+            lookup[str(lookup_value)] = str(account_type)
+
+    return lookup
+
+
+def _account_type_from_category(category: object) -> str:
+    category_text = "" if category is None else str(category).lower()
+    category_mapping = {
+        "direct costs": "direct_costs",
+        "revenue": "revenue",
+        "expenses": "expenses",
+        "current assets": "current_assets",
+        "non-current assets": "non_current_assets",
+        "non current assets": "non_current_assets",
+        "current liabilities": "current_liabilities",
+        "non-current liabilities": "non_current_liabilities",
+        "non current liabilities": "non_current_liabilities",
+        "equity": "equity",
+    }
+    for category_key, account_type in category_mapping.items():
+        if category_key in category_text:
+            return account_type
+
+    return ""
 
 
 def _empty_report_account_detail_df(pl):
@@ -960,6 +1095,8 @@ def _empty_report_account_detail_df(pl):
             "Categorie": pl.String,
             "Account ID": pl.String,
             "Grootboekrekening": pl.String,
+            "Grootboektype": pl.String,
+            "Omschrijving type": pl.String,
             "Onderdeel": pl.String,
             "Bedrag": pl.String,
             "BedragSort": pl.Float64,

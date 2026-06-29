@@ -1,6 +1,7 @@
 """Flask app factory for the central application portal."""
 
 from datetime import timedelta
+import os
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -166,6 +167,24 @@ def create_app(session_factory=None) -> Flask:
     @app.get("/healthz")
     def healthz():
         return {"status": "ok"}
+
+    @app.get("/moneybird")
+    @app.get("/moneybird/<path:dashboard_path>")
+    def local_moneybird_dashboard(dashboard_path: Optional[str] = None):
+        user = auth_service.get_active_user(session.get("user_id"))
+        if user is None:
+            session.clear()
+            return redirect(url_for("login"))
+        if user.must_change_password:
+            return redirect(url_for("change_password"))
+        if not _is_local_host(request.host):
+            abort(404)
+        if not auth_service.user_can_access_application(user.id, "dashboard_moneybird"):
+            abort(403)
+
+        return redirect(
+            _local_dashboard_url("PORTAL_MONEYBIRD_LOCAL_URL", dashboard_path)
+        )
 
     @app.get("/admin/users")
     def admin_users_list():
@@ -391,6 +410,21 @@ def _normalize_path(path: str) -> str:
         parsed_path = parsed_path.rstrip("/")
 
     return parsed_path
+
+
+def _is_local_host(host: str) -> bool:
+    hostname = host.split(":", 1)[0].lower()
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _local_dashboard_url(env_name: str, dashboard_path: Optional[str]) -> str:
+    base_url = os.getenv(env_name, "http://localhost:2721/moneybird").rstrip("/")
+    if dashboard_path:
+        base_url = f"{base_url}/{dashboard_path.lstrip('/')}"
+    if request.query_string:
+        return f"{base_url}?{request.query_string.decode()}"
+
+    return base_url
 
 
 def _display_name(user) -> str:

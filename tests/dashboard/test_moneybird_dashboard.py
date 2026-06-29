@@ -380,7 +380,9 @@ def test_report_account_detail_rows_map_account_ids_to_ledger_names():
         [
             {
                 "account_id": "4000",
+                "moneybird_id": "ledger-moneybird-4000",
                 "name": "Voer",
+                "account_type": "direct_costs",
             }
         ]
     )
@@ -397,10 +399,98 @@ def test_report_account_detail_rows_map_account_ids_to_ledger_names():
             "Categorie": "Expenses",
             "Account ID": "4000",
             "Grootboekrekening": "Voer",
+            "Grootboektype": "Direct costs",
+            "Omschrijving type": (
+                "Directe kosten die direct samenhangen met productie of omzet. "
+                "Bijvoorbeeld voer, diergezondheid en productiegerelateerde inkoop."
+            ),
             "Onderdeel": "Voerkosten",
             "Bedrag": "EUR 325,75",
         }
     ]
+
+
+def test_report_account_detail_rows_map_moneybird_ledger_ids():
+    reports = pl.DataFrame(
+        [
+            {
+                "report_type": "profit_loss",
+                "period": "this_year",
+                "raw_json": {
+                    "revenue": [
+                        {
+                            "name": "Melk",
+                            "account_id": "ledger-moneybird-8000",
+                            "amount": "1000.00",
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+    ledger_accounts = pl.DataFrame(
+        [
+            {
+                "account_id": "8000",
+                "moneybird_id": "ledger-moneybird-8000",
+                "name": "Melkopbrengsten",
+                "account_type": "revenue",
+            }
+        ]
+    )
+
+    rows = moneybird_transforms._report_account_detail_rows(
+        reports,
+        ledger_accounts,
+        report_type="profit_loss",
+        pl=pl,
+    )
+
+    assert rows["Grootboekrekening"].to_list() == ["Melkopbrengsten"]
+    assert rows["Grootboektype"].to_list() == ["Revenue"]
+
+
+def test_report_account_detail_rows_fall_back_to_category_for_account_type():
+    reports = pl.DataFrame(
+        [
+            {
+                "report_type": "profit_loss",
+                "period": "this_year",
+                "raw_json": {
+                    "direct_costs": [
+                        {
+                            "name": "Voer",
+                            "account_id": "missing-ledger",
+                            "amount": "250.00",
+                        }
+                    ],
+                },
+            }
+        ]
+    )
+
+    rows = moneybird_transforms._report_account_detail_rows(
+        reports,
+        pl.DataFrame(),
+        report_type="profit_loss",
+        pl=pl,
+    )
+
+    assert rows["Grootboektype"].to_list() == ["Direct costs"]
+    assert rows["Omschrijving type"].to_list()[0].startswith("Directe kosten")
+
+
+def test_ledger_account_type_description_rows_explain_moneybird_categories():
+    rows = moneybird_transforms._ledger_account_type_description_rows(pl)
+
+    assert rows.height == 8
+    assert rows.filter(pl.col("Grootboektype") == "Revenue")[0, "Omschrijving"] == (
+        "Omzet/opbrengsten. Bijvoorbeeld verkoop melk, vee, diensten, subsidies "
+        "of andere bedrijfsopbrengsten."
+    )
+    assert rows.filter(pl.col("Grootboektype") == "Current assets")[
+        0, "Omschrijving"
+    ].startswith("Vlottende activa.")
 
 
 def test_financial_accounts_display_df_formats_expected_columns():

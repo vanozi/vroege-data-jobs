@@ -929,6 +929,12 @@ def _(df_ledger_accounts, df_reports_filtered, moneybird_transforms, mo, pl):
         df_reports_filtered, mo
     )
     ledger_table = moneybird_transforms._ledger_accounts_table(df_ledger_accounts, mo)
+    ledger_type_explanation_table = mo.ui.table(
+        moneybird_transforms._ledger_account_type_description_rows(pl).to_pandas(),
+        selection=None,
+        page_size=8,
+        label="Uitleg grootboektypes",
+    )
 
     account_detail_rows = moneybird_transforms._report_account_detail_rows(
         df_reports_filtered,
@@ -983,6 +989,8 @@ def _(df_ledger_accounts, df_reports_filtered, moneybird_transforms, mo, pl):
             mo.md("## Rapport snapshots"),
             reports_table,
             mo.md("## Omzet en kosten per grootboekrekening"),
+            mo.md("### Uitleg grootboektypes"),
+            ledger_type_explanation_table,
             account_detail_content,
             top_cost_accounts_content,
             mo.md("## Grootboekrekening lookup"),

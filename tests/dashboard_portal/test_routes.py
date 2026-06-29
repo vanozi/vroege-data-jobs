@@ -109,6 +109,101 @@ def test_moneybird_tile_is_database_backed(monkeypatch):
     assert 'href="/moneybird"' in response.text
 
 
+def test_moneybird_local_dashboard_redirects_to_marimo(monkeypatch):
+    monkeypatch.setenv(
+        "PORTAL_MONEYBIRD_LOCAL_URL",
+        "http://localhost:2721/moneybird",
+    )
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    moneybird = _create_application(
+        context,
+        "dashboard_moneybird",
+        "Moneybird",
+        "/moneybird",
+        "dashboard",
+        35,
+    )
+    _grant_access(context, user.id, moneybird.id)
+    _login(client)
+
+    response = client.get("/moneybird")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "http://localhost:2721/moneybird"
+
+
+def test_moneybird_local_dashboard_redirect_preserves_path_and_query(monkeypatch):
+    monkeypatch.setenv(
+        "PORTAL_MONEYBIRD_LOCAL_URL",
+        "http://localhost:2721/moneybird",
+    )
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    moneybird = _create_application(
+        context,
+        "dashboard_moneybird",
+        "Moneybird",
+        "/moneybird",
+        "dashboard",
+        35,
+    )
+    _grant_access(context, user.id, moneybird.id)
+    _login(client)
+
+    response = client.get("/moneybird/manifest.json?version=1")
+
+    assert response.status_code == 302
+    assert (
+        response.headers["Location"]
+        == "http://localhost:2721/moneybird/manifest.json?version=1"
+    )
+
+
+def test_moneybird_local_dashboard_requires_access(monkeypatch):
+    client, context = _client(monkeypatch)
+    _create_user(context, "admin@example.com", "correct-password")
+    _create_application(
+        context,
+        "dashboard_moneybird",
+        "Moneybird",
+        "/moneybird",
+        "dashboard",
+        35,
+    )
+    _login(client)
+
+    response = client.get("/moneybird")
+
+    assert response.status_code == 403
+
+
+def test_moneybird_dashboard_path_404s_on_non_local_host(monkeypatch):
+    client, context = _client(monkeypatch)
+    user = _create_user(context, "admin@example.com", "correct-password")
+    moneybird = _create_application(
+        context,
+        "dashboard_moneybird",
+        "Moneybird",
+        "/moneybird",
+        "dashboard",
+        35,
+    )
+    _grant_access(context, user.id, moneybird.id)
+    client.post(
+        "/login",
+        base_url="https://app.example.test",
+        data={
+            "username": "admin@example.com",
+            "password": "correct-password",
+        },
+    )
+
+    response = client.get("/moneybird", base_url="https://app.example.test")
+
+    assert response.status_code == 404
+
+
 def test_login_redirects_to_password_change_when_required(monkeypatch):
     client, context = _client(monkeypatch)
     _create_user(
