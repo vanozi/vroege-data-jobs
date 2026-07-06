@@ -543,6 +543,7 @@ def _(
     protocol_feed_group_filter,
     protocol_peildatum,
     protocol_reference_date,
+    transforms,
 ):
     """Protocol tab - bouw filters, KPI's en tabellen."""
     protocol_filter_controls = mo.hstack(
@@ -641,7 +642,9 @@ def _(
             protocol_table_source_columns
         ).rename(protocol_table_column_names)
         protocol_aanbiedlijst_table = mo.ui.table(
-            protocol_aanbiedlijst_data.to_pandas(),
+            transforms.coerce_protocol_table_integer_columns(
+                protocol_aanbiedlijst_data.to_pandas()
+            ),
             selection="multi",
             page_size=25,
         )
@@ -658,7 +661,9 @@ def _(
             protocol_table_source_columns
         ).rename(protocol_table_column_names)
         protocol_nog_niet_table = mo.ui.table(
-            protocol_nog_niet_data.to_pandas(),
+            transforms.coerce_protocol_table_integer_columns(
+                protocol_nog_niet_data.to_pandas()
+            ),
             selection=None,
             page_size=15,
         )
@@ -673,7 +678,9 @@ def _(
             protocol_table_source_columns
         ).rename(protocol_table_column_names)
         protocol_datacontrole_table = mo.ui.table(
-            protocol_datacontrole_data.to_pandas(),
+            transforms.coerce_protocol_table_integer_columns(
+                protocol_datacontrole_data.to_pandas()
+            ),
             selection=None,
             page_size=15,
         )

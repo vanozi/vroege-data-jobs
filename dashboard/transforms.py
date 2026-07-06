@@ -96,6 +96,24 @@ UNIFORM_AGRI_CSV_COLUMNS = [
     "treatment",
 ]
 
+PROTOCOL_TABLE_INTEGER_COLUMNS = (
+    "Voergroep nummer",
+    "Status dagen",
+    "DIM",
+)
+
+
+def coerce_protocol_table_integer_columns(dataframe):
+    """Keep nullable integer protocol table columns filterable as integers."""
+    result = dataframe.copy()
+    for column in PROTOCOL_TABLE_INTEGER_COLUMNS:
+        if column not in result.columns:
+            continue
+
+        result[column] = result[column].astype("Int64")
+
+    return result
+
 
 def parse_notatie(notatie: Optional[str]) -> ParsedNotatie:
     """Parse klauwbehandeling notatie naar gestructureerde velden."""

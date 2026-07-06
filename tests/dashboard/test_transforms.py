@@ -2,9 +2,12 @@
 
 from datetime import date
 
+import pandas as pd
+
 from dashboard.transforms import (
     add_mortellaro_case_columns,
     build_klauwbekap_protocol_rows,
+    coerce_protocol_table_integer_columns,
     build_open_mortellaro_rows,
     build_uniform_agri_csv_download_rows,
     build_uniform_agri_csv_rows,
@@ -389,6 +392,24 @@ class TestOpenMortellaroRows:
 
 class TestKlauwbekapProtocolRows:
     """Tests voor de klauwbekapprotocol aanbiedlijst."""
+
+    def test_protocol_table_integer_columns_use_nullable_integer_dtype(self):
+        table_data = pd.DataFrame(
+            {
+                "Voergroep nummer": [7.0, None],
+                "Status dagen": [10.0, None],
+                "DIM": [100.0, None],
+                "Laatste melk": [42.5, None],
+            }
+        )
+
+        result = coerce_protocol_table_integer_columns(table_data)
+
+        assert str(result["Voergroep nummer"].dtype) == "Int64"
+        assert str(result["Status dagen"].dtype) == "Int64"
+        assert str(result["DIM"].dtype) == "Int64"
+        assert str(result["Laatste melk"].dtype) == "float64"
+        assert result["Voergroep nummer"].tolist() == [7, pd.NA]
 
     def test_mortellaro_is_always_offered_even_when_dry(self):
         result = build_klauwbekap_protocol_rows(
