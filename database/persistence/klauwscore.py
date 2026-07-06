@@ -115,6 +115,9 @@ def _build_klauw_behandeling_data(
         "behandeldatum": row["behandeldatum"],
         "notatie": row["notatie"],
     }
+    pdf_href = row.get("pdf_href")
+    if isinstance(pdf_href, str) and pdf_href:
+        treatment_data["pdf_href"] = pdf_href
 
     if koe_repository is None:
         return treatment_data

@@ -22,6 +22,7 @@ def test_klauw_behandeling_from_row_builds_model_without_mutating_row():
     assert behandeling.behandeldatum == date(2026, 5, 19)
     assert behandeling.eartag_short == "101"
     assert behandeling.notatie == "Bekapt"
+    assert behandeling.pdf_href == "http://klauwscore.nl/export.pdf"
 
 
 def test_flatten_documents_adds_document_metadata_without_mutating_documents():

@@ -22,6 +22,7 @@ def main() -> None:
     config = _apply_cli_overrides(klauwscore_config.load_klauwscore_config(), args)
     limit = args.limit if args.limit is not None else config.default_limit
     existing_behandeldatums = _load_existing_behandeldatums()
+    existing_pdf_hrefs = _load_existing_pdf_hrefs()
 
     result = collectors.collect_klauwscore_rows(
         config,
@@ -29,6 +30,7 @@ def main() -> None:
         continue_on_document_error=args.continue_on_document_error,
         progress_callback=logger.info,
         existing_behandeldatums=existing_behandeldatums,
+        existing_pdf_hrefs=existing_pdf_hrefs,
     )
     saved_count = _persist_rows(result.deduped_rows, dry_run=args.dry_run)
     _log_collection_summary(result, saved_count, dry_run=args.dry_run)
@@ -156,6 +158,16 @@ def _load_existing_behandeldatums() -> set[date]:
         len(existing_behandeldatums),
     )
     return existing_behandeldatums
+
+
+def _load_existing_pdf_hrefs() -> set[str]:
+    repository = KlauwBehandelingenRepository(database.get_session)
+    existing_pdf_hrefs = repository.get_existing_pdf_hrefs()
+    logger.info(
+        "Loaded %d existing Klauwscore source PDF links from the database.",
+        len(existing_pdf_hrefs),
+    )
+    return existing_pdf_hrefs
 
 
 def _load_current_herd_cows(limit: Optional[int]) -> list[dict[str, object]]:

@@ -51,11 +51,13 @@ def test_save_klauw_behandelingen_returns_saved_count_and_logs(caplog):
             "eartag_short": "101",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Bekapt",
+            "pdf_href": "http://klauwscore.nl/export.pdf",
         },
         {
             "eartag_short": "102",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Blokje geplaatst",
+            "pdf_href": "http://klauwscore.nl/export.pdf",
         },
     ]
     assert "Saved 2 klauw behandelingen." in caplog.text
@@ -80,6 +82,7 @@ def test_save_klauw_behandelingen_enriches_with_matching_koe():
             "eartag_short": "101",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Bekapt",
+            "pdf_href": "http://klauwscore.nl/export.pdf",
             "animal_id": animal_id,
             "eartag": "NL123456789",
         }
@@ -139,6 +142,7 @@ def test_save_klauw_behandelingen_skips_enrichment_without_matching_koe():
             "eartag_short": "101",
             "behandeldatum": date(2026, 5, 19),
             "notatie": "Bekapt",
+            "pdf_href": "http://klauwscore.nl/export.pdf",
         }
     ]
 

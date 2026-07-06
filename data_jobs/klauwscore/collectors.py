@@ -95,6 +95,7 @@ def collect_klauwscore_documents(
     continue_on_document_error: bool = False,
     progress_callback: Optional[Callable[[str], None]] = None,
     existing_behandeldatums: Optional[set[date]] = None,
+    existing_pdf_hrefs: Optional[set[str]] = None,
 ) -> KlauwscoreCollectionResult:
     """Collect and parse Klauwscore PDF documents without database writes."""
     failures: list[DocumentCollectionFailure] = []
@@ -115,6 +116,7 @@ def collect_klauwscore_documents(
         continue_on_document_error=continue_on_document_error,
         failure_callback=record_download_failure,
         existing_behandeldatums=existing_behandeldatums,
+        existing_pdf_hrefs=existing_pdf_hrefs,
     )
 
     documents: list[ParsedKlauwscoreDocument] = []
@@ -157,6 +159,7 @@ def collect_klauwscore_rows(
     continue_on_document_error: bool = False,
     progress_callback: Optional[Callable[[str], None]] = None,
     existing_behandeldatums: Optional[set[date]] = None,
+    existing_pdf_hrefs: Optional[set[str]] = None,
 ) -> KlauwscoreCollectionResult:
     """Collect Klauwscore treatment rows from Alle notaties PDF documents."""
     del cows
@@ -167,6 +170,7 @@ def collect_klauwscore_rows(
         continue_on_document_error=continue_on_document_error,
         progress_callback=progress_callback,
         existing_behandeldatums=existing_behandeldatums,
+        existing_pdf_hrefs=existing_pdf_hrefs,
     )
     _report(progress_callback, "Flattening parsed PDF documents into notitie rows...")
     rows = transforms.flatten_documents(result.documents)

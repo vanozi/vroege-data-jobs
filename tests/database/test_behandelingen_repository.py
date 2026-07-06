@@ -22,6 +22,7 @@ def test_upsert_klauw_behandeling_preserves_unique_fields_for_dict():
             "notatie": "Bekapt",
             "animal_id": UUID("12345678-1234-5678-1234-567812345678"),
             "eartag": "NL123456789",
+            "pdf_href": "http://klauwscore.nl/export.pdf",
         }
     )
 
@@ -34,6 +35,7 @@ def test_upsert_klauw_behandeling_preserves_unique_fields_for_dict():
                 "notatie": "Bekapt",
                 "animal_id": UUID("12345678-1234-5678-1234-567812345678"),
                 "eartag": "NL123456789",
+                "pdf_href": "http://klauwscore.nl/export.pdf",
             },
             ["eartag_short", "behandeldatum", "notatie"],
         )
@@ -73,6 +75,23 @@ def test_get_existing_behandeldatums_returns_distinct_dates():
     assert repository.get_existing_behandeldatums() == {
         date(2026, 5, 19),
         date(2026, 5, 20),
+    }
+    assert session.statement is not None
+
+
+def test_get_existing_pdf_hrefs_returns_distinct_source_links():
+    repository = KlauwBehandelingenRepository(lambda: None)
+    session = FakeSession(
+        [
+            "http://klauwscore.nl/export.pdf",
+            "http://klauwscore.nl/second.pdf",
+        ]
+    )
+    repository.get_session = lambda: session
+
+    assert repository.get_existing_pdf_hrefs() == {
+        "http://klauwscore.nl/export.pdf",
+        "http://klauwscore.nl/second.pdf",
     }
     assert session.statement is not None
 

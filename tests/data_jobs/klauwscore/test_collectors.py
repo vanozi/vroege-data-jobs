@@ -90,18 +90,20 @@ def test_collect_klauwscore_rows_reports_flatten_and_dedupe_progress(monkeypatch
     )
 
 
-def test_collect_klauwscore_rows_passes_existing_dates_to_pdf_scraper(monkeypatch):
+def test_collect_klauwscore_rows_passes_existing_filters_to_pdf_scraper(monkeypatch):
     captured = {}
 
-    def fake_scrape_pdfs_with_existing_dates(
+    def fake_scrape_pdfs_with_existing_filters(
         config,
         limit=None,
         progress_callback=None,
         continue_on_document_error=False,
         failure_callback=None,
         existing_behandeldatums=None,
+        existing_pdf_hrefs=None,
     ):
         captured["existing_behandeldatums"] = existing_behandeldatums
+        captured["existing_pdf_hrefs"] = existing_pdf_hrefs
         return fake_scrape_pdfs(
             config,
             limit=limit,
@@ -113,7 +115,7 @@ def test_collect_klauwscore_rows_passes_existing_dates_to_pdf_scraper(monkeypatc
     monkeypatch.setattr(
         collectors.scraper,
         "scrape_alle_notaties_pdfs",
-        fake_scrape_pdfs_with_existing_dates,
+        fake_scrape_pdfs_with_existing_filters,
     )
     monkeypatch.setattr(
         collectors.pdf_parser,
@@ -124,9 +126,11 @@ def test_collect_klauwscore_rows_passes_existing_dates_to_pdf_scraper(monkeypatc
     collectors.collect_klauwscore_rows(
         build_config(),
         existing_behandeldatums={date(2026, 5, 18)},
+        existing_pdf_hrefs={"http://klauwscore.nl/export.pdf"},
     )
 
     assert captured["existing_behandeldatums"] == {date(2026, 5, 18)}
+    assert captured["existing_pdf_hrefs"] == {"http://klauwscore.nl/export.pdf"}
 
 
 def test_collect_klauwscore_documents_records_parse_failures_when_configured(
@@ -180,6 +184,7 @@ def test_collect_klauwscore_documents_surfaces_download_failures(monkeypatch):
         continue_on_document_error=False,
         failure_callback=None,
         existing_behandeldatums=None,
+        existing_pdf_hrefs=None,
     ):
         failure_callback(
             collectors.AgendaPdfLink(
@@ -238,6 +243,7 @@ def fake_scrape_pdfs(
     continue_on_document_error=False,
     failure_callback=None,
     existing_behandeldatums=None,
+    existing_pdf_hrefs=None,
 ):
     return [
         {
@@ -256,6 +262,7 @@ def fake_scrape_pdfs_with_mismatch(
     continue_on_document_error=False,
     failure_callback=None,
     existing_behandeldatums=None,
+    existing_pdf_hrefs=None,
 ):
     document = fake_scrape_pdfs(
         config,
@@ -264,6 +271,7 @@ def fake_scrape_pdfs_with_mismatch(
         continue_on_document_error=continue_on_document_error,
         failure_callback=failure_callback,
         existing_behandeldatums=existing_behandeldatums,
+        existing_pdf_hrefs=existing_pdf_hrefs,
     )[0]
     document["aantal_koeien"] = 3
     return [document]

@@ -78,3 +78,11 @@ class KlauwBehandeling(CreatedTimestampMixin, TimestampMixin, SQLModel, table=Tr
             "comment": "Vrije tekst notities over de behandeling (bijv. type aandoening, actie ondernomen, medicatie)"
         },
     )
+    pdf_href: Optional[str] = Field(
+        default=None,
+        index=True,
+        description="Bronlink van de Klauwscore Alle notaties PDF waaruit deze behandeling is geimporteerd",
+        sa_column_kwargs={
+            "comment": "Bronlink van de Klauwscore Alle notaties PDF waaruit deze behandeling is geimporteerd"
+        },
+    )

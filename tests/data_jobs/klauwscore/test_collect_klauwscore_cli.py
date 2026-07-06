@@ -84,6 +84,11 @@ def test_cli_summary_dry_run_collects_and_does_not_create_repository(
         "_load_existing_behandeldatums",
         lambda: {date(2026, 5, 18)},
     )
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_existing_pdf_hrefs",
+        lambda: {"http://klauwscore.nl/export.pdf"},
+    )
     monkeypatch.setattr("sys.argv", ["collect_klauwscore", "--summary", "--dry-run"])
 
     collect_klauwscore.main()
@@ -147,6 +152,11 @@ def test_cli_flat_persists_deduped_rows_but_outputs_raw_rows(capsys, monkeypatch
         "_load_existing_behandeldatums",
         lambda: {date(2026, 5, 18)},
     )
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_existing_pdf_hrefs",
+        lambda: {"http://klauwscore.nl/export.pdf"},
+    )
     monkeypatch.setattr("sys.argv", ["collect_klauwscore", "--flat"])
 
     collect_klauwscore.main()
@@ -191,6 +201,11 @@ def test_cli_applies_runtime_overrides(monkeypatch):
         lambda: {date(2026, 5, 18)},
     )
     monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_existing_pdf_hrefs",
+        lambda: {"http://klauwscore.nl/export.pdf"},
+    )
+    monkeypatch.setattr(
         "sys.argv",
         [
             "collect_klauwscore",
@@ -215,6 +230,9 @@ def test_cli_applies_runtime_overrides(monkeypatch):
     assert captured["kwargs"]["limit"] == 7
     assert captured["kwargs"]["continue_on_document_error"] is True
     assert captured["kwargs"]["existing_behandeldatums"] == {date(2026, 5, 18)}
+    assert captured["kwargs"]["existing_pdf_hrefs"] == {
+        "http://klauwscore.nl/export.pdf"
+    }
 
 
 def test_cli_loads_existing_behandeldatums_from_repository(monkeypatch):
@@ -234,6 +252,28 @@ def test_cli_loads_existing_behandeldatums_from_repository(monkeypatch):
     )
 
     assert collect_klauwscore._load_existing_behandeldatums() == {date(2026, 5, 19)}
+    assert captured["session_factory"] == collect_klauwscore.database.get_session
+
+
+def test_cli_loads_existing_pdf_hrefs_from_repository(monkeypatch):
+    captured = {}
+
+    class FakeRepository:
+        def __init__(self, session_factory):
+            captured["session_factory"] = session_factory
+
+        def get_existing_pdf_hrefs(self):
+            return {"http://klauwscore.nl/export.pdf"}
+
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "KlauwBehandelingenRepository",
+        FakeRepository,
+    )
+
+    assert collect_klauwscore._load_existing_pdf_hrefs() == {
+        "http://klauwscore.nl/export.pdf"
+    }
     assert captured["session_factory"] == collect_klauwscore.database.get_session
 
 

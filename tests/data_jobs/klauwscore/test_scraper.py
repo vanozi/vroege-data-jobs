@@ -183,9 +183,71 @@ def test_scrape_alle_notaties_pdfs_skips_existing_dates_before_download(monkeypa
     assert playwright.chromium.browser.page.context.request.calls == [
         ("http://klauwscore.nl/pdfs/second.pdf", 120_000)
     ]
-    assert "Skipping 1 PDFs with dates already stored in the database." in (
-        progress_messages
+    assert (
+        "Skipping 1 PDFs with dates or source links already stored in the database."
+        in progress_messages
     )
+
+
+def test_scrape_alle_notaties_pdfs_skips_existing_pdf_hrefs_before_download(
+    monkeypatch,
+):
+    playwright = FakePlaywright()
+    playwright.chromium.browser.page.context.request.results = [
+        FakeResponse(ok=True, status=200, body=b"second"),
+    ]
+    monkeypatch.setattr(scraper, "sync_playwright", lambda: playwright)
+    progress_messages = []
+
+    documents = scraper.scrape_alle_notaties_pdfs(
+        build_config(),
+        existing_pdf_hrefs={"http://klauwscore.nl/pdfs/export.pdf"},
+        progress_callback=progress_messages.append,
+    )
+
+    assert documents == [
+        {
+            "behandeldatum": date(2026, 5, 20),
+            "aantal_koeien": 8,
+            "href": "http://klauwscore.nl/pdfs/second.pdf",
+            "pdf_bytes": b"second",
+        }
+    ]
+    assert playwright.chromium.browser.page.context.request.calls == [
+        ("http://klauwscore.nl/pdfs/second.pdf", 120_000)
+    ]
+    assert (
+        "Skipping 1 PDFs with dates or source links already stored in the database."
+        in progress_messages
+    )
+
+
+def test_scrape_alle_notaties_pdfs_skips_existing_pdf_hrefs_when_date_is_new(
+    monkeypatch,
+):
+    playwright = FakePlaywright()
+    playwright.chromium.browser.page.agenda_html = """
+    <table>
+      <tr>
+        <td><span class="dayofmonth">29</span></td>
+        <td><span class="shortdate">december, 2026</span></td>
+        <td><span class="agenda-time">37 koeien</span></td>
+        <td><a href="/veepedicure/generateregistratiepdf/2197/all">Alle notaties</a></td>
+      </tr>
+    </table>
+    """
+    monkeypatch.setattr(scraper, "sync_playwright", lambda: playwright)
+
+    documents = scraper.scrape_alle_notaties_pdfs(
+        build_config(),
+        existing_behandeldatums={date(2025, 12, 29)},
+        existing_pdf_hrefs={
+            "http://klauwscore.nl/veepedicure/generateregistratiepdf/2197/all"
+        },
+    )
+
+    assert documents == []
+    assert playwright.chromium.browser.page.context.request.calls == []
 
 
 def test_scrape_stallijst_rows_uses_browser_lifecycle(monkeypatch):

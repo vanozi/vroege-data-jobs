@@ -38,3 +38,13 @@ class KlauwBehandelingenRepository(BaseRepository[KlauwBehandeling]):
         with self.get_session() as session:
             statement = select(self.model.behandeldatum).distinct()
             return set(session.exec(statement).all())
+
+    def get_existing_pdf_hrefs(self) -> set[str]:
+        """Return Klauwscore source PDF links already stored for imports."""
+        with self.get_session() as session:
+            statement = (
+                select(self.model.pdf_href)
+                .where(self.model.pdf_href.is_not(None))
+                .distinct()
+            )
+            return set(session.exec(statement).all())

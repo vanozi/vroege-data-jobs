@@ -45,6 +45,7 @@ def klauw_behandeling_from_row(row: dict[str, object]) -> KlauwBehandeling:
         behandeldatum=_require_date(row, "behandeldatum"),
         eartag_short=_require_str(row, "eartag_short"),
         notatie=_optional_str(row.get("notatie")),
+        pdf_href=_optional_str(row.get("pdf_href")),
     )
 
 
