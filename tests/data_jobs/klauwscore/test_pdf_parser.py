@@ -72,6 +72,25 @@ def test_parse_klauwscore_pdf_text_skips_header_footer_and_blank_lines():
     assert records[1].notities == ["Geen bijzonderheden"]
 
 
+def test_parse_klauwscore_pdf_text_keeps_cow_open_across_page_breaks():
+    records = pdf_parser.parse_klauwscore_pdf_text(
+        """
+        Registratie van Vroege op 30-06-2026
+        1826
+        Linksachter Tyloom
+        test@rundveepedicure.nl : footer text | 1 / 2
+        Registratie van Vroege op 30-06-2026
+        Vierkant
+        1991
+        Vierkant
+        """
+    )
+
+    assert [record.eartag_short for record in records] == ["1826", "1991"]
+    assert records[0].notities == ["Linksachter Tyloom", "Vierkant"]
+    assert records[1].notities == ["Vierkant"]
+
+
 def test_parse_klauwscore_pdf_text_raises_for_missing_inspection_date():
     with pytest.raises(ValueError, match="Could not find inspection date"):
         pdf_parser.parse_klauwscore_pdf_text(

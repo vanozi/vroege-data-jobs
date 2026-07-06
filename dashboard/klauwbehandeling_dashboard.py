@@ -480,14 +480,9 @@ def _(df_protocol_rows, mo, pl):
         label="Voergroep",
     )
 
-    protocol_search_filter = mo.ui.text(
-        label="Zoek halsbandnummer",
-        placeholder="Halsbandnummer",
-    )
     return (
         protocol_category_filter,
         protocol_feed_group_filter,
-        protocol_search_filter,
     )
 
 
@@ -497,7 +492,6 @@ def _(
     pl,
     protocol_category_filter,
     protocol_feed_group_filter,
-    protocol_search_filter,
 ):
     """Protocol tab - pas filters toe."""
     df_protocol_filtered_rows = df_protocol_rows
@@ -516,15 +510,6 @@ def _(
                     pl.col("Voergroep naam").fill_null("Onbekend"),
                 ]
             ).is_in(protocol_feed_group_filter.value)
-        )
-
-    if protocol_search_filter.value and protocol_search_filter.value.strip():
-        protocol_search_term = protocol_search_filter.value.strip()
-        df_protocol_filtered_rows = df_protocol_filtered_rows.filter(
-            pl.col("Halsbandnummer")
-            .cast(pl.Utf8)
-            .str.strip_chars()
-            .eq(protocol_search_term)
         )
 
     df_protocol_aanbiedlijst = df_protocol_filtered_rows.filter(
@@ -558,7 +543,6 @@ def _(
     protocol_feed_group_filter,
     protocol_peildatum,
     protocol_reference_date,
-    protocol_search_filter,
 ):
     """Protocol tab - bouw filters, KPI's en tabellen."""
     protocol_filter_controls = mo.hstack(
@@ -566,7 +550,6 @@ def _(
             protocol_peildatum,
             protocol_category_filter,
             protocol_feed_group_filter,
-            protocol_search_filter,
         ],
         justify="start",
     )
@@ -576,8 +559,8 @@ def _(
         **Selectieregels klauwbekapper**
         - **Actieve Mortellaro:** aanbieden zodra de laatste Mortellaro nog niet is gevolgd door een latere gezonde registratie met alleen `Vierkant`.
         - **Hercontrole aandoening:** aanbieden 12 weken na laatste behandeling met een aandoening anders dan Mortellaro.
-        - **Preventief bekappen:** aanbieden na 183 dagen wanneer de laatste registratie alleen `Vierkant` was, de koe niet droog staat en minimaal 30 DIM is.
-        - **Geen klauwdata:** aanbieden vanaf 30 DIM, zolang het geen jongvee is en de koe niet droog staat.
+        - **Preventief bekappen:** aanbieden na 183 dagen wanneer de laatste registratie alleen `Vierkant` was, de koe niet droog staat en minimaal 50 DIM is.
+        - **Eerste bekapping:** aanbieden vanaf 50 DIM wanneer er nog geen klauwdata is, zolang het geen jongvee is en de koe niet droog staat.
 
         """
     )
@@ -617,6 +600,15 @@ def _(
                 ),
                 label="Preventief",
                 caption="183 dagen",
+            ),
+            mo.stat(
+                value=str(
+                    df_protocol_rows.filter(
+                        pl.col("Aanbiedcategorie") == "Eerste bekapping"
+                    ).height
+                ),
+                label="Eerste bekapping",
+                caption="50 DIM",
             ),
             mo.stat(
                 value=str(

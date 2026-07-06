@@ -1,4 +1,5 @@
 import argparse
+from datetime import date
 from dataclasses import replace
 from typing import Optional
 
@@ -20,14 +21,14 @@ def main() -> None:
     args = parse_args()
     config = _apply_cli_overrides(klauwscore_config.load_klauwscore_config(), args)
     limit = args.limit if args.limit is not None else config.default_limit
-    cows = _load_current_herd_cows(limit=limit)
+    existing_behandeldatums = _load_existing_behandeldatums()
 
     result = collectors.collect_klauwscore_rows(
         config,
-        cows=cows,
         limit=limit,
         continue_on_document_error=args.continue_on_document_error,
         progress_callback=logger.info,
+        existing_behandeldatums=existing_behandeldatums,
     )
     saved_count = _persist_rows(result.deduped_rows, dry_run=args.dry_run)
     _log_collection_summary(result, saved_count, dry_run=args.dry_run)
@@ -53,13 +54,13 @@ def main() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Collect Klauwscore stallijst notities and persist treatments."
+        description="Collect Klauwscore Alle notaties PDFs and persist treatments."
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Only collect the first N current-herd cows.",
+        help="Only collect the first N agenda PDFs.",
     )
     parser.add_argument(
         "--flat",
@@ -79,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--continue-on-document-error",
         action="store_true",
-        help="Compatibility option for the old PDF collector; ignored for stallijst.",
+        help="Skip PDFs that fail download or parsing instead of aborting.",
     )
     parser.add_argument(
         "--headless",
@@ -147,6 +148,16 @@ def _persist_rows(
     )
 
 
+def _load_existing_behandeldatums() -> set[date]:
+    repository = KlauwBehandelingenRepository(database.get_session)
+    existing_behandeldatums = repository.get_existing_behandeldatums()
+    logger.info(
+        "Loaded %d existing Klauwscore treatment dates from the database.",
+        len(existing_behandeldatums),
+    )
+    return existing_behandeldatums
+
+
 def _load_current_herd_cows(limit: Optional[int]) -> list[dict[str, object]]:
     koe_repository = KoeRepository(database.get_session)
     koeien = koe_repository.get_current_herd_koeien(limit=limit)
@@ -170,13 +181,16 @@ def _log_collection_summary(
 ) -> None:
     counts = result.summary_counts()
     logger.info(
-        "Klauwscore zoekresultaten summary: searched_cows=%s flat_notitie_rows=%s "
-        "deduped_notitie_rows=%s duplicate_notitie_rows=%s failures=%s "
+        "Klauwscore Alle notaties PDF summary: documents=%s cow_records=%s "
+        "flat_notitie_rows=%s deduped_notitie_rows=%s duplicate_notitie_rows=%s "
+        "count_mismatches=%s failures=%s "
         "saved_klauw_behandelingen=%s dry_run=%s",
-        counts["searched_cows"],
+        counts["documents"],
+        counts["cow_records"],
         counts["notitie_rows"],
         counts["deduped_notitie_rows"],
         counts["duplicate_rows"],
+        counts["count_mismatches"],
         counts["failures"],
         saved_count,
         dry_run,

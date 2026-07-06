@@ -94,6 +94,7 @@ def collect_klauwscore_documents(
     limit: Optional[int] = None,
     continue_on_document_error: bool = False,
     progress_callback: Optional[Callable[[str], None]] = None,
+    existing_behandeldatums: Optional[set[date]] = None,
 ) -> KlauwscoreCollectionResult:
     """Collect and parse Klauwscore PDF documents without database writes."""
     failures: list[DocumentCollectionFailure] = []
@@ -113,6 +114,7 @@ def collect_klauwscore_documents(
         progress_callback=progress_callback,
         continue_on_document_error=continue_on_document_error,
         failure_callback=record_download_failure,
+        existing_behandeldatums=existing_behandeldatums,
     )
 
     documents: list[ParsedKlauwscoreDocument] = []
@@ -154,31 +156,38 @@ def collect_klauwscore_rows(
     limit: Optional[int] = None,
     continue_on_document_error: bool = False,
     progress_callback: Optional[Callable[[str], None]] = None,
+    existing_behandeldatums: Optional[set[date]] = None,
 ) -> KlauwscoreCollectionResult:
-    """Collect Klauwscore treatment rows by searching current-herd cows."""
-    del continue_on_document_error
+    """Collect Klauwscore treatment rows from Alle notaties PDF documents."""
+    del cows
 
-    failures: list[DocumentCollectionFailure] = []
-    cow_rows = list(cows or [])
-    if limit is not None:
-        cow_rows = cow_rows[:limit]
-
-    def record_cow_failure(cow: dict[str, object], error: Exception) -> None:
-        failures.append(_failure_from_cow(cow, error, config.zoeken_url))
-
-    rows = scraper.scrape_zoekresultaten_rows_for_cows(
+    result = collect_klauwscore_documents(
         config,
-        cows=cow_rows,
+        limit=limit,
+        continue_on_document_error=continue_on_document_error,
         progress_callback=progress_callback,
-        failure_callback=record_cow_failure,
+        existing_behandeldatums=existing_behandeldatums,
+    )
+    _report(progress_callback, "Flattening parsed PDF documents into notitie rows...")
+    rows = transforms.flatten_documents(result.documents)
+    _report(
+        progress_callback,
+        f"Flattened {len(rows)} notitie rows from {len(result.documents)} PDF documents.",
     )
     deduped_rows = transforms.dedupe_klauwbehandeling_rows(rows)
+    _report(
+        progress_callback,
+        "Deduped notitie rows: "
+        f"{len(deduped_rows)} unique rows, {len(rows) - len(deduped_rows)} "
+        "duplicates removed.",
+    )
 
     return KlauwscoreCollectionResult(
+        documents=result.documents,
         rows=rows,
         deduped_rows=deduped_rows,
-        failures=failures,
-        searched_cow_count=len(cow_rows),
+        count_mismatches=result.count_mismatches,
+        failures=result.failures,
     )
 
 

@@ -158,6 +158,36 @@ def test_scrape_alle_notaties_pdfs_downloads_limited_documents(monkeypatch):
     )
 
 
+def test_scrape_alle_notaties_pdfs_skips_existing_dates_before_download(monkeypatch):
+    playwright = FakePlaywright()
+    playwright.chromium.browser.page.context.request.results = [
+        FakeResponse(ok=True, status=200, body=b"second"),
+    ]
+    monkeypatch.setattr(scraper, "sync_playwright", lambda: playwright)
+    progress_messages = []
+
+    documents = scraper.scrape_alle_notaties_pdfs(
+        build_config(),
+        existing_behandeldatums={date(2026, 5, 19)},
+        progress_callback=progress_messages.append,
+    )
+
+    assert documents == [
+        {
+            "behandeldatum": date(2026, 5, 20),
+            "aantal_koeien": 8,
+            "href": "http://klauwscore.nl/pdfs/second.pdf",
+            "pdf_bytes": b"second",
+        }
+    ]
+    assert playwright.chromium.browser.page.context.request.calls == [
+        ("http://klauwscore.nl/pdfs/second.pdf", 120_000)
+    ]
+    assert "Skipping 1 PDFs with dates already stored in the database." in (
+        progress_messages
+    )
+
+
 def test_scrape_stallijst_rows_uses_browser_lifecycle(monkeypatch):
     playwright = FakePlaywright()
     monkeypatch.setattr(scraper, "sync_playwright", lambda: playwright)

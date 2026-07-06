@@ -86,6 +86,42 @@ def test_save_klauw_behandelingen_enriches_with_matching_koe():
     ]
 
 
+def test_save_klauw_behandelingen_reuses_koe_lookup_for_same_cow_date():
+    animal_id = UUID("12345678-1234-5678-1234-567812345678")
+    repository = FakeKlauwBehandelingenRepository()
+    koe_repository = FakeKoeRepository(FakeKoe(animal_id, "NL123456789"))
+    rows = [
+        build_row(101, "Bekapt"),
+        build_row(101, "Blokje geplaatst"),
+    ]
+
+    saved_count = klauwscore.save_klauw_behandelingen(
+        rows,
+        repository,
+        koe_repository,
+    )
+
+    assert saved_count == 2
+    assert koe_repository.calls == [("101", date(2026, 5, 19))]
+
+
+def test_save_klauw_behandelingen_logs_periodic_progress(caplog):
+    repository = FakeKlauwBehandelingenRepository()
+    rows = [build_row(101, "Bekapt"), build_row(102, "Blokje geplaatst")]
+    logger = logging.getLogger("test_save_klauw_behandelingen_progress")
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        klauwscore.save_klauw_behandelingen(
+            rows,
+            repository,
+            logger=logger,
+            progress_interval=1,
+        )
+
+    assert "Saving klauw behandelingen: 1/2 processed." in caplog.text
+    assert "Saving klauw behandelingen: 2/2 processed." in caplog.text
+
+
 def test_save_klauw_behandelingen_skips_enrichment_without_matching_koe():
     repository = FakeKlauwBehandelingenRepository()
     koe_repository = FakeKoeRepository()

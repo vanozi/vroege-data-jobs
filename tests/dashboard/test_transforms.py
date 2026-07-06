@@ -586,7 +586,7 @@ class TestKlauwbekapProtocolRows:
                     animal_id="koe-1",
                     behandeldatum=date(2026, 1, 1),
                     notatie="Vierkant",
-                    current_dim=20,
+                    current_dim=49,
                 )
             ],
             reference_date=date(2026, 7, 3),
@@ -595,20 +595,36 @@ class TestKlauwbekapProtocolRows:
         assert result[0]["Aanbiedcategorie"] == "Tijdelijk niet aanbieden"
         assert result[0]["Moet aangeboden worden"] is False
 
-    def test_cow_without_hoof_data_is_preventive_from_thirty_dim(self):
+    def test_cow_without_hoof_data_waits_until_fifty_dim(self):
         result = build_klauwbekap_protocol_rows(
             [
                 build_klauw_row(
                     animal_id="koe-1",
                     behandeldatum=None,
                     notatie=None,
-                    current_dim=30,
+                    current_dim=49,
                 )
             ],
             reference_date=date(2026, 7, 3),
         )
 
-        assert result[0]["Aanbiedcategorie"] == "Preventief bekappen"
+        assert result[0]["Aanbiedcategorie"] == "Tijdelijk niet aanbieden"
+        assert result[0]["Moet aangeboden worden"] is False
+
+    def test_cow_without_hoof_data_is_first_trim_from_fifty_dim(self):
+        result = build_klauwbekap_protocol_rows(
+            [
+                build_klauw_row(
+                    animal_id="koe-1",
+                    behandeldatum=None,
+                    notatie=None,
+                    current_dim=50,
+                )
+            ],
+            reference_date=date(2026, 7, 3),
+        )
+
+        assert result[0]["Aanbiedcategorie"] == "Eerste bekapping"
         assert result[0]["Moet aangeboden worden"] is True
 
     def test_young_stock_without_hoof_data_is_data_control(self):

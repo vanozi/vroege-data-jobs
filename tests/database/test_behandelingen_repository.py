@@ -63,3 +63,39 @@ def test_upsert_klauw_behandeling_accepts_model_at_repository_boundary():
     assert calls[0][0]["behandeldatum"] == date(2026, 5, 19)
     assert calls[0][0]["notatie"] == "Bekapt"
     assert calls[0][1] == ["eartag_short", "behandeldatum", "notatie"]
+
+
+def test_get_existing_behandeldatums_returns_distinct_dates():
+    repository = KlauwBehandelingenRepository(lambda: None)
+    session = FakeSession([date(2026, 5, 19), date(2026, 5, 20)])
+    repository.get_session = lambda: session
+
+    assert repository.get_existing_behandeldatums() == {
+        date(2026, 5, 19),
+        date(2026, 5, 20),
+    }
+    assert session.statement is not None
+
+
+class FakeSession:
+    def __init__(self, values):
+        self.values = values
+        self.statement = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return None
+
+    def exec(self, statement):
+        self.statement = statement
+        return FakeResult(self.values)
+
+
+class FakeResult:
+    def __init__(self, values):
+        self.values = values
+
+    def all(self):
+        return self.values

@@ -28,33 +28,105 @@ def test_collect_klauwscore_documents_parses_pdf_documents(monkeypatch):
     assert result.documents[0].href == "http://klauwscore.nl/export.pdf"
 
 
-def test_collect_klauwscore_rows_flattens_dedupes_and_summarizes(monkeypatch):
+def test_collect_klauwscore_rows_flattens_pdf_documents_dedupes_and_summarizes(
+    monkeypatch,
+):
     monkeypatch.setattr(
         collectors.scraper,
-        "scrape_zoekresultaten_rows_for_cows",
-        fake_scrape_zoekresultaten_rows_for_cows,
+        "scrape_alle_notaties_pdfs",
+        fake_scrape_pdfs,
+    )
+    monkeypatch.setattr(
+        collectors.pdf_parser,
+        "parse_klauwscore_pdf_bytes",
+        fake_parse_pdf_bytes,
     )
 
     result = collectors.collect_klauwscore_rows(
         build_config(),
-        cows=[{"eartag_short": "101"}, {"eartag_short": "102"}],
     )
 
     assert result.notitie_row_count == 3
     assert result.deduped_notitie_row_count == 2
     assert result.duplicate_row_count == 1
-    assert result.searched_cow_count == 2
+    assert result.searched_cow_count == 0
+    assert result.document_count == 1
+    assert result.cow_record_count == 2
     assert result.summary_counts() == {
-        "documents": 0,
-        "cow_records": 0,
+        "documents": 1,
+        "cow_records": 2,
         "stallijst_cows": 2,
-        "searched_cows": 2,
+        "searched_cows": 0,
         "notitie_rows": 3,
         "deduped_notitie_rows": 2,
         "duplicate_rows": 1,
         "count_mismatches": 0,
         "failures": 0,
     }
+
+
+def test_collect_klauwscore_rows_reports_flatten_and_dedupe_progress(monkeypatch):
+    monkeypatch.setattr(
+        collectors.scraper,
+        "scrape_alle_notaties_pdfs",
+        fake_scrape_pdfs,
+    )
+    monkeypatch.setattr(
+        collectors.pdf_parser,
+        "parse_klauwscore_pdf_bytes",
+        fake_parse_pdf_bytes,
+    )
+    progress_messages = []
+
+    collectors.collect_klauwscore_rows(
+        build_config(),
+        progress_callback=progress_messages.append,
+    )
+
+    assert "Flattening parsed PDF documents into notitie rows..." in progress_messages
+    assert "Flattened 3 notitie rows from 1 PDF documents." in progress_messages
+    assert "Deduped notitie rows: 2 unique rows, 1 duplicates removed." in (
+        progress_messages
+    )
+
+
+def test_collect_klauwscore_rows_passes_existing_dates_to_pdf_scraper(monkeypatch):
+    captured = {}
+
+    def fake_scrape_pdfs_with_existing_dates(
+        config,
+        limit=None,
+        progress_callback=None,
+        continue_on_document_error=False,
+        failure_callback=None,
+        existing_behandeldatums=None,
+    ):
+        captured["existing_behandeldatums"] = existing_behandeldatums
+        return fake_scrape_pdfs(
+            config,
+            limit=limit,
+            progress_callback=progress_callback,
+            continue_on_document_error=continue_on_document_error,
+            failure_callback=failure_callback,
+        )
+
+    monkeypatch.setattr(
+        collectors.scraper,
+        "scrape_alle_notaties_pdfs",
+        fake_scrape_pdfs_with_existing_dates,
+    )
+    monkeypatch.setattr(
+        collectors.pdf_parser,
+        "parse_klauwscore_pdf_bytes",
+        fake_parse_pdf_bytes,
+    )
+
+    collectors.collect_klauwscore_rows(
+        build_config(),
+        existing_behandeldatums={date(2026, 5, 18)},
+    )
+
+    assert captured["existing_behandeldatums"] == {date(2026, 5, 18)}
 
 
 def test_collect_klauwscore_documents_records_parse_failures_when_configured(
@@ -107,6 +179,7 @@ def test_collect_klauwscore_documents_surfaces_download_failures(monkeypatch):
         progress_callback=None,
         continue_on_document_error=False,
         failure_callback=None,
+        existing_behandeldatums=None,
     ):
         failure_callback(
             collectors.AgendaPdfLink(
@@ -164,6 +237,7 @@ def fake_scrape_pdfs(
     progress_callback=None,
     continue_on_document_error=False,
     failure_callback=None,
+    existing_behandeldatums=None,
 ):
     return [
         {
@@ -181,6 +255,7 @@ def fake_scrape_pdfs_with_mismatch(
     progress_callback=None,
     continue_on_document_error=False,
     failure_callback=None,
+    existing_behandeldatums=None,
 ):
     document = fake_scrape_pdfs(
         config,
@@ -188,35 +263,10 @@ def fake_scrape_pdfs_with_mismatch(
         progress_callback=progress_callback,
         continue_on_document_error=continue_on_document_error,
         failure_callback=failure_callback,
+        existing_behandeldatums=existing_behandeldatums,
     )[0]
     document["aantal_koeien"] = 3
     return [document]
-
-
-def fake_scrape_zoekresultaten_rows_for_cows(
-    config,
-    cows,
-    progress_callback=None,
-    failure_callback=None,
-):
-    assert cows == [{"eartag_short": "101"}, {"eartag_short": "102"}]
-    return [
-        {
-            "behandeldatum": date(2026, 5, 19),
-            "eartag_short": "101",
-            "notatie": "Bekapt",
-        },
-        {
-            "behandeldatum": date(2026, 5, 19),
-            "eartag_short": "101",
-            "notatie": "Bekapt",
-        },
-        {
-            "behandeldatum": date(2026, 5, 19),
-            "eartag_short": "102",
-            "notatie": "Blokje geplaatst",
-        },
-    ]
 
 
 def fake_parse_pdf_bytes(pdf_bytes):

@@ -11,12 +11,11 @@ from data_jobs.klauwscore.transforms import ParsedKlauwscoreDocument
 
 
 @pytest.fixture(autouse=True)
-def fake_current_herd_cows(monkeypatch):
-    monkeypatch.setattr(
-        collect_klauwscore,
-        "_load_current_herd_cows",
-        lambda limit: [{"eartag_short": "101"}],
-    )
+def fake_database_reads(monkeypatch):
+    def fail_if_called(limit):
+        raise AssertionError("PDF collector should not load current-herd cows")
+
+    monkeypatch.setattr(collect_klauwscore, "_load_current_herd_cows", fail_if_called)
 
 
 def test_cli_help_works(capsys, monkeypatch):
@@ -80,6 +79,11 @@ def test_cli_summary_dry_run_collects_and_does_not_create_repository(
         "save_klauw_behandelingen",
         fake_save,
     )
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_existing_behandeldatums",
+        lambda: {date(2026, 5, 18)},
+    )
     monkeypatch.setattr("sys.argv", ["collect_klauwscore", "--summary", "--dry-run"])
 
     collect_klauwscore.main()
@@ -138,6 +142,11 @@ def test_cli_flat_persists_deduped_rows_but_outputs_raw_rows(capsys, monkeypatch
         "save_klauw_behandelingen",
         fake_save,
     )
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_existing_behandeldatums",
+        lambda: {date(2026, 5, 18)},
+    )
     monkeypatch.setattr("sys.argv", ["collect_klauwscore", "--flat"])
 
     collect_klauwscore.main()
@@ -177,6 +186,11 @@ def test_cli_applies_runtime_overrides(monkeypatch):
         ),
     )
     monkeypatch.setattr(
+        collect_klauwscore,
+        "_load_existing_behandeldatums",
+        lambda: {date(2026, 5, 18)},
+    )
+    monkeypatch.setattr(
         "sys.argv",
         [
             "collect_klauwscore",
@@ -200,6 +214,27 @@ def test_cli_applies_runtime_overrides(monkeypatch):
     assert captured["config"].download_timeout_ms == 9000
     assert captured["kwargs"]["limit"] == 7
     assert captured["kwargs"]["continue_on_document_error"] is True
+    assert captured["kwargs"]["existing_behandeldatums"] == {date(2026, 5, 18)}
+
+
+def test_cli_loads_existing_behandeldatums_from_repository(monkeypatch):
+    captured = {}
+
+    class FakeRepository:
+        def __init__(self, session_factory):
+            captured["session_factory"] = session_factory
+
+        def get_existing_behandeldatums(self):
+            return {date(2026, 5, 19)}
+
+    monkeypatch.setattr(
+        collect_klauwscore,
+        "KlauwBehandelingenRepository",
+        FakeRepository,
+    )
+
+    assert collect_klauwscore._load_existing_behandeldatums() == {date(2026, 5, 19)}
+    assert captured["session_factory"] == collect_klauwscore.database.get_session
 
 
 def build_config() -> KlauwscoreConfig:

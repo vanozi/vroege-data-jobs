@@ -58,7 +58,7 @@ BEHANDELINGEN = {
 
 HERCONTROLE_DAGEN = 84
 PREVENTIEF_DAGEN = 183
-MIN_DIM_PREVENTIEF = 30
+MIN_DIM_PREVENTIEF = 50
 
 UNIFORM_AGRI_POSITION_CODES = {
     "RV": "1",
@@ -881,8 +881,8 @@ def _classify_cow_without_treatments(
 
     row.update(
         {
-            "Aanbiedcategorie": "Preventief bekappen",
-            "Aanbiedreden": "Geen klauwdata en koe voldoet aan preventieve criteria",
+            "Aanbiedcategorie": "Eerste bekapping",
+            "Aanbiedreden": "Geen klauwdata en koe voldoet aan eerste-bekapping criteria",
             "Moet aangeboden worden": True,
             "Volgende actiedatum": peildatum,
             "Urgentie": 3,

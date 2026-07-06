@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Callable, Optional
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -136,6 +137,7 @@ def scrape_alle_notaties_pdfs(
     progress_callback: Optional[Callable[[str], None]] = None,
     continue_on_document_error: bool = False,
     failure_callback: Optional[Callable[[AgendaPdfLink, Exception], None]] = None,
+    existing_behandeldatums: Optional[set[date]] = None,
 ) -> list[dict[str, object]]:
     """Download all Alle notaties PDFs and return metadata plus PDF bytes."""
     pdf_documents: list[dict[str, object]] = []
@@ -156,6 +158,11 @@ def scrape_alle_notaties_pdfs(
             _report(
                 progress_callback,
                 f"Found {len(notatie_links)} Alle notaties PDFs.",
+            )
+            notatie_links = _filter_existing_notatie_links(
+                notatie_links,
+                existing_behandeldatums,
+                progress_callback,
             )
 
             if limit is not None:
@@ -196,6 +203,31 @@ def scrape_alle_notaties_pdfs(
             )
 
     return pdf_documents
+
+
+def _filter_existing_notatie_links(
+    notatie_links: list[AgendaPdfLink],
+    existing_behandeldatums: Optional[set[date]],
+    progress_callback: Optional[Callable[[str], None]],
+) -> list[AgendaPdfLink]:
+    if not existing_behandeldatums:
+        return notatie_links
+
+    new_links = [
+        notatie_link
+        for notatie_link in notatie_links
+        if notatie_link.behandeldatum not in existing_behandeldatums
+    ]
+    skipped_count = len(notatie_links) - len(new_links)
+    _report(
+        progress_callback,
+        f"Skipping {skipped_count} PDFs with dates already stored in the database.",
+    )
+    _report(
+        progress_callback,
+        f"{len(new_links)} Alle notaties PDFs remain to download.",
+    )
+    return new_links
 
 
 def scrape_stallijst_rows(

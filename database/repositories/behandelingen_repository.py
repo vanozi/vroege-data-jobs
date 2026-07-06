@@ -1,7 +1,9 @@
+from datetime import date
 from typing import Union
 
 from database.models.behandeling import KlauwBehandeling
 from database.repositories.base_repository import BaseRepository
+from sqlmodel import select
 
 
 class KlauwBehandelingenRepository(BaseRepository[KlauwBehandeling]):
@@ -30,3 +32,9 @@ class KlauwBehandelingenRepository(BaseRepository[KlauwBehandeling]):
             klauw_behandeling_data,
             unique_fields=["eartag_short", "behandeldatum", "notatie"],
         )
+
+    def get_existing_behandeldatums(self) -> set[date]:
+        """Return all treatment dates already stored for Klauwscore imports."""
+        with self.get_session() as session:
+            statement = select(self.model.behandeldatum).distinct()
+            return set(session.exec(statement).all())
