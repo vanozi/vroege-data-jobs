@@ -1,16 +1,15 @@
+import logging
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
-import logging
-import shutil
 
 import pytest
 
 from data_jobs.uniform_agri import config as uniform_config
 from data_jobs.uniform_agri.config import UniformAgriConfig
 from data_jobs.uniform_agri.scripts import koe_data
-
 
 ANIMAL_ID = UUID("12345678-1234-5678-1234-567812345678")
 SECOND_ANIMAL_ID = UUID("22345678-1234-5678-1234-567812345678")
@@ -120,7 +119,7 @@ def test_load_uniform_config_rejects_base_url_without_protocol(monkeypatch):
     assert "UNIFORM_BASE_URL must start with http:// or https://" in str(error.value)
 
 
-def test_run_dry_run_uses_collectors_and_persistence(monkeypatch, capsys):
+def test_run_dry_run_uses_collectors_and_persistence(monkeypatch, caplog, capsys):
     calls = []
     koeien = [
         FakeKoe(ANIMAL_ID, "Koe 1"),
@@ -134,20 +133,43 @@ def test_run_dry_run_uses_collectors_and_persistence(monkeypatch, capsys):
         "collect_herd_registration",
         lambda service, herd_id, date: FakeResult(records=koeien),
     )
+
+    def collect_animal_details(
+        service,
+        herd_id,
+        selected_koeien,
+        continue_on_animal_error,
+        progress_callback=None,
+    ):
+        if progress_callback:
+            progress_callback(0, len(selected_koeien))
+            progress_callback(len(selected_koeien), len(selected_koeien))
+        return FakeResult(records=[FakeDetail(selected_koeien[0].animal_id)])
+
+    def collect_milk_recordings(
+        service,
+        herd_id,
+        selected_koeien,
+        continue_on_animal_error,
+        progress_callback=None,
+    ):
+        if progress_callback:
+            progress_callback(0, len(selected_koeien))
+            progress_callback(len(selected_koeien), len(selected_koeien))
+        return FakeResult(
+            records=[FakeMelking(MILKING_ID)],
+            skipped_count=24,
+        )
+
     monkeypatch.setattr(
         koe_data.animal_details,
         "collect_animal_details",
-        lambda service, herd_id, selected_koeien, continue_on_animal_error: FakeResult(
-            records=[FakeDetail(selected_koeien[0].animal_id)]
-        ),
+        collect_animal_details,
     )
     monkeypatch.setattr(
         koe_data.milk_recordings,
         "collect_milk_recordings",
-        lambda service, herd_id, selected_koeien, continue_on_animal_error: FakeResult(
-            records=[FakeMelking(MILKING_ID)],
-            skipped_count=24,
-        ),
+        collect_milk_recordings,
     )
     monkeypatch.setattr(
         koe_data.uniform_agri_persistence,
@@ -185,16 +207,23 @@ def test_run_dry_run_uses_collectors_and_persistence(monkeypatch, capsys):
         "build_repositories",
         lambda: calls.append(("build_repositories", 0, None, False)),
     )
-
-    exit_code = koe_data.main(
-        [
-            "--dry-run",
-            "--include-details",
-            "--include-milkings",
-            "--limit",
-            "1",
-        ]
+    logger = logging.getLogger("test_uniform_agri_cli_progress")
+    monkeypatch.setattr(
+        koe_data.job_logger,
+        "get_job_logger",
+        lambda *args: logger,
     )
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        exit_code = koe_data.main(
+            [
+                "--dry-run",
+                "--include-details",
+                "--include-milkings",
+                "--limit",
+                "1",
+            ]
+        )
 
     assert exit_code == 0
     assert calls == [
@@ -209,6 +238,10 @@ def test_run_dry_run_uses_collectors_and_persistence(monkeypatch, capsys):
     assert "saved_koe_details=1" in output
     assert "saved_melkingen=1" in output
     assert "cows_without_melkingingen=24" in output
+    assert "Collecting cow details: 0/1" in caplog.text
+    assert "Collecting cow details: 1/1" in caplog.text
+    assert "Collecting milk recordings: 0/1" in caplog.text
+    assert "Collecting milk recordings: 1/1" in caplog.text
 
 
 def build_config():

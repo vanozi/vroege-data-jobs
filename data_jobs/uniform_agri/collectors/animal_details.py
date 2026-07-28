@@ -1,10 +1,11 @@
-from database.models.koe import Koe
-from database.models.koe import KoeDetail
+from collections.abc import Callable
+
 from data_jobs.uniform_agri import transforms
 from data_jobs.uniform_agri.collectors.models import (
     AnimalCollectionFailure,
     CollectionResult,
 )
+from database.models.koe import Koe, KoeDetail
 
 
 def collect_animal_details(
@@ -12,11 +13,15 @@ def collect_animal_details(
     herd_id: str,
     koeien: list[Koe],
     continue_on_animal_error: bool = True,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> CollectionResult[KoeDetail]:
     """Fetch and transform actual-tab details for each cow."""
     result: CollectionResult[KoeDetail] = CollectionResult()
+    total = len(koeien)
+    if progress_callback:
+        progress_callback(0, total)
 
-    for koe in koeien:
+    for processed, koe in enumerate(koeien, start=1):
         try:
             raw_detail = service.fetch_animal_actual(herd_id, str(koe.animal_id))
             result.records.append(transforms.koe_detail_from_actual(raw_detail))
@@ -26,6 +31,9 @@ def collect_animal_details(
             )
             if not continue_on_animal_error:
                 raise
+
+        if progress_callback and (processed % 50 == 0 or processed == total):
+            progress_callback(processed, total)
 
     return result
 

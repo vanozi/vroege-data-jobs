@@ -1,9 +1,7 @@
 import argparse
-from datetime import datetime
 import logging
-from typing import Optional
+from datetime import datetime
 
-from database.persistence import uniform_agri as uniform_agri_persistence
 from data_jobs import logger as job_logger
 from data_jobs.uniform_agri import config as uniform_config
 from data_jobs.uniform_agri.collectors import (
@@ -13,6 +11,7 @@ from data_jobs.uniform_agri.collectors import (
 )
 from data_jobs.uniform_agri.config import UniformAgriConfigError
 from data_jobs.uniform_agri.services.uniform_service import UniformService
+from database.persistence import uniform_agri as uniform_agri_persistence
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logger = job_logger.get_job_logger(__file__, __name__)
 
@@ -124,6 +123,7 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
             herd_id,
             koeien,
             continue_on_animal_error=args.continue_on_animal_error,
+            progress_callback=build_progress_logger(logger, "cow details"),
         )
         detail_failure_count = details_result.failure_count
         log_failures(logger, details_result.failures)
@@ -143,6 +143,7 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
             herd_id,
             koeien,
             continue_on_animal_error=args.continue_on_animal_error,
+            progress_callback=build_progress_logger(logger, "milk recordings"),
         )
         milking_failure_count = milkings_result.failure_count
         cows_without_melkingingen = milkings_result.skipped_count
@@ -169,14 +170,14 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
     return 0
 
 
-def parse_collection_date(value: Optional[str]) -> Optional[datetime]:
+def parse_collection_date(value: str | None) -> datetime | None:
     if value is None:
         return None
 
     return datetime.strptime(value, "%Y-%m-%d")
 
 
-def apply_limit(items: list, limit: Optional[int]) -> list:
+def apply_limit(items: list, limit: int | None) -> list:
     if limit is None:
         return items
 
@@ -207,6 +208,15 @@ def log_failures(logger: logging.Logger, failures: list) -> None:
             failure.animal_name,
             failure.error_message,
         )
+
+
+def build_progress_logger(logger: logging.Logger, stage: str):
+    """Build a callback that logs Uniform Agri collection progress."""
+
+    def log_progress(processed: int, total: int) -> None:
+        logger.info("Collecting %s: %s/%s", stage, processed, total)
+
+    return log_progress
 
 
 def print_summary(

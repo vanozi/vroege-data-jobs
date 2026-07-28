@@ -3,13 +3,12 @@ from uuid import UUID
 
 import pytest
 
+from data_jobs.uniform_agri import transforms
 from data_jobs.uniform_agri.collectors import (
     animal_details,
     herd_registration,
     milk_recordings,
 )
-from data_jobs.uniform_agri import transforms
-
 
 ANIMAL_ID = "12345678-1234-5678-1234-567812345678"
 SECOND_ANIMAL_ID = "22345678-1234-5678-1234-567812345678"
@@ -141,6 +140,23 @@ def test_collect_animal_details_can_abort_on_animal_failure():
         )
 
 
+def test_collect_animal_details_reports_progress_every_fifty_cows():
+    koeien = build_koeien(51)
+    service = AnimalDetailService(
+        {str(koe.animal_id): build_actual_raw() for koe in koeien}
+    )
+    progress = []
+
+    animal_details.collect_animal_details(
+        service,
+        HERD_ID,
+        koeien,
+        progress_callback=lambda processed, total: progress.append((processed, total)),
+    )
+
+    assert progress == [(0, 51), (50, 51), (51, 51)]
+
+
 def test_collect_milk_recordings_returns_records_and_failures():
     koeien = [
         transforms.koe_from_registration(build_registration_raw(name="Koe 1")),
@@ -199,6 +215,21 @@ def test_collect_milk_recordings_can_abort_on_animal_failure():
         )
 
 
+def test_collect_milk_recordings_reports_progress_every_fifty_cows():
+    koeien = build_koeien(51)
+    service = MilkRecordingService({str(koe.animal_id): [] for koe in koeien})
+    progress = []
+
+    milk_recordings.collect_milk_recordings(
+        service,
+        HERD_ID,
+        koeien,
+        progress_callback=lambda processed, total: progress.append((processed, total)),
+    )
+
+    assert progress == [(0, 51), (50, 51), (51, 51)]
+
+
 def test_is_excluded_calf_name_handles_missing_names():
     assert herd_registration.is_excluded_calf_name(None) is False
     assert herd_registration.is_excluded_calf_name("") is False
@@ -219,6 +250,18 @@ def build_registration_raw(name, animal_id=ANIMAL_ID):
         "hairColor": "black-white",
         "eartagShort": animal_id[:4],
     }
+
+
+def build_koeien(count):
+    return [
+        transforms.koe_from_registration(
+            build_registration_raw(
+                name=f"Koe {index}",
+                animal_id=f"00000000-0000-0000-0000-{index:012d}",
+            )
+        )
+        for index in range(1, count + 1)
+    ]
 
 
 def build_actual_raw():
