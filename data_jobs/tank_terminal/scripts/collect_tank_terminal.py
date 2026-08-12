@@ -50,7 +50,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     logger = job_logger.get_job_logger(__file__, __name__)
 
     try:
-         return run(args, logger)
+        return run(args, logger)
     except Exception as error:
         logger.exception("Tank Terminal collection failed: %s", error)
         print(f"Tank Terminal collection failed: {error}")

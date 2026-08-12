@@ -51,6 +51,7 @@ def collect_tank_terminal_rows(
 ) -> TankTerminalCollectionResult:
     """Collect normalized transactions from the Tank Terminal CSV export."""
     date_range = _build_export_date_range(latest_start_date_time)
+    _log_export_date_range(progress_callback, date_range)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=config.headless)
         try:
@@ -98,6 +99,21 @@ def _build_export_date_range(
     )
 
 
+def _log_export_date_range(
+    progress_callback: Optional[Callable[[str], None]],
+    date_range: TankTerminalExportDateRange,
+) -> None:
+    start_date_time = date_range.start_date_time or "<empty>"
+    end_date_time = date_range.end_date_time or "<empty>"
+    _log(
+        progress_callback,
+        (
+            "Tank Terminal export date range: "
+            f"start_date_time={start_date_time} end_date_time={end_date_time}"
+        ),
+    )
+
+
 def _login(page: Page, config: TankTerminalConfig) -> None:
     language_select = page.locator(LoginPage.language_select)
     if language_select.count() > 0:
@@ -125,7 +141,9 @@ def _open_export_transactions(page: Page) -> None:
     _click_first_visible(page, OverviewPage.administration_link)
     _click_first_visible(page, OverviewPage.reports_exports_link)
     _click_first_visible(page, OverviewPage.export_link)
-    page.locator(ExportTransactionsPage.export_transactions_page_title).first.wait_for(state="visible")
+    page.locator(ExportTransactionsPage.export_transactions_page_title).first.wait_for(
+        state="visible"
+    )
 
 
 def _select_export_template(page: Page) -> None:

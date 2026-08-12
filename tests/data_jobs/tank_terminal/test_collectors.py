@@ -30,14 +30,49 @@ def test_build_export_date_range_leaves_fields_empty_without_database_timestamp(
     assert date_range.end_date_time is None
 
 
+def test_log_export_date_range_reports_start_and_end_dates():
+    messages = []
+    date_range = collectors.TankTerminalExportDateRange(
+        start_date_time="04/08/2026 00:00:00",
+        end_date_time="08/08/2026 00:00:00",
+    )
+
+    collectors._log_export_date_range(messages.append, date_range)
+
+    assert messages == [
+        (
+            "Tank Terminal export date range: "
+            "start_date_time=04/08/2026 00:00:00 "
+            "end_date_time=08/08/2026 00:00:00"
+        )
+    ]
+
+
+def test_log_export_date_range_reports_empty_dates():
+    messages = []
+    date_range = collectors.TankTerminalExportDateRange(
+        start_date_time=None,
+        end_date_time=None,
+    )
+
+    collectors._log_export_date_range(messages.append, date_range)
+
+    assert messages == [
+        (
+            "Tank Terminal export date range: "
+            "start_date_time=<empty> end_date_time=<empty>"
+        )
+    ]
+
+
 def test_export_page_objects_define_navigation_and_form_selectors():
-    assert "Administration" in OverviewPage.administration_links[0]
-    assert "Export" in OverviewPage.export_links[0]
-    assert "Transactions" in OverviewPage.export_transaction_links[0]
-    assert ExportTransactionsPage.template_option_name == "Export before purge"
-    assert ExportTransactionsPage.start_date_inputs
-    assert ExportTransactionsPage.end_date_inputs
-    assert ExportTransactionsPage.export_buttons
+    assert "Administration" in OverviewPage.administration_link[0]
+    assert "nav" in OverviewPage.reports_exports_link[0]
+    assert "nav" in OverviewPage.export_link[0]
+    assert ExportTransactionsPage.template_option_value == "525"
+    assert ExportTransactionsPage.start_date_input
+    assert ExportTransactionsPage.end_date_input
+    assert ExportTransactionsPage.export_button
 
 
 def test_collection_result_summary_counts_exported_models_without_deduping():
