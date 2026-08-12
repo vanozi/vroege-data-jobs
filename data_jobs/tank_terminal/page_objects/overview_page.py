@@ -7,8 +7,13 @@ class OverviewPage(BasePage):
     """Selectors for the Tank Terminal overview page."""
 
     page_title = '//div[@class="title_page"]'
-    transaction_links = [
-        "//a[descendant::span[contains(normalize-space(), 'Transactions')]]",
-        "//a[contains(normalize-space(), 'Transactions')]",
-        "//span[contains(normalize-space(), 'Transactions')]",
+    administration_link = ["//td[contains(@class, 'table_dd') and contains(., 'Administration')]"]
+    reports_exports_link = [
+        '//*[@id="nav"]/li[1]/ul/li[3]/table/tbody/tr/td',
+    ]
+    export_link = [
+        '//*[@id="nav"]/li[1]/ul/li[3]/ul/li[3]/table/tbody/tr/td'
+    ]
+    transactions_link = [
+        '//*[@id="nav"]/li[1]/ul/li[3]/ul/li[3]/ul/li[1]/table/tbody/tr/td',
     ]
