@@ -1,7 +1,7 @@
 """CLI entrypoint for collecting Tank Terminal transactions."""
 
 import argparse
-from dataclasses import asdict, replace
+from dataclasses import replace
 import logging
 from typing import Optional
 
@@ -50,7 +50,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     logger = job_logger.get_job_logger(__file__, __name__)
 
     try:
-        return run(args, logger)
+         return run(args, logger)
     except Exception as error:
         logger.exception("Tank Terminal collection failed: %s", error)
         print(f"Tank Terminal collection failed: {error}")
@@ -70,12 +70,15 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
         return 2
 
     limit = args.limit if args.limit is not None else config.default_limit
+    repository = _build_repository()
+    latest_start_date_time = repository.get_latest_start_date_time()
     result = collectors.collect_tank_terminal_rows(
         config,
         limit=limit,
         progress_callback=logger.info,
+        latest_start_date_time=latest_start_date_time,
     )
-    saved_count = _persist_rows(result, dry_run=args.dry_run)
+    saved_count = _persist_rows(result, repository=repository, dry_run=args.dry_run)
     _log_collection_summary(result, saved_count, dry_run=args.dry_run, logger=logger)
 
     if args.summary:
@@ -91,7 +94,7 @@ def run(args: argparse.Namespace, logger: logging.Logger) -> int:
         return 0
 
     for row in result.rows:
-        print(asdict(row))
+        print(row.model_dump())
 
     return 0
 
@@ -112,14 +115,11 @@ def _apply_cli_overrides(
 
 def _persist_rows(
     result: collectors.TankTerminalCollectionResult,
+    repository,
     dry_run: bool,
 ) -> int:
-    repository = None
-    if not dry_run:
-        repository = _build_repository()
-
-    return tank_terminal_persistence.save_tank_transactions(
-        [asdict(row) for row in result.rows],
+    return tank_terminal_persistence.save_tank_transaction_models_by_start_date_time(
+        result.rows,
         repository,
         dry_run=dry_run,
     )

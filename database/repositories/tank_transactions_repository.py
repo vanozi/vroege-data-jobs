@@ -1,6 +1,10 @@
 """Repository for Tank Terminal transactions."""
 
-from typing import Union
+from datetime import datetime
+from typing import Optional, Union
+
+from sqlalchemy import func
+from sqlmodel import select
 
 from database.models.tank_transaction import TankTransaction
 from database.repositories.base_repository import BaseRepository
@@ -37,3 +41,9 @@ class TankTransactionsRepository(BaseRepository[TankTransaction]):
             tank_transaction_data,
             unique_fields=["start_date_time"],
         )
+
+    def get_latest_start_date_time(self) -> Optional[datetime]:
+        """Return the latest stored Tank Terminal transaction timestamp."""
+        with self.get_session() as session:
+            statement = select(func.max(TankTransaction.start_date_time))
+            return session.exec(statement).one()
