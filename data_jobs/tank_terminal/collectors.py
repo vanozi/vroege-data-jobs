@@ -168,7 +168,7 @@ def _fill_export_filters(page: Page, date_range: TankTerminalExportDateRange) ->
 
 
 def _download_transactions_csv(page: Page) -> str:
-    with page.expect_download() as download_info:
+    with page.expect_download(timeout=120_000) as download_info:
         _click_first_visible(page, ExportTransactionsPage.export_button)
 
     download = download_info.value
